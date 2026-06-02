@@ -1,0 +1,265 @@
+import type {
+  AgentToolBundleName,
+  AgentToolGrantMode,
+  AgentToolSettingsResponse,
+  ResolvedAgentTool,
+  ToolDefinition,
+} from "../../../../../contracts/tool-definition.js";
+import { ApiRouteError } from "../../http.js";
+import { executeSupabaseRows, getServiceRoleSupabase } from "../../supabase-client.js";
+import {
+  AGENT_TOOL_BUNDLE_SELECT,
+  deleteAgentToolGrantRows,
+  getVisibleToolRow,
+  listVisibleToolRows,
+  loadAgentToolBundleRow,
+  upsertAgentToolGrantRow,
+} from "../../repositories/agent-tools.js";
+import type { AgentToolBundleRow } from "../../repositories/agent-tools.js";
+import { assertAgentAccess } from "./access.js";
+import { logAgentToolOverrideAudit } from "./audit.js";
+import { toolFromRow, toolMatchesName, toolName } from "./mappers.js";
+import { getAgentToolSettings, getResolvedToolsForAgent } from "./settings.js";
+import { assertLocalCodingToolsAllowed, hasRegisteredLocalCodingTarget, isLocalCodingTool } from "./validation.js";
+
+const AGENT_TOOL_BUNDLE_NAMES = new Set<AgentToolBundleName>([
+  ":planner",
+  ":manager",
+  ":coding",
+  ":repo_read",
+  ":repo_write",
+]);
+
+function isAgentToolBundleName(value: string): value is AgentToolBundleName {
+  return AGENT_TOOL_BUNDLE_NAMES.has(value as AgentToolBundleName);
+}
+
+function defaultBundlesForAgentType(agentType: string | null | undefined): AgentToolBundleName[] {
+  if (agentType === "planning") return [":planner"];
+  if (agentType === "coding") return [":coding"];
+  if (agentType === "manager") return [":manager"];
+  return [];
+}
+
+function normalizeBundleNames(input: readonly string[], agentType: string | null | undefined): AgentToolBundleName[] {
+  const rawBundles = input.length > 0 ? input : defaultBundlesForAgentType(agentType);
+  const bundles: AgentToolBundleName[] = [];
+  for (const bundle of rawBundles) {
+    if (!isAgentToolBundleName(bundle)) {
+      throw new ApiRouteError(400, "invalid_tool_bundle", `Unsupported tool bundle: ${bundle}`);
+    }
+    if (!bundles.includes(bundle)) bundles.push(bundle);
+  }
+  return bundles;
+}
+
+async function findVisibleToolByName(input: { toolName: string; workspaceId: string }) {
+  const tools = await listVisibleToolRows(input.workspaceId);
+  const tool = tools.find((row) => toolMatchesName(row, input.toolName)) ?? null;
+  if (!tool) {
+    throw new ApiRouteError(404, "tool_not_found", "Tool was not found");
+  }
+  if (!tool.enabled) {
+    throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
+  }
+  return tool;
+}
+
+export async function setAgentToolGrant(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  toolId: string;
+  mode: AgentToolGrantMode;
+  reason?: string | null;
+  workspaceId?: string | null;
+}): Promise<AgentToolSettingsResponse> {
+  const { workspaceId } = await assertAgentAccess(input);
+  const tool = await getVisibleToolRow(input.toolId, workspaceId);
+  if (!tool) {
+    throw new ApiRouteError(404, "tool_not_found", "Tool was not found");
+  }
+  if (!tool.enabled) {
+    throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
+  }
+  if (input.mode === "include") {
+    await assertLocalCodingToolsAllowed({ workspaceId, tools: [tool] });
+  }
+
+  await upsertAgentToolGrantRow({
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolId: tool.id,
+    mode: input.mode,
+    source: "manual",
+    reason: input.reason ?? null,
+  });
+  logAgentToolOverrideAudit({
+    action: input.mode,
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolName: toolName(tool),
+  });
+  return getAgentToolSettings(input);
+}
+
+export async function deleteAgentToolGrant(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  toolId: string;
+  workspaceId?: string | null;
+}): Promise<AgentToolSettingsResponse> {
+  const { workspaceId } = await assertAgentAccess(input);
+  await deleteAgentToolGrantRows({ agentId: input.agentId, workspaceId, toolId: input.toolId });
+  logAgentToolOverrideAudit({
+    action: "exclude",
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolName: input.toolId,
+  });
+  return getAgentToolSettings(input);
+}
+
+export async function addToolOverrideToAgent(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  toolName: string;
+  workspaceId?: string | null;
+}): Promise<{ bundles: AgentToolBundleName[]; tools: ResolvedAgentTool[] }> {
+  const { workspaceId } = await assertAgentAccess(input);
+  const tool = await findVisibleToolByName({ toolName: input.toolName, workspaceId });
+  if (isLocalCodingTool(tool) && !(await hasRegisteredLocalCodingTarget(workspaceId))) {
+    throw new ApiRouteError(
+      409,
+      "local_coding_execution_target_required",
+      "Register a local runtime helper with a workspace root before enabling local coding tools",
+    );
+  }
+  await upsertAgentToolGrantRow({
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolId: tool.id,
+    mode: "include",
+    source: "manual",
+  });
+  logAgentToolOverrideAudit({
+    action: "include",
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolName: toolName(tool),
+  });
+  return getResolvedToolsForAgent(input);
+}
+
+export async function removeToolOverrideFromAgent(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  toolName: string;
+  workspaceId?: string | null;
+}): Promise<{ bundles: AgentToolBundleName[]; tools: ResolvedAgentTool[] }> {
+  const { workspaceId } = await assertAgentAccess(input);
+  const tool = await findVisibleToolByName({ toolName: input.toolName, workspaceId });
+  await upsertAgentToolGrantRow({
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolId: tool.id,
+    mode: "exclude",
+    source: "manual",
+  });
+  logAgentToolOverrideAudit({
+    action: "exclude",
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolName: toolName(tool),
+  });
+  return getResolvedToolsForAgent(input);
+}
+
+export async function replaceAgentToolBundles(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  bundles: AgentToolBundleName[];
+  workspaceId?: string | null;
+}): Promise<{ bundles: AgentToolBundleName[]; tools: ResolvedAgentTool[] }> {
+  const { workspaceId } = await assertAgentAccess(input);
+  const agent = await loadAgentToolBundleRow(input.agentId);
+  const bundles = normalizeBundleNames(input.bundles, agent.type);
+  await executeSupabaseRows<AgentToolBundleRow>(
+    "agent tool_bundles update",
+    getServiceRoleSupabase()
+      .from("agent")
+      .update({ tool_bundles: bundles, updated_at: new Date().toISOString() } as never)
+      .eq("id", input.agentId)
+      .eq("workspace_id", workspaceId)
+      .select(AGENT_TOOL_BUNDLE_SELECT),
+  );
+  logAgentToolOverrideAudit({
+    action: "replace_bundles",
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    bundles,
+  });
+  return getResolvedToolsForAgent(input);
+}
+
+export async function assignToolToAgent(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  toolId: string;
+  workspaceId?: string | null;
+}): Promise<ToolDefinition> {
+  const { workspaceId } = await assertAgentAccess(input);
+  const tool = await getVisibleToolRow(input.toolId, workspaceId);
+  if (!tool) {
+    throw new ApiRouteError(404, "tool_not_found", "Tool was not found");
+  }
+  if (!tool.enabled) {
+    throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
+  }
+  if (isLocalCodingTool(tool) && !(await hasRegisteredLocalCodingTarget(workspaceId))) {
+    throw new ApiRouteError(
+      409,
+      "local_coding_execution_target_required",
+      "Register a local runtime helper with a workspace root before enabling local coding tools",
+    );
+  }
+
+  await upsertAgentToolGrantRow({
+    userId: input.userId,
+    agentId: input.agentId,
+    workspaceId,
+    toolId: input.toolId,
+    mode: "include",
+    source: "manual",
+  });
+
+  return toolFromRow(tool);
+}
+
+export async function unassignToolFromAgent(input: {
+  accessToken: string;
+  userId: string;
+  agentId: string;
+  toolId: string;
+  workspaceId?: string | null;
+}) {
+  const { workspaceId } = await assertAgentAccess(input);
+  const deleted = await deleteAgentToolGrantRows({ agentId: input.agentId, workspaceId, toolId: input.toolId });
+
+  if (deleted.length === 0) {
+    throw new ApiRouteError(404, "agent_tool_not_found", "Tool assignment was not found");
+  }
+}

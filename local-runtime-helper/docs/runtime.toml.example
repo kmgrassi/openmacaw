@@ -1,0 +1,28 @@
+# Example local-runtime-helper config.
+# Lives at ~/.config/harper/runtime.toml on the user's machine.
+# `local-runtime-helper register --workspace=<id> --token=<token>` writes this.
+
+[machine]
+display_name = "kevin-mbp"
+
+[cloud]
+endpoint = "wss://your-platform.example.com/worker-bridge/relay/ws"
+workspace_id = "ws_..."       # written by `register`
+token    = "lrh_..."          # do not commit; managed by `register`
+
+# LOCAL_RUNTIME_ENDPOINT overrides [cloud].endpoint.
+# LOCAL_RUNTIME_TOKEN overrides [cloud].token.
+# LOCAL_RUNTIME_CONFIG overrides the default config path.
+
+# Each [runner.<kind>] table = one local tool this machine can serve.
+# The keys (after `runner.`) are the runner_kind strings sent in the
+# WS register frame; they must match the cloud's worker-adapter enum.
+
+[runner.openai_compatible]
+endpoint = "http://127.0.0.1:11434/v1"
+api_key  = "ollama"
+model    = "qwen2.5-coder:latest"
+
+[runner.openclaw]
+endpoint = "http://127.0.0.1:7100"
+api_key  = ""

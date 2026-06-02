@@ -1,0 +1,39 @@
+{
+  "name": "parallel-agent-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.12.2",
+  "scripts": {
+    "build:orchestrator": "cd apps/orchestrator && mix escript.build",
+    "agent:message": "node ./scripts/agent-message.mjs",
+    "debug:orchestrator:ws": "node ./scripts/runtime-ws-client.mjs",
+    "doctor:runtime": "node ./scripts/runtime-doctor.mjs",
+    "agent:tool-smoke": "node ./scripts/agent-tool-smoke.mjs",
+    "logs:runtime": "node ./scripts/runtime-logs.mjs",
+    "supabase:schema:sync:from-package": "node ./scripts/sync-platform-supabase-schema-package.mjs && node ./scripts/append-supabase-jsdoc-types.mjs",
+    "supabase:schema:sync": "sh -c 'set -a; . ./.env 2>/dev/null; set +a; mkdir -p supabase/generated && tmp_file=$(mktemp supabase/generated/types.ts.tmp.XXXXXX) && trap \"rm -f \\\"$tmp_file\\\"\" EXIT && pnpm exec supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public,authz > \"$tmp_file\" && mv \"$tmp_file\" supabase/generated/types.ts && trap - EXIT && node ./scripts/append-supabase-jsdoc-types.mjs'",
+    "start:local": "./scripts/start-local-runtime.sh",
+    "start:local-relay": "./scripts/start-local-relay.sh",
+    "start:launcher": "./scripts/with-local-env.sh apps/orchestrator mix launcher.start",
+    "agent:replay": "node ./scripts/agent-replay.mjs",
+    "smoke:runtime": "node ./scripts/runtime-smoke.mjs",
+    "smoke:agents": "node ./scripts/agents-smoke.mjs",
+    "smoke:gateway": "node ./scripts/gateway-smoke.mjs",
+    "smoke:manager": "node ./scripts/manager-smoke.mjs",
+    "smoke:manager-dispatch": "node ./scripts/manager-dispatch-smoke.mjs",
+    "smoke:local-relay": "node ./scripts/local-relay-smoke.mjs",
+    "smoke:local-relay-conversation": "node ./scripts/local-relay-conversation-smoke.mjs",
+    "smoke:local-ollama-qwen": "./scripts/local-ollama-qwen-smoke.sh",
+    "smoke:local-model-coding": "cd apps/orchestrator && mix local_model.coding_smoke",
+    "test:agent-tool-smoke": "node --test ./scripts/test/agent-tool-smoke.test.mjs",
+    "start:orchestrator": "./scripts/with-local-env.sh apps/orchestrator ../../scripts/start-orchestrator.sh",
+    "snapshot:runtime": "node ./scripts/runtime-snapshot.mjs",
+    "start:fake-model": "node ./scripts/start-fake-model.mjs",
+    "test:e2e": "cd apps/orchestrator && set -a; . ./.env 2>/dev/null; set +a; SYMPHONY_RUN_LIVE_E2E=1 mix test test/symphony_elixir/live_e2e_test.exs",
+    "start:orchestrator:watch": "cd apps/orchestrator && set -a; . ./.env 2>/dev/null; set +a; mix escript.build && while :; do ../../scripts/start-orchestrator.sh --no-dashboard; status=$?; if [ \"$status\" -eq 0 ]; then echo \"[orchestrator] exited normally (code 0), stopping.\"; break; else delay=\"${ORCH_RESTART_DELAY_SECONDS:-2}\"; echo \"[orchestrator] exited with code $status; restarting in ${delay}s\"; sleep \"$delay\"; fi; done"
+  },
+  "devDependencies": {
+    "@kmgrassi/supabase-schema": "file:../platform/packages/supabase-schema",
+    "supabase": "^2.95.5"
+  }
+}

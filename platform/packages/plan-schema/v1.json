@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.harper.dev/plan/v1.json",
+  "title": "Harper Plan v1",
+  "description": "Canonical plan document emitted by the planning agent and accepted by the platform plans API.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "defaultRunner": {
+      "type": "string",
+      "enum": ["codex", "openclaw", "computer_use", "openai_compatible", "local_model_coding"]
+    },
+    "defaultModel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tasks": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^t-[a-z0-9-]+$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "instructions": {
+            "type": "string",
+            "minLength": 1
+          },
+          "labels": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^t-[a-z0-9-]+$"
+            }
+          },
+          "completionGates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["lint", "tests", "peer-review", "self-review"]
+            }
+          }
+        },
+        "required": ["id", "title", "instructions"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schemaVersion", "title", "intent", "tasks"],
+  "additionalProperties": false
+}

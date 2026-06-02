@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kmgrassi/parallel-agent-runtime/apps/orchestrator/docs/local-relay-protocol.schema.json",
+  "title": "Symphony Local Relay Protocol Frames",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/register"
+    },
+    {
+      "$ref": "#/$defs/registered"
+    },
+    {
+      "$ref": "#/$defs/heartbeat"
+    },
+    {
+      "$ref": "#/$defs/heartbeat_ack"
+    },
+    {
+      "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/reserved_dispatch_frame"
+    }
+  ],
+  "$defs": {
+    "register": {
+      "type": "object",
+      "required": ["type", "workspace_id", "machine_id"],
+      "properties": {
+        "type": {
+          "const": "register"
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "machine_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "runner_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "runners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/runner"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "registered": {
+      "type": "object",
+      "required": ["type", "protocol", "workspace_id", "machine_id", "heartbeat_interval_ms"],
+      "properties": {
+        "type": {
+          "const": "registered"
+        },
+        "protocol": {
+          "const": 1
+        },
+        "workspace_id": {
+          "type": "string"
+        },
+        "machine_id": {
+          "type": "string"
+        },
+        "heartbeat_interval_ms": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "reconnect": {
+          "type": "object",
+          "properties": {
+            "backoff_ms": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "jitter": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "heartbeat": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "const": "heartbeat"
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "integer"
+        },
+        "runner_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "runners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/runner"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "heartbeat_ack": {
+      "type": "object",
+      "required": ["type", "server_ts"],
+      "properties": {
+        "type": {
+          "const": "heartbeat_ack"
+        },
+        "correlation_id": {
+          "type": ["string", "null"]
+        },
+        "ts": {
+          "type": ["integer", "null"]
+        },
+        "server_ts": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["type", "error"],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "correlation_id": {
+          "type": ["string", "null"]
+        },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "missing_token",
+                "invalid_token",
+                "local_runtime_token_revoked",
+                "workspace_mismatch",
+                "machine_mismatch",
+                "validator_unavailable",
+                "local_runtime_offline",
+                "local_runner_protocol_error"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "reserved_dispatch_frame": {
+      "type": "object",
+      "required": ["type", "correlation_id"],
+      "properties": {
+        "type": {
+          "enum": ["dispatch", "progress", "complete", "cancel"]
+        },
+        "correlation_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "runner": {
+      "type": "object",
+      "required": ["runner_kind"],
+      "properties": {
+        "runner_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "streaming": {
+              "type": "boolean"
+            },
+            "tool_calls": {
+              "type": "boolean"
+            },
+            "structured_output": {
+              "type": "string"
+            },
+            "json_mode": {
+              "type": "boolean"
+            },
+            "context_window": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

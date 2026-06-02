@@ -1,0 +1,34 @@
+[build]
+  # The Netlify site is rooted at apps/web. Build when the React client,
+  # shared contracts, or docs change. The web build consumes ../../contracts
+  # (compiled via tsconfig.app.json include) and docs changes are part of the
+  # preview signal.
+  #
+  # ../../apps/api is intentionally NOT in this list: the web bundle has no
+  # compile-time dependency on the Express server (it only talks to it over
+  # HTTP/WS at runtime), and there's zero JSX/TSX in apps/api. Including it
+  # caused every API-only PR to trigger a Netlify build with no observable
+  # effect on the static output (and a fresh build env that occasionally
+  # broke for unrelated environment reasons — see PR #546 / Netlify deploy
+  # 6a0dc22df272d10009cc39ee). API behavior is verified by the API's own
+  # validate workflow and Platform Contract Checks; we don't need Netlify
+  # to also smoke-build the web on those PRs.
+  #
+  # Exit 0 skips the build; exit 1 means relevant files changed and the build continues.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF . ../../contracts ../../docs"
+  # Install root-level deps first so `contracts/*.ts` (compiled as part of the
+  # web build via the tsconfig.app.json include) can resolve `zod` from the
+  # repo-root node_modules. Without this, the tsc step fails with:
+  #   ../../contracts/setup.ts(1,19): error TS2307: Cannot find module 'zod'
+  # ...because TypeScript's module resolution from contracts/ walks up
+  # looking for node_modules/zod at the repo root (not apps/web/).
+  command = "corepack enable && pnpm -C ../.. install --frozen-lockfile && pnpm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,0 +1,78 @@
+name: Cross-repo enum drift
+
+# Catches drift between the platform's provider, runner_kind, and tracker_kind
+# contract enums and the corresponding DB CHECK constraints
+# (harper-server) and Elixir validation lists (parallel-agent-runtime). The
+# bug class hit twice in 24 hours (credential_kind_check, then
+# routing_rule_provider_check) — this check fails fast when a future
+# provider/runner/tracker addition isn't mirrored in all the places that need
+# it.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Catch drift introduced by harper-server / parallel-agent-runtime PRs
+    # that didn't change platform code (so wouldn't trip the path filter).
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: cross-repo-enum-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift-check:
+    name: Cross-repo enum drift
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Job-level path filter so docs-only PRs report success rather than
+      # being skipped (skipped checks block required-check branch protection).
+      # On push-to-main, schedule, and workflow_dispatch the per-step
+      # `github.event_name != 'pull_request'` clause forces all steps to run.
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'contracts/provider-registry.ts'
+              - 'contracts/runner-kinds.ts'
+              - 'contracts/tracker-kinds.ts'
+              - 'contracts/agent-health.ts'
+              - 'apps/api/src/repositories/credentials.ts'
+              - 'apps/api/src/repositories/routing-rules.ts'
+              - 'apps/api/src/repositories/workspace-settings.ts'
+              - 'scripts/check-cross-repo-enums.mjs'
+              - 'scripts/check-cross-repo-enums.test.mjs'
+              - '.github/workflows/cross-repo-enum-drift.yml'
+
+      - name: Set up Node.js
+        if: steps.changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check cross-repo enum drift
+        if: steps.changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
+        env:
+          # Optional fine-grained token with read access to the private
+          # kmgrassi/parallel-agent-runtime repo. Public harper-server reads
+          # do not need auth, and passing the platform repo's GITHUB_TOKEN to
+          # cross-repo requests can produce misleading 404s.
+          CROSS_REPO_GITHUB_TOKEN: ${{ secrets.CROSS_REPO_GITHUB_TOKEN }}
+        run: node scripts/check-cross-repo-enums.mjs
+
+      - name: Skip expensive validation for docs-only pull requests
+        if: steps.changes.outputs.relevant != 'true' && github.event_name == 'pull_request'
+        run: echo "No relevant changes detected for cross-repo enum drift; reporting success."

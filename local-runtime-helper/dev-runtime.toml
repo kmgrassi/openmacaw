@@ -1,0 +1,20 @@
+# Dev config for local testing with Ollama.
+# Usage: LOCAL_RUNTIME_CONFIG=./dev-runtime.toml go run ./cmd/local-runtime-helper start --log-level debug
+
+[machine]
+display_name = "dev-machine"
+
+[cloud]
+endpoint = "ws://127.0.0.1:4000"
+workspace_id = "dev-workspace"
+token = "lrh_dev_local_token_2026"
+
+[runner.openai_compatible]
+endpoint = "http://localhost:11434/v1"
+model = "qwen3-coder:30b"
+# api_key = ""  # Ollama doesn't need an API key
+
+# Uncomment to advertise a local OpenClaw server alongside the model runner.
+# [runner.openclaw]
+# endpoint = "http://localhost:7100"
+# api_key = "optional-bearer-token"

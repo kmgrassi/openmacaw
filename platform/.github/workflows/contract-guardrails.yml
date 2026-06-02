@@ -1,0 +1,59 @@
+name: Contract Guardrails
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: contract-guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job-level path filter so docs-only PRs report success rather than being
+  # skipped (skipped checks block required-check branch protection). On
+  # push-to-main and workflow_dispatch the downstream `if:` clause's
+  # `github.event_name != 'pull_request'` branch forces the work to run.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect relevant changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - '.github/workflows/contract-guardrails.yml'
+              - 'package.json'
+              - 'scripts/check-generated-db-types.sh'
+              - 'scripts/check-supabase-schema.mjs'
+              - 'scripts/sync-supabase-schema.mjs'
+              - 'packages/supabase-schema/**'
+              - 'supabase/migrations/**'
+              - 'contracts/**'
+              - 'docs/contracts-directory-guidelines.md'
+
+  generated-db-types:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        if: needs.detect-changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check generated DB type guardrails
+        if: needs.detect-changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
+        run: ./scripts/check-generated-db-types.sh
+
+      - name: Skip expensive validation for docs-only pull requests
+        if: needs.detect-changes.outputs.relevant != 'true' && github.event_name == 'pull_request'
+        run: echo "No relevant changes detected for contract guardrails; reporting success."

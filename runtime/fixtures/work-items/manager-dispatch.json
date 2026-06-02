@@ -1,0 +1,18 @@
+{
+  "title": "Manager dispatch smoke: mark done {{timestamp}}",
+  "description": "Disposable runtime smoke work item. The manager should call mark_done for this work item.",
+  "state": "running",
+  "priority": "medium",
+  "source": "planner",
+  "labels": ["runtime-smoke", "manager-dispatch"],
+  "metadata": {
+    "smoke": {
+      "scenario_id": "manager-due-work-item",
+      "instruction": "Call mark_done for this work item."
+    }
+  },
+  "expected": {
+    "tool": "mark_done",
+    "state": "done"
+  }
+}

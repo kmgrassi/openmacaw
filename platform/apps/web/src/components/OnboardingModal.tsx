@@ -1,0 +1,104 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "../stores/auth";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+
+const DISMISSED_KEY_PREFIX = "onboarding-dismissed";
+
+export function OnboardingModal() {
+  const { defaultAgentOnboarding, userId, workspaceId } = useAuthStore();
+  const navigate = useNavigate();
+  const [visible, setVisible] = useState(false);
+  const dismissedKey = useMemo(() => {
+    if (!userId) return null;
+    return `${DISMISSED_KEY_PREFIX}:${encodeURIComponent(userId)}:${encodeURIComponent(workspaceId ?? "no-workspace")}`;
+  }, [userId, workspaceId]);
+
+  useEffect(() => {
+    if (
+      defaultAgentOnboarding.required &&
+      dismissedKey &&
+      !localStorage.getItem(dismissedKey)
+    ) {
+      setVisible(true);
+    } else {
+      setVisible(false);
+    }
+  }, [defaultAgentOnboarding.required, dismissedKey]);
+
+  const dismiss = useCallback(() => {
+    if (dismissedKey) {
+      localStorage.setItem(dismissedKey, "true");
+    }
+    setVisible(false);
+  }, [dismissedKey]);
+
+  const goToSettings = useCallback(() => {
+    dismiss();
+    navigate("/settings/agents");
+  }, [dismiss, navigate]);
+
+  if (!visible) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60"
+        onClick={dismiss}
+        aria-hidden
+      />
+
+      {/* Modal */}
+      <div className="relative z-10 w-full max-w-md rounded-lg border border-white/10 bg-surface-raised p-6 shadow-xl">
+        {/* Close button */}
+        <IconButton
+          onClick={dismiss}
+          size="sm"
+          className="absolute right-3 top-3 text-slate-400 hover:bg-surface-overlay"
+          aria-label="Close"
+        >
+          &times;
+        </IconButton>
+
+        <h2 className="text-lg font-semibold text-slate-100">
+          Some agents need setup
+        </h2>
+
+        <p className="mt-2 text-sm text-slate-400">
+          One or more agents are missing credentials or configuration. You can
+          continue using the app, but these agents won't work until they're
+          configured.
+        </p>
+
+        {defaultAgentOnboarding.reasons.length > 0 && (
+          <ul className="mt-4 space-y-1.5">
+            {defaultAgentOnboarding.reasons.map((reason) => (
+              <li
+                key={reason}
+                className="flex items-start gap-2 text-sm text-slate-300"
+              >
+                <span className="mt-1 block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                {reason}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <Button type="button" onClick={dismiss} variant="ghost">
+            Dismiss
+          </Button>
+          <Button
+            type="button"
+            onClick={goToSettings}
+            className="px-4 hover:bg-blue-500"
+          >
+            Go to Settings
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

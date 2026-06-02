@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "source": "parallel-agent-platform onboarding PR6 smart default model routing",
+  "routes": [
+    {
+      "role": "planning",
+      "runner_kind": "llm_tool_runner",
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "expected_runner_kind": "planner",
+      "expected_runner_module": "SymphonyElixir.Runner.Planner"
+    },
+    {
+      "role": "coding",
+      "runner_kind": "codex",
+      "provider": "openai_codex",
+      "model": "gpt-5.1-codex",
+      "expected_runner_kind": "codex",
+      "expected_runner_module": "SymphonyElixir.Runner.Codex"
+    },
+    {
+      "role": "manager",
+      "runner_kind": "llm_tool_runner",
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "expected_runner_kind": "manager",
+      "expected_runner_module": "SymphonyElixir.Runner.LlmToolRunner"
+    }
+  ]
+}

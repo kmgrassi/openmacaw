@@ -1,0 +1,136 @@
+{
+  "scenario": "planning-anthropic-to-coding-codex",
+  "planning_start": {
+    "execution_profile": {
+      "agent_id": "agent-planning-1",
+      "workspace_id": "workspace-1",
+      "role": "planning",
+      "runner_kind": "llm_tool_runner",
+      "provider": "anthropic",
+      "model": "claude-sonnet-fixture",
+      "credential_ref": "alias:planning-anthropic",
+      "tool_profile": "planner_safe",
+      "capabilities": {
+        "tool_calls": true,
+        "streaming": true
+      },
+      "source_metadata": {
+        "routing_rule_id": "route-planning-anthropic",
+        "fallback_used": false
+      }
+    },
+    "request": {
+      "intent": "create_plan",
+      "message": "Plan the runtime handoff work."
+    }
+  },
+  "planning_events": [
+    {
+      "event": "turn_started",
+      "payload": {
+        "run_id": "run-planning-1",
+        "provider": "anthropic",
+        "model": "claude-sonnet-fixture"
+      }
+    },
+    {
+      "event": "tool_call_completed",
+      "payload": {
+        "params": {
+          "tool": "plan.create",
+          "callId": "tool-call-plan-1"
+        }
+      },
+      "details": {
+        "success": true,
+        "output": "{\"id\":\"plan-1\",\"workspace_id\":\"workspace-1\",\"name\":\"Model agnostic smoke plan\",\"_review_events\":[{\"type\":\"planner.plan.created\",\"payload\":{\"plan_id\":\"plan-1\",\"workspace_id\":\"workspace-1\",\"name\":\"Model agnostic smoke plan\",\"description\":\"Fixture plan\"}}]}"
+      }
+    },
+    {
+      "event": "tool_call_completed",
+      "payload": {
+        "params": {
+          "tool": "task.create",
+          "callId": "tool-call-task-1"
+        }
+      },
+      "details": {
+        "success": true,
+        "output": "{\"id\":\"task-1\",\"plan_id\":\"plan-1\",\"workspace_id\":\"workspace-1\",\"name\":\"Wire coding handoff fixture\",\"description\":\"Implement the approved runtime-side smoke handoff.\",\"_review_events\":[{\"type\":\"planner.task.created\",\"payload\":{\"task_id\":\"task-1\",\"plan_id\":\"plan-1\",\"workspace_id\":\"workspace-1\",\"name\":\"Wire coding handoff fixture\",\"description\":\"Implement the approved runtime-side smoke handoff.\",\"evidence\":[]}}]}"
+      }
+    },
+    {
+      "event": "tool_call_completed",
+      "payload": {
+        "params": {
+          "tool": "task.create",
+          "callId": "tool-call-task-2"
+        }
+      },
+      "details": {
+        "success": true,
+        "output": "{\"id\":\"task-2\",\"plan_id\":\"plan-1\",\"workspace_id\":\"workspace-1\",\"name\":\"Leave unapproved task parked\",\"description\":\"Do not dispatch this task unless approved.\",\"_review_events\":[{\"type\":\"planner.task.created\",\"payload\":{\"task_id\":\"task-2\",\"plan_id\":\"plan-1\",\"workspace_id\":\"workspace-1\",\"name\":\"Leave unapproved task parked\",\"description\":\"Do not dispatch this task unless approved.\",\"evidence\":[]}}]}"
+          }
+    },
+    {
+      "event": "turn_completed",
+      "payload": {
+        "run_id": "run-planning-1",
+        "output_text": "Created a plan with two candidate tasks."
+      },
+      "usage": {
+        "input_tokens": 120,
+        "output_tokens": 64
+      }
+    }
+  ],
+  "approval": {
+    "approved_task_ids": ["task-1"],
+    "rejected_task_ids": ["task-2"],
+    "approved_by": "user-fixture"
+  },
+  "coding_dispatch": {
+    "execution_profile": {
+      "agent_id": "agent-coding-1",
+      "workspace_id": "workspace-1",
+      "role": "coding",
+      "runner_kind": "codex",
+      "provider": "openai_codex",
+      "model": "gpt-codex-fixture",
+      "credential_ref": "alias:coding-codex",
+      "tool_profile": "workspace_write_pr",
+      "capabilities": {
+        "workspace_write": true,
+        "pull_request": true
+      },
+      "source_metadata": {
+        "routing_rule_id": "route-coding-codex",
+        "fallback_used": false
+      }
+    },
+    "launch_params": {
+      "source": "planner",
+      "approved_plan_id": "plan-1",
+      "selected_task_ids": ["task-1"]
+    },
+    "work_items": [
+      {
+        "id": "work-item-1",
+        "identifier": "PLAN-1",
+        "title": "Wire coding handoff fixture",
+        "description": "Implement the approved runtime-side smoke handoff.",
+        "state": "approved",
+        "source": "api_fixture",
+        "runner_type": "codex",
+        "plan_id": "plan-1",
+        "task_id": "task-1",
+        "labels": ["runner:codex", "provider:openai_codex"],
+        "metadata": {
+          "delegated_from_agent_id": "agent-planning-1",
+          "approved_by": "user-fixture",
+          "execution_profile_source": "route-coding-codex"
+        }
+      }
+    ]
+  }
+}

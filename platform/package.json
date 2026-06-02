@@ -1,0 +1,44 @@
+{
+  "name": "parallel-agent-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.12.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "agent:send-message": "node scripts/agent-send-message.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "trace:agent": "node scripts/trace-agent.mjs",
+    "support:bundle": "node scripts/support-bundle.mjs",
+    "agent:dispatch:dry-run": "node scripts/agent-dispatch-probe.mjs --dry-run",
+    "agent:dispatch:live": "node scripts/agent-dispatch-probe.mjs --live",
+    "worktrees:prune": "node scripts/worktrees-prune.mjs",
+    "platform-api-client:generate": "node scripts/generate-platform-api-client.mjs",
+    "platform-api-client:check": "node scripts/generate-platform-api-client.mjs --check",
+    "logs": "cat .run-logs/api.log && echo '---' && cat .run-logs/web.log",
+    "logs:summary": "node scripts/logs-summary.mjs",
+    "check:cross-repo-enums": "node scripts/check-cross-repo-enums.mjs",
+    "agent:test-seed": "pnpm -C apps/api exec tsx scripts/agent-test-state.ts seed",
+    "agent:test-reset": "pnpm -C apps/api exec tsx scripts/agent-test-state.ts reset",
+    "smoke:agent-tool-call": "node scripts/smoke-agent-tool-call.mjs",
+    "db:schema:check": "node scripts/check-supabase-schema.mjs",
+    "db:schema:sync": "node scripts/sync-supabase-schema.mjs",
+    "supabase:schema:sync": "pnpm run db:schema:sync",
+    "contracts:check-generated-db-types": "./scripts/check-generated-db-types.sh",
+    "migrate:workspace-tracker-kind": "node scripts/migrate-workspace-tracker-kind.mjs",
+    "smoke:container": "node scripts/smoke-container.mjs",
+    "smoke:agent-browser": "node scripts/smoke-agent-browser.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1",
+    "supabase": "^2.95.5",
+    "typescript": "~5.7.2"
+  }
+}

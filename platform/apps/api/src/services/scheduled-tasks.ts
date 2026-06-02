@@ -1,0 +1,631 @@
+import { randomUUID } from "node:crypto";
+
+import type { PostgrestError } from "@supabase/supabase-js";
+
+import type {
+  ScheduledTaskCancelResponse,
+  ScheduledTaskCreateRequest,
+  ScheduledTaskListResponse,
+  ScheduledTaskProjection,
+  ScheduledTaskResponse,
+  ScheduledTaskRunNowResponse,
+  ScheduledTaskSchedule,
+  ScheduledTaskUpdateRequest,
+} from "../../../../contracts/scheduled-tasks.js";
+import {
+  ScheduledTaskCancelResponseSchema,
+  ScheduledTaskDeliverySchema,
+  ScheduledTaskListResponseSchema,
+  ScheduledTaskResponseSchema,
+  ScheduledTaskRunNowResponseSchema,
+  ScheduledTaskRunStatusSchema,
+  ScheduledTaskScheduleSchema,
+} from "../../../../contracts/scheduled-tasks.js";
+import { ApiRouteError } from "../http.js";
+import { reflectRunToMemories, type ReflectRunResult } from "./learning/reflector.js";
+import { executeSupabaseRows, getServiceRoleSupabase } from "../supabase-client.js";
+import { distillWorkspaceSkills, type LearningDistillationResult } from "./learning/distiller.js";
+
+type JsonRecord = Record<string, unknown>;
+type QueryResult<Row> = PromiseLike<{ data: Row[] | Row | null; error: PostgrestError | null }>;
+type QueryBuilder<Row> = PromiseLike<{ data: Row[]; error: PostgrestError | null; count: number }> & {
+  select(columns?: string): QueryBuilder<Row>;
+  eq(column: string, value: unknown): QueryBuilder<Row>;
+  in(column: string, value: unknown[]): QueryBuilder<Row>;
+  order(column: string, options?: { ascending?: boolean }): QueryBuilder<Row>;
+  limit(count: number): QueryBuilder<Row>;
+  insert(body: JsonRecord | JsonRecord[]): QueryBuilder<Row>;
+  update(body: JsonRecord): QueryBuilder<Row>;
+  single(): QueryResult<Row>;
+};
+type ScheduledTaskSupabase = {
+  from<Row = JsonRecord>(table: string): QueryBuilder<Row>;
+};
+
+type AgentRow = {
+  id: string;
+  workspace_id: string;
+  type: string | null;
+};
+
+type WorkItemRow = {
+  id: string;
+  workspace_id: string | null;
+};
+
+type ScheduledTaskRow = {
+  id: string;
+  workspace_id: string;
+  agent_id: string;
+  source_work_item_id: string | null;
+  created_by_user_id: string | null;
+  title: string;
+  instructions: string;
+  enabled: boolean;
+  schedule: unknown;
+  timezone: string;
+  next_run_at: string;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  last_error: string | null;
+  delivery: unknown;
+  metadata: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
+const DEFAULT_TIMEZONE = "Etc/UTC";
+const DEFAULT_DELIVERY = { kind: "scheduled_agent_message", sessionStrategy: "scheduled_task" } as const;
+const CRON_SEARCH_LIMIT_MINUTES = 60 * 24 * 366 * 5;
+function scheduledTaskSupabase(): ScheduledTaskSupabase {
+  return getServiceRoleSupabase() as unknown as ScheduledTaskSupabase;
+}
+
+function missingScheduledTaskSchema(error: unknown) {
+  const code = (error as { code?: unknown }).code;
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    code === "42703" ||
+    message.includes("PGRST204") ||
+    message.includes("PGRST205") ||
+    message.includes("42703") ||
+    message.includes("Could not find") ||
+    message.includes("column scheduled_task.") ||
+    message.includes("schema cache")
+  );
+}
+
+async function executeScheduledTaskRows<Row>(
+  context: string,
+  query: PromiseLike<{ data: unknown; error: PostgrestError | null }>,
+) {
+  try {
+    return await executeSupabaseRows<Row>(context, query);
+  } catch (error) {
+    if (missingScheduledTaskSchema(error)) {
+      throw new ApiRouteError(
+        503,
+        "scheduled_task_schema_unavailable",
+        "Scheduled task API requires the v1 scheduled_task schema migration and generated type sync before it can be used",
+        { context },
+      );
+    }
+    throw error;
+  }
+}
+
+async function assertScheduledTaskSchemaReady() {
+  await executeScheduledTaskRows<{ id: string }>(
+    "scheduled_task schema readiness",
+    scheduledTaskSupabase()
+      .from("scheduled_task")
+      .select("id, workspace_id, title, enabled, schedule, next_run_at, delivery, metadata")
+      .limit(1),
+  );
+}
+
+function nowIso(now = new Date()) {
+  return now.toISOString();
+}
+
+function parseTimeOfDay(value: string) {
+  const [hour = "0", minute = "0"] = value.split(":");
+  return { hour: Number(hour), minute: Number(minute) };
+}
+
+function localParts(date: Date, timezone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    weekday: "short",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  const weekdayByLabel: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+    weekday: weekdayByLabel[parts.weekday ?? "Sun"] ?? 0,
+  };
+}
+
+function zonedTimeToUtc(
+  timezone: string,
+  local: { year: number; month: number; day: number; hour: number; minute: number; second?: number },
+) {
+  let utcMs = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second ?? 0);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const actual = localParts(new Date(utcMs), timezone);
+    const actualAsUtc = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second);
+    const desiredAsUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second ?? 0);
+    const diff = actualAsUtc - desiredAsUtc;
+    if (diff === 0) break;
+    utcMs -= diff;
+  }
+  return new Date(utcMs);
+}
+
+function addUtc(date: Date, interval: number, unit: "minute" | "hour" | "day" | "week" | "month") {
+  const next = new Date(date);
+  if (unit === "minute") next.setUTCMinutes(next.getUTCMinutes() + interval);
+  if (unit === "hour") next.setUTCHours(next.getUTCHours() + interval);
+  if (unit === "day") next.setUTCDate(next.getUTCDate() + interval);
+  if (unit === "week") next.setUTCDate(next.getUTCDate() + interval * 7);
+  if (unit === "month") next.setUTCMonth(next.getUTCMonth() + interval);
+  return next;
+}
+
+function addLocalDate(
+  local: { year: number; month: number; day: number; hour: number; minute: number },
+  interval: number,
+  unit: "day" | "week" | "month",
+) {
+  const next = new Date(Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, 0));
+  if (unit === "day") next.setUTCDate(next.getUTCDate() + interval);
+  if (unit === "week") next.setUTCDate(next.getUTCDate() + interval * 7);
+  if (unit === "month") next.setUTCMonth(next.getUTCMonth() + interval);
+  return {
+    year: next.getUTCFullYear(),
+    month: next.getUTCMonth() + 1,
+    day: next.getUTCDate(),
+    hour: next.getUTCHours(),
+    minute: next.getUTCMinutes(),
+  };
+}
+
+function everyScheduleNextRunAt(
+  schedule: Extract<ScheduledTaskSchedule, { kind: "every" }>,
+  timezone: string,
+  from: Date,
+) {
+  if (!schedule.at) return addUtc(from, schedule.interval, schedule.unit);
+  if (schedule.unit !== "day" && schedule.unit !== "week" && schedule.unit !== "month") {
+    throw new ApiRouteError(
+      400,
+      "invalid_schedule",
+      "The at field is only supported for day, week, and month schedules",
+    );
+  }
+
+  const time = parseTimeOfDay(schedule.at);
+  const fromLocal = localParts(from, timezone);
+  let candidateLocal = {
+    year: fromLocal.year,
+    month: fromLocal.month,
+    day: fromLocal.day,
+    hour: time.hour,
+    minute: time.minute,
+  };
+  let candidate = zonedTimeToUtc(timezone, candidateLocal);
+  if (candidate.getTime() <= from.getTime()) {
+    candidateLocal = addLocalDate(candidateLocal, schedule.interval, schedule.unit);
+    candidate = zonedTimeToUtc(timezone, candidateLocal);
+  }
+  return candidate;
+}
+
+function cronFieldMatches(value: number, expression: string, min: number, max: number) {
+  if (expression === "*") return true;
+  return expression.split(",").some((part) => {
+    const [rangePart = "", stepPart] = part.split("/");
+    const step = stepPart ? Number(stepPart) : 1;
+    if (!Number.isInteger(step) || step <= 0) return false;
+    const [startText, endText] = rangePart === "*" ? [String(min), String(max)] : rangePart.split("-");
+    const start = Number(startText);
+    const end = Number(endText ?? startText);
+    if (!Number.isInteger(start) || !Number.isInteger(end)) return false;
+    if (value < start || value > end) return false;
+    return (value - start) % step === 0;
+  });
+}
+
+function validCronField(expression: string, min: number, max: number) {
+  if (!expression) return false;
+  return expression.split(",").every((part) => {
+    const [rangePart = "", stepPart] = part.split("/");
+    if (stepPart !== undefined) {
+      const step = Number(stepPart);
+      if (!Number.isInteger(step) || step <= 0) return false;
+    }
+    if (rangePart === "*") return true;
+    const [startText = "", endText] = rangePart.split("-");
+    const start = Number(startText);
+    const end = endText === undefined ? start : Number(endText);
+    return Number.isInteger(start) && Number.isInteger(end) && start >= min && end <= max && start <= end;
+  });
+}
+
+function cronWeekdayMatches(weekday: number, expression: string) {
+  if (expression === "*") return true;
+  return expression.split(",").some((part) => {
+    const normalized = part === "7" ? "0" : part.replace(/-7$/, "-6");
+    return cronFieldMatches(weekday, normalized, 0, 6);
+  });
+}
+
+function cronNextRunAt(
+  schedule: Extract<ScheduledTaskSchedule, { kind: "cron" }>,
+  fallbackTimezone: string,
+  from: Date,
+) {
+  const fields = schedule.expression.trim().split(/\s+/);
+  if (fields.length !== 5) {
+    throw new ApiRouteError(400, "invalid_schedule", "Cron schedules must use five fields");
+  }
+  const validFields =
+    validCronField(fields[0] ?? "", 0, 59) &&
+    validCronField(fields[1] ?? "", 0, 23) &&
+    validCronField(fields[2] ?? "", 1, 31) &&
+    validCronField(fields[3] ?? "", 1, 12) &&
+    validCronField(fields[4] ?? "", 0, 7);
+  if (!validFields) {
+    throw new ApiRouteError(400, "invalid_schedule", "Cron schedule contains invalid field values");
+  }
+  const timezone = schedule.timezone ?? fallbackTimezone;
+  const start = new Date(from);
+  start.setUTCSeconds(0, 0);
+  start.setUTCMinutes(start.getUTCMinutes() + 1);
+
+  for (let offset = 0; offset < CRON_SEARCH_LIMIT_MINUTES; offset += 1) {
+    const candidate = new Date(start.getTime() + offset * 60_000);
+    const parts = localParts(candidate, timezone);
+    const matches =
+      cronFieldMatches(parts.minute, fields[0] ?? "*", 0, 59) &&
+      cronFieldMatches(parts.hour, fields[1] ?? "*", 0, 23) &&
+      cronFieldMatches(parts.day, fields[2] ?? "*", 1, 31) &&
+      cronFieldMatches(parts.month, fields[3] ?? "*", 1, 12) &&
+      cronWeekdayMatches(parts.weekday, fields[4] ?? "*");
+    if (matches) return candidate;
+  }
+
+  throw new ApiRouteError(400, "invalid_schedule", "Cron schedule did not produce a run within five years");
+}
+
+export function computeScheduledTaskNextRunAt(
+  schedule: ScheduledTaskSchedule,
+  timezone = DEFAULT_TIMEZONE,
+  from = new Date(),
+) {
+  const parsed = ScheduledTaskScheduleSchema.parse(schedule);
+  if (parsed.kind === "at") return new Date(parsed.runAt).toISOString();
+  if (parsed.kind === "every") return everyScheduleNextRunAt(parsed, timezone, from).toISOString();
+  return cronNextRunAt(parsed, timezone, from).toISOString();
+}
+
+function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTaskProjection {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    agentId: row.agent_id,
+    sourceWorkItemId: row.source_work_item_id,
+    createdByUserId: row.created_by_user_id,
+    title: row.title,
+    instructions: row.instructions,
+    enabled: row.enabled,
+    schedule: ScheduledTaskScheduleSchema.parse(row.schedule),
+    timezone: row.timezone,
+    nextRunAt: row.next_run_at,
+    lastRunAt: row.last_run_at,
+    lastRunStatus: row.last_run_status === null ? null : ScheduledTaskRunStatusSchema.parse(row.last_run_status),
+    lastError: row.last_error,
+    delivery: ScheduledTaskDeliverySchema.parse(row.delivery),
+    metadata:
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as JsonRecord)
+        : {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function assertManagerAgentBelongsToWorkspace(workspaceId: string, agentId: string) {
+  const rows = await executeSupabaseRows<AgentRow>(
+    "scheduled_task agent validation",
+    scheduledTaskSupabase().from<AgentRow>("agent").select("id, workspace_id, type").eq("id", agentId).limit(1),
+  );
+  const agent = rows[0];
+  if (!agent || agent.workspace_id !== workspaceId || agent.type !== "manager") {
+    throw new ApiRouteError(404, "manager_agent_not_found", "Manager agent was not found in this workspace");
+  }
+}
+
+async function listManagerAgentIdsForWorkspace(workspaceId: string) {
+  const rows = await executeSupabaseRows<AgentRow>(
+    "scheduled_task manager agents list",
+    scheduledTaskSupabase()
+      .from<AgentRow>("agent")
+      .select("id, workspace_id, type")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "manager"),
+  );
+  return rows.map((row) => row.id);
+}
+
+async function assertSourceWorkItemBelongsToWorkspace(
+  workspaceId: string,
+  sourceWorkItemId: string | null | undefined,
+) {
+  if (!sourceWorkItemId) return;
+  const rows = await executeSupabaseRows<WorkItemRow>(
+    "scheduled_task source work item validation",
+    scheduledTaskSupabase()
+      .from<WorkItemRow>("work_items")
+      .select("id, workspace_id")
+      .eq("id", sourceWorkItemId)
+      .eq("workspace_id", workspaceId)
+      .limit(1),
+  );
+  if (!rows[0]) {
+    throw new ApiRouteError(400, "invalid_source_work_item", "Source work item was not found in this workspace");
+  }
+}
+
+async function findScheduledTask(workspaceId: string, scheduledTaskId: string, agentId?: string) {
+  const query = scheduledTaskSupabase()
+    .from<ScheduledTaskRow>("scheduled_task")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .eq("id", scheduledTaskId);
+  if (agentId) query.eq("agent_id", agentId);
+
+  const rows = await executeScheduledTaskRows<ScheduledTaskRow>("scheduled_task lookup", query.limit(1));
+  return rows[0] ?? null;
+}
+
+function notFound(): never {
+  throw new ApiRouteError(404, "scheduled_task_not_found", "Scheduled task was not found in this workspace");
+}
+export async function listScheduledTasksForWorkspace(
+  workspaceId: string,
+  agentId?: string,
+): Promise<ScheduledTaskListResponse> {
+  await assertScheduledTaskSchemaReady();
+  if (agentId) {
+    await assertManagerAgentBelongsToWorkspace(workspaceId, agentId);
+  }
+  const managerAgentIds = agentId ? [agentId] : await listManagerAgentIdsForWorkspace(workspaceId);
+  if (managerAgentIds.length === 0) {
+    return ScheduledTaskListResponseSchema.parse({ scheduledTasks: [] });
+  }
+
+  const rows = await executeScheduledTaskRows<ScheduledTaskRow>(
+    "scheduled_task list",
+    scheduledTaskSupabase()
+      .from<ScheduledTaskRow>("scheduled_task")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .in("agent_id", managerAgentIds)
+      .order("next_run_at", { ascending: true }),
+  );
+  return ScheduledTaskListResponseSchema.parse({ scheduledTasks: rows.map(mapScheduledTaskRow) });
+}
+
+export async function createScheduledTaskForWorkspace(params: {
+  workspaceId: string;
+  userId: string;
+  request: ScheduledTaskCreateRequest;
+  now?: Date;
+}): Promise<ScheduledTaskResponse> {
+  const { workspaceId, userId, request, now = new Date() } = params;
+  await assertScheduledTaskSchemaReady();
+  await assertManagerAgentBelongsToWorkspace(workspaceId, request.agentId);
+  await assertSourceWorkItemBelongsToWorkspace(workspaceId, request.sourceWorkItemId);
+
+  const timezone =
+    request.timezone ?? (request.schedule.kind === "cron" ? request.schedule.timezone : undefined) ?? DEFAULT_TIMEZONE;
+  const body: JsonRecord = {
+    id: randomUUID(),
+    workspace_id: workspaceId,
+    agent_id: request.agentId,
+    source_work_item_id: request.sourceWorkItemId ?? null,
+    created_by_user_id: userId,
+    title: request.title,
+    instructions: request.instructions,
+    enabled: request.enabled ?? true,
+    schedule: request.schedule,
+    timezone,
+    next_run_at: computeScheduledTaskNextRunAt(request.schedule, timezone, now),
+    last_run_at: null,
+    last_run_status: null,
+    last_error: null,
+    delivery: request.delivery ?? DEFAULT_DELIVERY,
+    metadata: request.metadata ?? {},
+    updated_at: nowIso(now),
+  };
+
+  const rows = await executeScheduledTaskRows<ScheduledTaskRow>(
+    "scheduled_task insert",
+    scheduledTaskSupabase().from<ScheduledTaskRow>("scheduled_task").insert(body).select("*"),
+  );
+  const scheduledTask = rows[0];
+  if (!scheduledTask) {
+    throw new ApiRouteError(502, "scheduled_task_create_failed", "Scheduled task creation returned no row");
+  }
+  return ScheduledTaskResponseSchema.parse({ scheduledTask: mapScheduledTaskRow(scheduledTask) });
+}
+
+export async function updateScheduledTaskForWorkspace(params: {
+  workspaceId: string;
+  scheduledTaskId: string;
+  agentId?: string;
+  request: ScheduledTaskUpdateRequest;
+  now?: Date;
+}): Promise<ScheduledTaskResponse> {
+  const { workspaceId, scheduledTaskId, agentId, request, now = new Date() } = params;
+  await assertScheduledTaskSchemaReady();
+  const existing = (await findScheduledTask(workspaceId, scheduledTaskId, agentId)) ?? notFound();
+  await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
+  const nextSchedule = request.schedule ?? ScheduledTaskScheduleSchema.parse(existing.schedule);
+  const nextTimezone =
+    request.timezone ?? (nextSchedule.kind === "cron" ? nextSchedule.timezone : undefined) ?? existing.timezone;
+
+  const body: JsonRecord = {
+    updated_at: nowIso(now),
+    next_run_at: computeScheduledTaskNextRunAt(nextSchedule, nextTimezone, now),
+  };
+  if (request.title !== undefined) body.title = request.title;
+  if (request.instructions !== undefined) body.instructions = request.instructions;
+  if (request.enabled !== undefined) body.enabled = request.enabled;
+  if (request.schedule !== undefined) body.schedule = request.schedule;
+  if (request.timezone !== undefined || nextTimezone !== existing.timezone) body.timezone = nextTimezone;
+  if (request.delivery !== undefined) body.delivery = request.delivery;
+  if (request.metadata !== undefined) body.metadata = request.metadata;
+
+  const rows = await executeScheduledTaskRows<ScheduledTaskRow>(
+    "scheduled_task update",
+    scheduledTaskSupabase()
+      .from<ScheduledTaskRow>("scheduled_task")
+      .update(body)
+      .eq("workspace_id", workspaceId)
+      .eq("id", scheduledTaskId)
+      .select("*"),
+  );
+  const scheduledTask = rows[0] ?? notFound();
+  return ScheduledTaskResponseSchema.parse({ scheduledTask: mapScheduledTaskRow(scheduledTask) });
+}
+
+export async function cancelScheduledTaskForWorkspace(params: {
+  workspaceId: string;
+  scheduledTaskId: string;
+  agentId?: string;
+  reason?: string;
+  now?: Date;
+}): Promise<ScheduledTaskCancelResponse> {
+  const { workspaceId, scheduledTaskId, agentId, reason, now = new Date() } = params;
+  await assertScheduledTaskSchemaReady();
+  const existing = await findScheduledTask(workspaceId, scheduledTaskId, agentId);
+  if (!existing) {
+    notFound();
+  }
+  await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
+  const rows = await executeScheduledTaskRows<ScheduledTaskRow>(
+    "scheduled_task cancel",
+    scheduledTaskSupabase()
+      .from<ScheduledTaskRow>("scheduled_task")
+      .update({
+        enabled: false,
+        last_error: reason ?? null,
+        updated_at: nowIso(now),
+      })
+      .eq("workspace_id", workspaceId)
+      .eq("id", scheduledTaskId)
+      .select("*"),
+  );
+  const scheduledTask = rows[0] ?? notFound();
+  return ScheduledTaskCancelResponseSchema.parse({
+    cancelled: true,
+    scheduledTask: mapScheduledTaskRow(scheduledTask),
+  });
+}
+
+export async function runScheduledTaskNowForWorkspace(params: {
+  workspaceId: string;
+  scheduledTaskId: string;
+  agentId?: string;
+  now?: Date;
+}): Promise<ScheduledTaskRunNowResponse> {
+  const { workspaceId, scheduledTaskId, agentId, now = new Date() } = params;
+  await assertScheduledTaskSchemaReady();
+  const existing = await findScheduledTask(workspaceId, scheduledTaskId, agentId);
+  if (!existing) {
+    notFound();
+  }
+  await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
+  if (!existing.enabled) {
+    throw new ApiRouteError(409, "scheduled_task_disabled", "Canceled or disabled scheduled tasks cannot be run now");
+  }
+  const scheduledFor = nowIso(now);
+  const rows = await executeScheduledTaskRows<ScheduledTaskRow>(
+    "scheduled_task run now",
+    scheduledTaskSupabase()
+      .from<ScheduledTaskRow>("scheduled_task")
+      .update({
+        next_run_at: scheduledFor,
+        updated_at: scheduledFor,
+      })
+      .eq("workspace_id", workspaceId)
+      .eq("id", scheduledTaskId)
+      .select("*"),
+  );
+  const scheduledTask = rows[0] ?? notFound();
+  return ScheduledTaskRunNowResponseSchema.parse({
+    scheduledTask: mapScheduledTaskRow(scheduledTask),
+    scheduledFor,
+  });
+}
+
+export async function dispatchScheduledTaskForWorkspace(params: {
+  workspaceId: string;
+  scheduledTaskId: string;
+  agentId?: string;
+}): Promise<ScheduledTaskDeliveryDispatchResult> {
+  const { workspaceId, scheduledTaskId, agentId } = params;
+  await assertScheduledTaskSchemaReady();
+  const existing = await findScheduledTask(workspaceId, scheduledTaskId, agentId);
+  if (!existing) {
+    notFound();
+  }
+  if (!existing.enabled) {
+    throw new ApiRouteError(
+      409,
+      "scheduled_task_disabled",
+      "Canceled or disabled scheduled tasks cannot be dispatched",
+    );
+  }
+  return dispatchScheduledTaskDelivery(mapScheduledTaskRow(existing));
+}
+
+export type ScheduledTaskDeliveryDispatchResult =
+  | { kind: "scheduled_agent_message"; status: "not_handled" }
+  | { kind: "learning_reflection"; status: "completed"; result: ReflectRunResult }
+  | ({ kind: "learning_distillation"; status: "completed" } & LearningDistillationResult);
+
+export async function dispatchScheduledTaskDelivery(
+  scheduledTask: ScheduledTaskProjection,
+): Promise<ScheduledTaskDeliveryDispatchResult> {
+  if (scheduledTask.delivery.kind === "scheduled_agent_message") {
+    return { kind: "scheduled_agent_message", status: "not_handled" };
+  }
+
+  if (scheduledTask.delivery.kind === "learning_reflection") {
+    const result = await reflectRunToMemories({
+      sourceRunId: scheduledTask.delivery.sourceRunId,
+      sourceTaskId: scheduledTask.delivery.sourceTaskId ?? null,
+    });
+    return { kind: "learning_reflection", status: "completed", result };
+  }
+
+  const result = await distillWorkspaceSkills(scheduledTask.workspaceId, scheduledTask.delivery.windowDays);
+  return { kind: "learning_distillation", status: "completed", ...result };
+}

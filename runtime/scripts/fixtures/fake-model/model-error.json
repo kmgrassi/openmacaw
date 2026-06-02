@@ -1,0 +1,12 @@
+{
+  "id": "model-error",
+  "description": "Returns an OpenAI-compatible error response.",
+  "status": 500,
+  "response": {
+    "error": {
+      "message": "fake model forced failure",
+      "type": "server_error",
+      "code": "fake_model_forced_failure"
+    }
+  }
+}

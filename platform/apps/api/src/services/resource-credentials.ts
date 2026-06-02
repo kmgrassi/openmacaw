@@ -1,0 +1,284 @@
+import { inspect } from "node:util";
+
+import jwt from "jsonwebtoken";
+import { z } from "zod";
+
+import { asRecord } from "../../../../contracts/agent-helpers.js";
+import {
+  GitHubAppInstallationCredentialSchema,
+  type GitHubAppInstallationCredential,
+  type GitHubAppInstallationCredentialRequest,
+} from "../../../../contracts/resource-credentials.js";
+import type { Json } from "@kmgrassi/supabase-schema";
+import {
+  createWorkspaceResourceCredential,
+  getCredentialRowByIdForWorkspace,
+  type CredentialProjection,
+  type CredentialRow,
+} from "../repositories/credentials.js";
+import { resolveSecretReference } from "../secrets.js";
+import { withServiceLogging } from "./service-logging.js";
+
+const inspectCustom = Symbol.for("nodejs.util.inspect.custom");
+const GITHUB_API_BASE_URL = "https://api.github.com";
+const GITHUB_WEB_BASE_URL = "https://github.com";
+const GITHUB_APP_JWT_TTL_SECONDS = 9 * 60;
+
+type JsonObject = { [key: string]: Json | undefined };
+
+const GitHubInstallationTokenResponseSchema = z.object({
+  token: z.string().trim().min(1),
+  expires_at: z.string().trim().min(1),
+  permissions: z.record(z.string(), z.string()).optional().default({}),
+  repository_selection: z.string().optional(),
+});
+
+export class GitHubAppCredentialError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "GitHubAppCredentialError";
+    this.code = code;
+  }
+}
+
+export class MintedGitHubInstallationToken {
+  readonly credentialId: string;
+  readonly workspaceId: string;
+  readonly installationId: string;
+  readonly expiresAt: string;
+  readonly repositorySelection: string | null;
+  readonly permissions: Record<string, string>;
+  #token: string;
+
+  constructor(input: {
+    credentialId: string;
+    workspaceId: string;
+    installationId: string;
+    token: string;
+    expiresAt: string;
+    repositorySelection: string | null;
+    permissions: Record<string, string>;
+  }) {
+    this.credentialId = input.credentialId;
+    this.workspaceId = input.workspaceId;
+    this.installationId = input.installationId;
+    this.#token = input.token;
+    this.expiresAt = input.expiresAt;
+    this.repositorySelection = input.repositorySelection;
+    this.permissions = input.permissions;
+  }
+
+  get tokenValue() {
+    return this.#token;
+  }
+
+  toJSON() {
+    return {
+      credentialId: this.credentialId,
+      workspaceId: this.workspaceId,
+      installationId: this.installationId,
+      token: "[redacted]",
+      expiresAt: this.expiresAt,
+      repositorySelection: this.repositorySelection,
+      permissions: this.permissions,
+    };
+  }
+
+  [inspectCustom](_depth: number, options: Parameters<typeof inspect>[1]) {
+    return `MintedGitHubInstallationToken ${inspect(this.toJSON(), options)}`;
+  }
+}
+
+function asJsonObject(value: Json | null): JsonObject | null {
+  return asRecord(value) as JsonObject | null;
+}
+
+function normalizeId(value: string | number): string {
+  return String(value).trim();
+}
+
+function normalizeBaseUrl(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return fallback;
+  return trimmed.replace(/\/+$/, "");
+}
+
+function readString(raw: JsonObject, key: string): string | null {
+  const value = raw[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function mapGitHubAppCredentialRow(row: CredentialRow | CredentialProjection): GitHubAppInstallationCredential {
+  const raw = asJsonObject(row.key_value);
+  if (!raw || row.provider !== "github" || row.format !== "github_app_installation") {
+    throw new GitHubAppCredentialError("github_app_credential_invalid", "Credential is not a GitHub App installation");
+  }
+
+  const appId = readString(raw, "app_id");
+  const installationId = readString(raw, "installation_id");
+  const apiBaseUrl = readString(raw, "api_base_url") ?? GITHUB_API_BASE_URL;
+  const webBaseUrl = readString(raw, "web_base_url") ?? GITHUB_WEB_BASE_URL;
+  if (!appId || !installationId) {
+    throw new GitHubAppCredentialError("github_app_credential_invalid", "GitHub App credential is missing IDs");
+  }
+
+  return GitHubAppInstallationCredentialSchema.parse({
+    credentialId: row.id,
+    workspaceId: row.workspace_id,
+    provider: "github",
+    format: "github_app_installation",
+    displayName: row.display_name,
+    appId,
+    installationId,
+    apiBaseUrl,
+    webBaseUrl,
+    privateKeyStored: Boolean(readString(raw, "private_key")),
+    privateKeySecretRef: readString(raw, "private_key_secret_ref"),
+    updatedAt: row.updated_at,
+  });
+}
+
+function buildGitHubAppCredentialKeyValue(input: GitHubAppInstallationCredentialRequest): JsonObject {
+  return {
+    provider: "github",
+    app_id: normalizeId(input.appId),
+    installation_id: normalizeId(input.installationId),
+    api_base_url: normalizeBaseUrl(input.apiBaseUrl, GITHUB_API_BASE_URL),
+    web_base_url: normalizeBaseUrl(input.webBaseUrl, GITHUB_WEB_BASE_URL),
+    ...(input.privateKey ? { private_key: input.privateKey.trim() } : {}),
+    ...(input.privateKeySecretRef ? { private_key_secret_ref: input.privateKeySecretRef.trim() } : {}),
+  };
+}
+
+export async function saveGitHubAppInstallationCredentialForWorkspace(input: {
+  userId: string | null;
+  credential: GitHubAppInstallationCredentialRequest;
+}): Promise<GitHubAppInstallationCredential> {
+  const displayName =
+    input.credential.displayName?.trim() || `GitHub App installation ${normalizeId(input.credential.installationId)}`;
+  const row = await createWorkspaceResourceCredential({
+    workspaceId: input.credential.workspaceId,
+    userId: input.userId,
+    provider: "github",
+    format: "github_app_installation",
+    displayName,
+    keyValue: buildGitHubAppCredentialKeyValue(input.credential),
+    validationState: "unknown",
+    validatedAt: null,
+  });
+  if (!row) {
+    throw new GitHubAppCredentialError("github_app_credential_not_saved", "Credential persistence returned no row");
+  }
+
+  return mapGitHubAppCredentialRow(row);
+}
+
+async function resolveGitHubPrivateKey(raw: JsonObject): Promise<string> {
+  const inline = readString(raw, "private_key");
+  if (inline) return inline;
+
+  const secretRef = readString(raw, "private_key_secret_ref");
+  if (!secretRef) {
+    throw new GitHubAppCredentialError("github_app_private_key_missing", "GitHub App private key is missing");
+  }
+
+  const resolved = await resolveSecretReference(secretRef, ["private_key", "GITHUB_APP_PRIVATE_KEY"]);
+  if (!resolved) {
+    throw new GitHubAppCredentialError(
+      "github_app_private_key_unresolvable",
+      "GitHub App private key secret could not be resolved",
+    );
+  }
+  return resolved;
+}
+
+function createGitHubAppJwt(input: { appId: string; privateKey: string; nowMs?: number }) {
+  const nowSeconds = Math.floor((input.nowMs ?? Date.now()) / 1000);
+  return jwt.sign(
+    {
+      iat: nowSeconds - 60,
+      exp: nowSeconds + GITHUB_APP_JWT_TTL_SECONDS,
+      iss: input.appId,
+    },
+    input.privateKey,
+    { algorithm: "RS256" },
+  );
+}
+
+export async function mintGitHubInstallationToken(input: {
+  workspaceId: string;
+  credentialId: string;
+  fetchFn?: typeof fetch;
+  nowMs?: number;
+}): Promise<MintedGitHubInstallationToken> {
+  return withServiceLogging(
+    {
+      operation: "resource_credentials.github_app.mint_installation_token",
+      inputSummary: {
+        workspace_id: input.workspaceId,
+        credential_id: input.credentialId,
+      },
+    },
+    () => mintGitHubInstallationTokenImpl(input),
+  );
+}
+
+async function mintGitHubInstallationTokenImpl(input: {
+  workspaceId: string;
+  credentialId: string;
+  fetchFn?: typeof fetch;
+  nowMs?: number;
+}): Promise<MintedGitHubInstallationToken> {
+  const row = await getCredentialRowByIdForWorkspace(input.credentialId, input.workspaceId);
+  if (!row) {
+    throw new GitHubAppCredentialError("github_app_credential_not_found", "GitHub App credential was not found");
+  }
+
+  const credential = mapGitHubAppCredentialRow(row);
+  const raw = asJsonObject(row.key_value);
+  if (!raw) {
+    throw new GitHubAppCredentialError("github_app_credential_invalid", "Credential payload is invalid");
+  }
+
+  const appJwt = createGitHubAppJwt({
+    appId: credential.appId,
+    privateKey: await resolveGitHubPrivateKey(raw),
+    nowMs: input.nowMs,
+  });
+  const response = await (input.fetchFn ?? fetch)(
+    `${credential.apiBaseUrl}/app/installations/${credential.installationId}/access_tokens`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${appJwt}`,
+        "x-github-api-version": "2022-11-28",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new GitHubAppCredentialError(
+      "github_app_token_rejected",
+      `GitHub rejected installation token minting with status ${response.status}`,
+    );
+  }
+
+  const parsed = GitHubInstallationTokenResponseSchema.parse(await response.json());
+  return new MintedGitHubInstallationToken({
+    credentialId: credential.credentialId,
+    workspaceId: credential.workspaceId,
+    installationId: credential.installationId,
+    token: parsed.token,
+    expiresAt: parsed.expires_at,
+    repositorySelection: parsed.repository_selection ?? null,
+    permissions: parsed.permissions,
+  });
+}
+
+export const resourceCredentialInternalsForTests = {
+  createGitHubAppJwt,
+  mapGitHubAppCredentialRow,
+};

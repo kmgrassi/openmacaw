@@ -1,0 +1,634 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kmgrassi/parallel-agent-runtime/apps/orchestrator/docs/local-model-coding-tool-contract.schema.json",
+  "title": "Runtime Local Model Coding Tool Contract",
+  "version": 1,
+  "type": "object",
+  "required": ["version", "tools", "events"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tool_spec"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event_spec"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tool_spec": {
+      "type": "object",
+      "required": ["name", "description", "parameters_schema", "result_schema", "writes"],
+      "properties": {
+        "name": {
+          "enum": ["repo.read_file", "repo.list", "repo.search", "shell.exec", "apply_patch"]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters_schema": {
+          "type": "object"
+        },
+        "result_schema": {
+          "type": "object"
+        },
+        "writes": {
+          "type": "boolean"
+        },
+        "approval_modes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/approval_policy"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "event_spec": {
+      "type": "object",
+      "required": ["type", "description", "schema"],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/event_type"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "event_type": {
+      "enum": [
+        "turn_started",
+        "message.delta",
+        "tool_call_started",
+        "tool_call_completed",
+        "tool_call_failed",
+        "command_started",
+        "command_output_delta",
+        "command_completed",
+        "patch_apply_begin",
+        "patch_apply_end",
+        "file_change_pending_approval",
+        "approval_required",
+        "turn_completed",
+        "turn_failed"
+      ]
+    },
+    "approval_policy": {
+      "enum": ["never", "on-request", "on-failure"]
+    },
+    "approval_outcome": {
+      "enum": ["approved", "denied", "not_required", "requires_interaction", "unavailable"]
+    },
+    "sandbox_policy": {
+      "enum": ["workspace_write", "workspace_read", "read_only"]
+    },
+    "command_action": {
+      "type": "object",
+      "required": ["action", "confidence", "reason"],
+      "properties": {
+        "action": {
+          "enum": ["read", "listFiles", "search", "unknown"]
+        },
+        "confidence": {
+          "enum": ["low", "medium", "high"]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "shell_exec_parameters": {
+      "type": "object",
+      "required": ["argv"],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Workspace-relative directory. Missing means workspace root."
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "approval_policy": {
+          "$ref": "#/$defs/approval_policy"
+        },
+        "sandbox_policy": {
+          "$ref": "#/$defs/sandbox_policy"
+        },
+        "output_limit_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "shell_exec_result": {
+      "type": "object",
+      "required": ["timed_out", "output_truncated", "duration_ms", "command_action"],
+      "properties": {
+        "exit_status": {
+          "type": ["integer", "null"]
+        },
+        "signal": {
+          "type": ["string", "null"]
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "output_truncated": {
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "command_action": {
+          "$ref": "#/$defs/command_action"
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_list_parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative directory to list. Missing means workspace root."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_list_result": {
+      "type": "object",
+      "required": ["workspace_id", "path", "entries"],
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "type", "size"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_read_file_parameters": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative file path to read."
+        },
+        "byte_limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_read_file_result": {
+      "type": "object",
+      "required": ["workspace_id", "path", "content", "bytes_read", "truncated"],
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "bytes_read": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_search_parameters": {
+      "type": "object",
+      "required": ["query"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Workspace-relative directory or file prefix to search within."
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet_chars": {
+          "type": "integer",
+          "minimum": 40
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_search_result": {
+      "type": "object",
+      "required": ["workspace_id", "query", "matches"],
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "line", "column", "snippet"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "column": {
+                "type": ["integer", "null"],
+                "minimum": 1
+              },
+              "snippet": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "apply_patch_parameters": {
+      "type": "object",
+      "required": ["patch"],
+      "properties": {
+        "patch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Workspace-relative directory. Missing means workspace root."
+        },
+        "approval_policy": {
+          "$ref": "#/$defs/approval_policy"
+        }
+      },
+      "additionalProperties": false
+    },
+    "file_change": {
+      "type": "object",
+      "required": ["path", "operation"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "enum": ["add", "modify", "delete", "rename"]
+        },
+        "bytes_added": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes_removed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "apply_patch_result": {
+      "type": "object",
+      "required": ["status", "changed_files"],
+      "properties": {
+        "status": {
+          "enum": ["applied", "rejected", "approval_required"]
+        },
+        "changed_files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file_change"
+          }
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "event_base": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/event_type"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "integer"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "approval": {
+          "$ref": "#/$defs/approval_outcome"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "tools": [
+    {
+      "name": "repo.read_file",
+      "description": "Read bounded text content from the assigned workspace.",
+      "parameters_schema": {
+        "$ref": "#/$defs/repo_read_file_parameters"
+      },
+      "result_schema": {
+        "$ref": "#/$defs/repo_read_file_result"
+      },
+      "writes": false
+    },
+    {
+      "name": "repo.list",
+      "description": "List files and directories under the assigned workspace.",
+      "parameters_schema": {
+        "$ref": "#/$defs/repo_list_parameters"
+      },
+      "result_schema": {
+        "$ref": "#/$defs/repo_list_result"
+      },
+      "writes": false
+    },
+    {
+      "name": "repo.search",
+      "description": "Search repository text in the assigned workspace with bounded snippets.",
+      "parameters_schema": {
+        "$ref": "#/$defs/repo_search_parameters"
+      },
+      "result_schema": {
+        "$ref": "#/$defs/repo_search_result"
+      },
+      "writes": false
+    },
+    {
+      "name": "shell.exec",
+      "description": "Run one argv command inside the approved workspace.",
+      "parameters_schema": {
+        "type": "object",
+        "required": ["argv"],
+        "properties": {
+          "argv": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Workspace-relative directory. Missing means workspace root."
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "approval_policy": {
+            "$ref": "#/$defs/approval_policy"
+          },
+          "sandbox_policy": {
+            "$ref": "#/$defs/sandbox_policy"
+          },
+          "output_limit_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "result_schema": {
+        "$ref": "#/$defs/shell_exec_result"
+      },
+      "writes": true,
+      "approval_modes": ["never", "on-request", "on-failure"]
+    },
+    {
+      "name": "apply_patch",
+      "description": "Apply one structured patch inside the approved workspace.",
+      "parameters_schema": {
+        "type": "object",
+        "required": ["patch"],
+        "properties": {
+          "patch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Workspace-relative directory. Missing means workspace root."
+          },
+          "approval_policy": {
+            "$ref": "#/$defs/approval_policy"
+          }
+        },
+        "additionalProperties": false
+      },
+      "result_schema": {
+        "$ref": "#/$defs/apply_patch_result"
+      },
+      "writes": true,
+      "approval_modes": ["never", "on-request", "on-failure"]
+    }
+  ],
+  "events": [
+    {
+      "type": "turn_started",
+      "description": "A local model coding turn started.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "message.delta",
+      "description": "Assistant output text delta.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "tool_call_started",
+      "description": "A model-selected tool call started.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "tool_call_completed",
+      "description": "A model-selected tool call completed.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "tool_call_failed",
+      "description": "A model-selected tool call failed.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "command_started",
+      "description": "A shell.exec command started.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "command_output_delta",
+      "description": "A shell.exec stdout or stderr chunk was emitted.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "command_completed",
+      "description": "A shell.exec command exited, timed out, or was cancelled.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "patch_apply_begin",
+      "description": "An apply_patch operation started.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "patch_apply_end",
+      "description": "An apply_patch operation completed or failed.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "file_change_pending_approval",
+      "description": "A write-capable file change is waiting on approval.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "approval_required",
+      "description": "A tool call requires approval before execution can continue.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "turn_completed",
+      "description": "A local model coding turn completed successfully.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    },
+    {
+      "type": "turn_failed",
+      "description": "A local model coding turn failed.",
+      "schema": {
+        "$ref": "#/$defs/event_base"
+      }
+    }
+  ]
+}

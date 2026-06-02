@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Smoke test installer
+        run: |
+          tmp="$(mktemp -d)"
+          fixture="$tmp/release"
+          install_dir="$tmp/bin"
+          mkdir -p "$fixture"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o "$tmp/local-runtime-helper" ./cmd/local-runtime-helper
+          tar -C "$tmp" -czf "$fixture/local-runtime-helper_linux_amd64.tar.gz" local-runtime-helper
+          (cd "$fixture" && sha256sum local-runtime-helper_linux_amd64.tar.gz > checksums.txt)
+          sh ./install.sh --base-url "file://$fixture" --install-dir "$install_dir"
+          "$install_dir/local-runtime-helper" --version

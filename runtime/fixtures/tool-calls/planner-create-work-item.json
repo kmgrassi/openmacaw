@@ -1,0 +1,13 @@
+{
+  "scenario_id": "planner-work-item-create",
+  "prompt": "Create a plan named CLI tool smoke with exactly one actual task named Verify runtime tool smoke. Use the task creation tool.",
+  "expected_tool_name": "task.create",
+  "expected_platform_tool_slug": "work_item.create",
+  "expected_argument_subset": {
+    "title": "Verify runtime tool smoke"
+  },
+  "expected_result_subset": {
+    "success": true
+  },
+  "timeout_ms": 45000
+}

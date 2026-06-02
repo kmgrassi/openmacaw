@@ -1,0 +1,42 @@
+# Elixir / Erlang
+_build/
+cover/
+deps/
+*.ez
+*.beam
+
+# Logs and runtime files
+*.log
+/log/
+log/
+
+# Testing/coverage artifacts
+.coverprofile
+
+# Mac/OS artifacts
+.DS_Store
+
+# Editor / IDE directories
+.vscode/
+.idea/
+.claude/
+
+# Environment files
+.env
+.env.*
+
+# Node / frontend artifacts
+node_modules/
+dist/
+
+# Temporary files
+*.tmp
+*.swp
+*~
+supabase/.temp/
+supabase/migrations/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*

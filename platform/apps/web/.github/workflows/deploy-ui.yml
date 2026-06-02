@@ -1,0 +1,63 @@
+name: Deploy OpenClaw UI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+concurrency:
+  group: deploy-openclaw-ui
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build UI
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: github-actions-openclaw-ui-deploy
+
+      - name: Upload static assets to S3
+        env:
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+        run: |
+          test -n "$FRONTEND_BUCKET" || (echo "Missing repo variable FRONTEND_BUCKET" && exit 1)
+          aws s3 sync ./dist "s3://${FRONTEND_BUCKET}" --delete --exclude "*.html"
+          aws s3 sync ./dist "s3://${FRONTEND_BUCKET}" --delete --exclude "*" --include "*.html" --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        env:
+          FRONTEND_CF_DISTRIBUTION_ID: ${{ vars.FRONTEND_CF_DISTRIBUTION_ID }}
+        run: |
+          test -n "$FRONTEND_CF_DISTRIBUTION_ID" || (echo "Missing repo variable FRONTEND_CF_DISTRIBUTION_ID" && exit 1)
+          aws cloudfront create-invalidation --distribution-id "$FRONTEND_CF_DISTRIBUTION_ID" --paths "/*"
+
+      - name: Summary
+        run: |
+          echo "Deployed commit: $GITHUB_SHA" >> $GITHUB_STEP_SUMMARY
+          echo "Bucket: ${{ vars.FRONTEND_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "Distribution: ${{ vars.FRONTEND_CF_DISTRIBUTION_ID }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,59 @@
+{
+  "id": "plain-message",
+  "description": "Returns a deterministic assistant text response.",
+  "response": {
+    "id": "chatcmpl-fake-plain-message",
+    "model": "fake-openai-compatible",
+    "choices": [
+      {
+        "index": 0,
+        "finish_reason": "stop",
+        "message": {
+          "role": "assistant",
+          "content": "Fake model plain response."
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 5,
+      "total_tokens": 13
+    }
+  },
+  "stream": {
+    "chunks": [
+      {
+        "id": "chatcmpl-fake-plain-message",
+        "model": "fake-openai-compatible",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant",
+              "content": "Fake model "
+            },
+            "finish_reason": null
+          }
+        ]
+      },
+      {
+        "id": "chatcmpl-fake-plain-message",
+        "model": "fake-openai-compatible",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "plain response."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 5,
+          "total_tokens": 13
+        }
+      }
+    ]
+  }
+}

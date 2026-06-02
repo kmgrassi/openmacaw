@@ -1,0 +1,492 @@
+// Package relay implements the persistent WSS connection from the
+// daemon to the cloud orchestrator's worker-bridge.
+//
+// Wire protocol is documented in
+// parallel-agent-runtime/apps/orchestrator/docs/local-relay-protocol.md
+// (added in OQ-02 PR 2).
+//
+// PR 6 (OQ-02) will implement:
+//   - WSS dial to <cloud>/worker-bridge/relay/ws using nhooyr.io/websocket
+//   - bearer-token auth on connect (Authorization header preferred,
+//     query param fallback)
+//   - first frame: register (advertises runner kinds)
+//   - heartbeat (30s server pings; 2 missed → reconnect)
+//   - reconnect with exponential backoff (1s → 60s, jittered)
+//   - dispatch routing: incoming dispatch frames → runner package
+//   - backpressure: pause emit when send buffer exceeds N pending frames
+package relay
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/kmgrassi/local-runtime-helper/internal/diagnostics"
+	"github.com/kmgrassi/local-runtime-helper/internal/protocol"
+	"github.com/kmgrassi/local-runtime-helper/internal/runner"
+)
+
+const (
+	DefaultMaxConcurrentDispatches = 4
+	DefaultTerminalSendTimeout     = 5 * time.Second
+)
+
+// Sender writes outbound frames to the cloud relay transport.
+type Sender interface {
+	SendFrame(context.Context, protocol.Frame) error
+}
+
+// SenderFunc adapts a function to Sender.
+type SenderFunc func(context.Context, protocol.Frame) error
+
+func (fn SenderFunc) SendFrame(ctx context.Context, frame protocol.Frame) error {
+	return fn(ctx, frame)
+}
+
+// Dispatcher routes dispatch frames to configured runners and owns per-dispatch
+// cancellation, correlation IDs, structured lifecycle logs, and concurrency.
+type Dispatcher struct {
+	runners *runner.Registry
+	sender  Sender
+	logger  *slog.Logger
+
+	sem                 chan struct{}
+	terminalSendTimeout time.Duration
+
+	mu       sync.Mutex
+	inflight map[string]context.CancelFunc
+	wg       sync.WaitGroup
+}
+
+// DispatcherOptions configures dispatch routing.
+type DispatcherOptions struct {
+	Runners             *runner.Registry
+	Sender              Sender
+	Logger              *slog.Logger
+	MaxConcurrent       int
+	TerminalSendTimeout time.Duration
+}
+
+// NewDispatcher creates a runner dispatcher.
+func NewDispatcher(opts DispatcherOptions) (*Dispatcher, error) {
+	if opts.Runners == nil {
+		return nil, errors.New("runner registry is required")
+	}
+	if opts.Sender == nil {
+		return nil, errors.New("sender is required")
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	if opts.MaxConcurrent <= 0 {
+		opts.MaxConcurrent = DefaultMaxConcurrentDispatches
+	}
+	if opts.TerminalSendTimeout <= 0 {
+		opts.TerminalSendTimeout = DefaultTerminalSendTimeout
+	}
+
+	return &Dispatcher{
+		runners:             opts.Runners,
+		sender:              opts.Sender,
+		logger:              opts.Logger,
+		sem:                 make(chan struct{}, opts.MaxConcurrent),
+		terminalSendTimeout: opts.TerminalSendTimeout,
+		inflight:            make(map[string]context.CancelFunc),
+	}, nil
+}
+
+// StartDispatch accepts a dispatch and starts it asynchronously. It returns
+// after the dispatch is accepted or an immediate protocol error is emitted.
+func (d *Dispatcher) StartDispatch(ctx context.Context, frame *protocol.DispatchFrame) error {
+	if frame == nil {
+		return errors.New("dispatch frame is nil")
+	}
+	if frame.CorrelationID == "" {
+		return d.sendError(ctx, frame.CorrelationID, "missing_correlation_id", "dispatch correlation_id is required")
+	}
+
+	select {
+	case d.sem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return d.sendError(ctx, frame.CorrelationID, "concurrency_limit_exceeded", "maximum concurrent dispatches are already running")
+	}
+
+	dispatchCtx, cancel := context.WithCancel(ctx)
+	if err := d.track(frame.CorrelationID, cancel); err != nil {
+		cancel()
+		<-d.sem
+		return d.sendError(ctx, frame.CorrelationID, "duplicate_correlation_id", err.Error())
+	}
+
+	d.wg.Add(1)
+	go d.runDispatch(dispatchCtx, frame, cancel)
+	return nil
+}
+
+// Cancel cancels an in-flight dispatch. Unknown correlation IDs are ignored so
+// duplicate cancel frames from the cloud are harmless.
+func (d *Dispatcher) Cancel(correlationID string) {
+	d.mu.Lock()
+	cancel := d.inflight[correlationID]
+	d.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// HandleFrame routes cloud frames relevant to dispatch execution.
+func (d *Dispatcher) HandleFrame(ctx context.Context, frame protocol.Frame) error {
+	switch f := frame.(type) {
+	case *protocol.DispatchFrame:
+		return d.StartDispatch(ctx, f)
+	case *protocol.CancelFrame:
+		d.Cancel(f.CorrelationID)
+		return nil
+	default:
+		return nil
+	}
+}
+
+// Wait blocks until all accepted dispatches finish.
+func (d *Dispatcher) Wait() {
+	d.wg.Wait()
+}
+
+func (d *Dispatcher) runDispatch(ctx context.Context, frame *protocol.DispatchFrame, cancel context.CancelFunc) {
+	defer d.wg.Done()
+	defer func() {
+		cancel()
+		d.untrack(frame.CorrelationID)
+		<-d.sem
+	}()
+
+	runnerKind := dispatchRunnerKind(frame)
+	log := d.logger.With(
+		"correlation_id", frame.CorrelationID,
+		"runner_kind", runnerKind,
+	)
+	log.Info("dispatch started")
+
+	var output strings.Builder
+	var result json.RawMessage
+	emit := func(event any) error {
+		switch e := event.(type) {
+		case runner.Event:
+			return d.emitRunnerEvent(ctx, frame.CorrelationID, e, &result)
+		case runner.OutputEvent:
+			output.WriteString(e.Text)
+			return d.sender.SendFrame(ctx, &protocol.ProgressFrame{
+				CorrelatedFrame: correlated(protocol.TypeProgress, frame.CorrelationID),
+				Message:         "message.delta",
+				Event:           "message.delta",
+				Text:            e.Text,
+			})
+		case runner.ToolCallRequestEvent:
+			log.Info(
+				"runtime tool call request emitted",
+				"tool_call_count", len(e.ToolCalls),
+				"tool_names", toolCallNames(e.ToolCalls),
+				"tool_call_ids", toolCallIDs(e.ToolCalls),
+			)
+			return d.sender.SendFrame(ctx, &protocol.ToolCallRequestFrame{
+				CorrelatedFrame: correlated(protocol.TypeToolCallRequest, frame.CorrelationID),
+				ToolCalls:       protocolToolCalls(e.ToolCalls),
+			})
+		case runner.ToolExecutionEvent:
+			log.Debug(
+				"helper tool execution event",
+				"event", e.Kind,
+				"tool_name", e.Name,
+				"tool_call_id", e.ToolCallID,
+				"arguments", summarizeLogValue(e.Arguments, 500),
+				"result", summarizeToolCallResult(e.Result, 500),
+			)
+			return d.sender.SendFrame(ctx, &protocol.ProgressFrame{
+				CorrelatedFrame: correlated(protocol.TypeProgress, frame.CorrelationID),
+				Message:         e.Kind,
+				Event:           e.Kind,
+			})
+		case runner.CompleteEvent:
+			result = marshalResult(map[string]any{
+				"output_text":   output.String(),
+				"output":        output.String(),
+				"finish_reason": e.FinishReason,
+			})
+			return nil
+		default:
+			return fmt.Errorf("unknown runner event type %T", event)
+		}
+	}
+
+	err := d.runners.Dispatch(ctx, runner.DispatchRequest{
+		ID:      frame.CorrelationID,
+		Kind:    runnerKind,
+		Payload: dispatchPayload(frame),
+	}, emit)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			log.Info("dispatch canceled")
+			_ = d.sendTerminalError(ctx, frame.CorrelationID, "canceled", "dispatch was canceled")
+			return
+		}
+		if errors.Is(err, runner.ErrUnknownKind) {
+			log.Warn("dispatch referenced unknown runner kind")
+			_ = d.sendTerminalError(ctx, frame.CorrelationID, "unknown_runner_kind", fmt.Sprintf("runner kind %q is not configured", runnerKind))
+			return
+		}
+
+		code := "runner_error"
+		var runnerErr *runner.Error
+		if errors.As(err, &runnerErr) {
+			code = string(runnerErr.Kind)
+		}
+		log.Error("dispatch failed", "error", err)
+		_ = d.sendTerminalError(ctx, frame.CorrelationID, code, err.Error())
+		return
+	}
+
+	log.Info("dispatch completed")
+	_ = d.sendTerminalFrame(ctx, &protocol.CompleteFrame{
+		CorrelatedFrame: correlated(protocol.TypeComplete, frame.CorrelationID),
+		Result:          result,
+	})
+}
+
+func dispatchRunnerKind(frame *protocol.DispatchFrame) string {
+	if frame != nil && frame.TargetRunnerKind != "" {
+		return frame.TargetRunnerKind
+	}
+	if frame == nil {
+		return ""
+	}
+	return frame.RunnerKind
+}
+
+func dispatchPayload(frame *protocol.DispatchFrame) any {
+	if frame == nil {
+		return nil
+	}
+	if len(frame.Payload) > 0 {
+		return frame.Payload
+	}
+	if len(frame.Raw) > 0 {
+		return frame.Raw
+	}
+	return frame
+}
+
+func (d *Dispatcher) emitRunnerEvent(ctx context.Context, correlationID string, event runner.Event, result *json.RawMessage) error {
+	switch event.Kind {
+	case runner.EventProgress:
+		return d.sender.SendFrame(ctx, &protocol.ProgressFrame{
+			CorrelatedFrame: correlated(protocol.TypeProgress, correlationID),
+			Message:         event.Message,
+		})
+	case runner.EventOutput:
+		return d.sender.SendFrame(ctx, &protocol.OutputFrame{
+			CorrelatedFrame: correlated(protocol.TypeOutput, correlationID),
+			Stream:          "stdout",
+			Content:         outputContent(event),
+		})
+	case runner.EventComplete:
+		*result = marshalResult(event.Payload)
+		return nil
+	default:
+		return fmt.Errorf("unknown runner event kind %q", event.Kind)
+	}
+}
+
+func (d *Dispatcher) track(correlationID string, cancel context.CancelFunc) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, exists := d.inflight[correlationID]; exists {
+		return fmt.Errorf("dispatch with correlation_id %q is already running", correlationID)
+	}
+	d.inflight[correlationID] = cancel
+	return nil
+}
+
+func (d *Dispatcher) untrack(correlationID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.inflight, correlationID)
+}
+
+func (d *Dispatcher) sendError(ctx context.Context, correlationID, code, message string) error {
+	return d.sender.SendFrame(ctx, &protocol.ErrorFrame{
+		CorrelatedFrame: correlated(protocol.TypeError, correlationID),
+		Code:            code,
+		Message:         message,
+	})
+}
+
+func (d *Dispatcher) sendTerminalError(ctx context.Context, correlationID, code, message string) error {
+	return d.sendTerminalFrame(ctx, &protocol.ErrorFrame{
+		CorrelatedFrame: correlated(protocol.TypeError, correlationID),
+		Code:            code,
+		Message:         message,
+	})
+}
+
+func (d *Dispatcher) sendTerminalFrame(ctx context.Context, frame protocol.Frame) error {
+	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.terminalSendTimeout)
+	defer cancel()
+	return d.sender.SendFrame(sendCtx, frame)
+}
+
+func correlated(frameType, correlationID string) protocol.CorrelatedFrame {
+	return protocol.CorrelatedFrame{
+		BaseFrame:     protocol.BaseFrame{Type: frameType, SchemaVersion: protocol.SchemaVersion},
+		CorrelationID: correlationID,
+	}
+}
+
+func outputContent(event runner.Event) string {
+	if event.Output != "" {
+		return event.Output
+	}
+	if event.Message != "" {
+		return event.Message
+	}
+	if event.Payload != nil {
+		data, err := json.Marshal(event.Payload)
+		if err == nil {
+			return string(data)
+		}
+	}
+	return ""
+}
+
+func marshalResult(value any) json.RawMessage {
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func protocolToolCalls(calls []runner.ToolCall) []protocol.ToolCallInfo {
+	out := make([]protocol.ToolCallInfo, 0, len(calls))
+	for _, call := range calls {
+		out = append(out, protocol.ToolCallInfo{
+			ID:              call.ID,
+			Name:            call.Name,
+			Arguments:       call.Arguments,
+			GrantProvenance: protocolGrantProvenance(call.GrantProvenance),
+		})
+	}
+	return out
+}
+
+func toolCallNames(calls []runner.ToolCall) []string {
+	names := make([]string, 0, len(calls))
+	for _, call := range calls {
+		names = append(names, call.Name)
+	}
+	return names
+}
+
+func toolCallIDs(calls []runner.ToolCall) []string {
+	ids := make([]string, 0, len(calls))
+	for _, call := range calls {
+		ids = append(ids, call.ID)
+	}
+	return ids
+}
+
+func summarizeToolCallResult(result *runner.ToolCallResult, limit int) string {
+	if result == nil {
+		return ""
+	}
+	return summarizeLogValue(map[string]any{
+		"tool_call_id": result.ToolCallID,
+		"success":      result.Success,
+		"duration_ms":  result.DurationMs,
+		"output":       result.Output,
+	}, limit)
+}
+
+func summarizeLogValue(value any, limit int) string {
+	if value == nil {
+		return ""
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%v", value)
+	}
+	text := string(data)
+	if limit > 0 && len(text) > limit {
+		return text[:limit] + "...[truncated]"
+	}
+	return text
+}
+
+func protocolGrantProvenance(provenance *runner.GrantProvenance) *protocol.GrantProvenance {
+	if provenance == nil {
+		return nil
+	}
+	return &protocol.GrantProvenance{
+		AgentToolGrantID:     provenance.AgentToolGrantID,
+		Source:               provenance.Source,
+		SourceToolTemplateID: provenance.SourceToolTemplateID,
+		Reason:               provenance.Reason,
+		CreatedByUserID:      provenance.CreatedByUserID,
+	}
+}
+
+// Diagnostics emits relay lifecycle events without exposing credentials.
+type Diagnostics struct {
+	Logger diagnostics.Logger
+}
+
+// ConnectionAttempt logs an outbound relay connection attempt.
+func (d Diagnostics) ConnectionAttempt(endpoint string) error {
+	return d.log(diagnostics.NewEvent(diagnostics.EventConnectionAttempt).
+		WithEndpoint(endpoint))
+}
+
+// RegisterAck logs the cloud's registration acknowledgement.
+func (d Diagnostics) RegisterAck(runnerKinds []string) error {
+	return d.log(diagnostics.NewEvent(diagnostics.EventRegisterAck).
+		WithField("runner_kinds", runnerKinds))
+}
+
+// DispatchStarted logs the start of a relay dispatch.
+func (d Diagnostics) DispatchStarted(correlationID, runnerKind string) error {
+	return d.log(diagnostics.NewEvent(diagnostics.EventDispatchStarted).
+		WithCorrelation(correlationID).
+		WithRunner(runnerKind, "", ""))
+}
+
+// DispatchCompleted logs successful relay dispatch completion.
+func (d Diagnostics) DispatchCompleted(correlationID, runnerKind string) error {
+	return d.log(diagnostics.NewEvent(diagnostics.EventDispatchCompleted).
+		WithCorrelation(correlationID).
+		WithRunner(runnerKind, "", ""))
+}
+
+// Cancellation logs cancel propagation for an in-flight dispatch.
+func (d Diagnostics) Cancellation(correlationID, runnerKind string) error {
+	return d.log(diagnostics.NewEvent(diagnostics.EventCancellation).
+		WithCorrelation(correlationID).
+		WithRunner(runnerKind, "", "").
+		WithFailure(diagnostics.FailureCanceled, "dispatch canceled"))
+}
+
+func (d Diagnostics) log(event diagnostics.EventEnvelope) error {
+	if d.Logger == nil {
+		return nil
+	}
+	return d.Logger.Log(event)
+}

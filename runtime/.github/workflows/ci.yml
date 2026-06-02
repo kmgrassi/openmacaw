@@ -1,0 +1,193 @@
+name: CI
+
+# Runs on every PR targeting main, plus from the deploy workflow as a
+# pre-flight gate (`workflow_call`). Push events to main are intentionally
+# NOT a trigger here — `deploy-main.yml` invokes this workflow as a job
+# dependency, which is enough to guarantee CI runs before any deploy.
+#
+# Path scoping is performed at the *job step* level via `dorny/paths-filter`
+# rather than the workflow-level `paths:` filter. A workflow-level filter
+# would cause GitHub to report the entire workflow as "skipped" on
+# doc-only PRs, which branch protection treats as "pending" — blocking
+# merges. The job-level pattern below runs the job, evaluates whether
+# any relevant paths changed, and short-circuits with a success step
+# when nothing relevant changed.
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+
+concurrency:
+  # On PRs, cancel in-progress runs only for the same pull request. On
+  # workflow_call (from deploy-main.yml), use a per-run-id group so we
+  # never cancel a run that the deploy job is already waiting on.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: apps/orchestrator
+
+jobs:
+  test:
+    name: Build, test, escript smoke
+    runs-on: ubuntu-latest
+
+    # Match the production Dockerfile (apps/orchestrator/deploy/Dockerfile)
+    # so anything CI accepts will also boot in the prod image.
+    env:
+      MIX_ENV: test
+      ELIXIR_VERSION: "1.19.0"
+      OTP_VERSION: "26.2.5.19"
+
+    steps:
+      # Detect whether any Elixir build/test inputs changed. Only runs
+      # on `pull_request` events because dorny/paths-filter needs the
+      # repository pre-checked-out for git-based diffing on other
+      # events (e.g. `workflow_call` from deploy-main.yml), and the
+      # deploy gate always wants the full suite anyway. Every
+      # downstream `if:` uses
+      # `steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'`
+      # so an unset output is fine — the deploy gate never skips real
+      # checks.
+      - name: Detect runtime changes
+        id: changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            runtime:
+              - 'apps/orchestrator/**'
+              - 'apps/launcher/**'
+              - 'mix.exs'
+              - 'mix.lock'
+              - 'config/**'
+              - 'scripts/**'
+              - '.github/workflows/ci.yml'
+
+      - name: Check out repository
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.0"
+          otp-version: "26.2.5.19"
+
+      - name: Cache deps
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/orchestrator/deps
+            apps/orchestrator/_build
+          key: ${{ runner.os }}-mix-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-${{ hashFiles('apps/orchestrator/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-
+
+      - name: Install dependencies
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        run: mix deps.get
+
+      # Note: `mix format --check-formatted` is intentionally not run
+      # yet — the codebase has accumulated formatting drift on main.
+      # A separate PR should apply `mix format` once and then this step
+      # can be re-enabled.
+
+      - name: Compile (warnings as errors)
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        run: mix compile --warnings-as-errors
+
+      # Focused launcher/boot test suite. We intentionally do not run
+      # the full `mix test` yet — `main` has three pre-existing failures
+      # (a `ripgrep`-missing test in `repository_tools_test.exs`, the
+      # heartbeat assertion in `launcher/server_test.exs:347`, and a
+      # related repo.search test). A separate PR should fix those and
+      # then this can become an unqualified `mix test`.
+      #
+      # The files we DO run here are the ones that pin down the
+      # production launcher boot contract — the regression class that
+      # took down `symphony-orchestrator-prod`.
+      - name: Run launcher boot tests
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        run: |
+          mix test \
+            test/symphony_elixir/cli_test.exs \
+            test/symphony_elixir/launcher/supervisor_test.exs
+
+      # Escript boot smoke — the regression test for the
+      # `:phoenix_pubsub`-not-started class of bug. We rebuild the
+      # escript with MIX_ENV=prod (matching the Dockerfile) and run it
+      # briefly. If the launcher supervisor fails to start (e.g. a child
+      # requires an OTP application that wasn't ensured in
+      # `CLI.ensure_launcher_dependencies/0`), the binary exits with a
+      # non-zero status and CI fails.
+      #
+      # `mix test` alone can't catch this because Mix auto-starts every
+      # transitive dep. Only the escript exposes the production startup
+      # gap.
+      - name: Build escript (prod)
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        env:
+          MIX_ENV: prod
+        run: |
+          set -euo pipefail
+          mix deps.get --only prod
+          mix escript.build
+
+      - name: Boot smoke test (escript)
+        if: steps.changes.outputs.runtime == 'true' || github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+
+          # Empty workflow file is enough to satisfy `--workflow`; the
+          # launcher only requires the path to be a regular file.
+          echo "" > /tmp/smoke-WORKFLOW.md
+
+          LOG=/tmp/symphony-smoke.log
+
+          # Start the launcher in the background. `--port 0` lets the OS
+          # pick an ephemeral port so we never collide with anything on
+          # the runner. `--state-dir` to a temp dir prevents the
+          # launcher from trying to use a stale or missing path.
+          ./bin/symphony launcher \
+            --port 0 \
+            --state-dir /tmp/symphony-smoke-state \
+            --workflow /tmp/smoke-WORKFLOW.md \
+            >"$LOG" 2>&1 &
+          LAUNCHER_PID=$!
+
+          # Give it 6s to either reach steady state or crash. The
+          # production crash we're guarding against (Phoenix.PubSub
+          # supervisor shutdown) takes <1s to surface.
+          sleep 6
+
+          if kill -0 "$LAUNCHER_PID" 2>/dev/null; then
+            echo "[OK] launcher still running after 6s — boot succeeded"
+            kill "$LAUNCHER_PID" 2>/dev/null || true
+            wait "$LAUNCHER_PID" 2>/dev/null || true
+            exit 0
+          fi
+
+          echo "[FAIL] launcher exited within 6s — boot failed"
+          echo "----- launcher log -----"
+          cat "$LOG"
+          echo "----- end log -----"
+          exit 1
+
+      - name: Skip expensive validation for docs-only pull requests
+        if: steps.changes.outputs.runtime != 'true' && github.event_name == 'pull_request'
+        # Working-directory default is `apps/orchestrator`, which only
+        # exists after checkout. On docs-only PRs we skipped checkout,
+        # so override the cwd back to the runner default to avoid a
+        # "directory does not exist" failure.
+        working-directory: ${{ github.workspace }}
+        run: echo "No runtime inputs changed; skipping validation."

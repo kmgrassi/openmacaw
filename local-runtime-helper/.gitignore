@@ -1,0 +1,29 @@
+# Binaries (root-only — leading slash so we don't ignore the
+# cmd/local-runtime-helper/ source directory)
+/local-runtime-helper
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Coverage / profiling
+*.out
+*.prof
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config — must never be committed
+runtime.toml
+.env
+.env.local

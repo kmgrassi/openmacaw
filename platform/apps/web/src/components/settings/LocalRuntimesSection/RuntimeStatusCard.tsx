@@ -1,0 +1,116 @@
+import type { LocalRuntime } from "../../../api/local-runtime";
+import { Badge } from "../../ui/Badge";
+import { Card } from "../../ui/Card";
+import { formatCapability, formatLastSeen, helperStatus } from "./utils";
+
+export function RuntimeStatusCard({
+  runtime,
+  heartbeatIntervalMs,
+}: {
+  runtime: LocalRuntime;
+  heartbeatIntervalMs: number;
+}) {
+  const status = helperStatus(
+    runtime.localExecution.lastSeenAt,
+    heartbeatIntervalMs,
+  );
+  const advertisedKinds = runtime.localExecution.advertisedRunnerKinds.length
+    ? runtime.localExecution.advertisedRunnerKinds
+    : runtime.runners.map((runner) => runner.kind);
+  const advertisedModels = runtime.localExecution.advertisedModels.length
+    ? runtime.localExecution.advertisedModels
+    : runtime.runners
+        .map((runner) => runner.model)
+        .filter((model) => model.length > 0);
+
+  return (
+    <Card className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${status.dotClassName}`}
+              title={`Last heartbeat: ${formatLastSeen(runtime.localExecution.lastSeenAt)}`}
+            />
+            <h3 className="text-sm font-semibold text-slate-200">
+              {runtime.machineDisplayName}
+            </h3>
+            <Badge variant={status.variant}>{status.label}</Badge>
+            {runtime.runners.map((runner) => (
+              <Badge key={runner.id}>{runner.provider}</Badge>
+            ))}
+          </div>
+          <div className="mt-2 space-y-1">
+            {runtime.runners.map((runner) => (
+              <div
+                key={runner.id}
+                className="break-all font-mono text-xs text-slate-500"
+              >
+                <span className="mr-2 font-semibold text-slate-400">
+                  {runner.kind}
+                </span>
+                {runner.endpoint}
+                {runner.model ? ` — ${runner.model}` : ""}
+                {runner.kind === "openai_compatible" && (
+                  <span className="ml-2 text-slate-500">
+                    [{formatCapability(runner.toolCallCapability)}]
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="text-right text-xs text-slate-500">
+          Heartbeat timeout: {Math.round((heartbeatIntervalMs * 2) / 1000)}s
+        </div>
+      </div>
+
+      <div className="grid gap-3 text-xs md:grid-cols-2">
+        <div className="rounded-md border border-white/5 bg-surface px-3 py-2">
+          <div className="text-slate-500">Helper version</div>
+          <div className="mt-0.5 text-slate-300">
+            {runtime.localExecution.helperVersion ?? "Not reported"}
+          </div>
+        </div>
+        <div className="rounded-md border border-white/5 bg-surface px-3 py-2">
+          <div className="text-slate-500">Last heartbeat</div>
+          <div className="mt-0.5 text-slate-300">
+            {formatLastSeen(runtime.localExecution.lastSeenAt)}
+          </div>
+        </div>
+        <div className="rounded-md border border-white/5 bg-surface px-3 py-2">
+          <div className="text-slate-500">Advertised runner kinds</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {advertisedKinds.map((kind) => (
+              <Badge key={kind} variant="success">
+                {kind}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-md border border-white/5 bg-surface px-3 py-2">
+          <div className="text-slate-500">Advertised models</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {advertisedModels.length === 0 ? (
+              <span className="text-slate-500">None advertised</span>
+            ) : (
+              advertisedModels.map((modelName) => (
+                <Badge key={modelName}>{modelName}</Badge>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="rounded-md border border-white/5 bg-surface px-3 py-2 md:col-span-2">
+          <div className="text-slate-500">Runtime managed tools</div>
+          <div className="mt-0.5 text-slate-300">
+            {runtime.localExecution.runtimeManagedTools === null
+              ? "Not reported"
+              : runtime.localExecution.runtimeManagedTools
+                ? "Enabled"
+                : "Disabled"}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}

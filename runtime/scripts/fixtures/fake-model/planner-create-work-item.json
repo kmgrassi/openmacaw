@@ -1,0 +1,103 @@
+{
+  "id": "planner-create-work-item",
+  "description": "Returns a deterministic planner tool call for work item creation.",
+  "expected_request": {
+    "tool_names": ["work_item.create"]
+  },
+  "response": {
+    "id": "chatcmpl-fake-planner-create-work-item",
+    "model": "fake-openai-compatible",
+    "choices": [
+      {
+        "index": 0,
+        "finish_reason": "tool_calls",
+        "message": {
+          "role": "assistant",
+          "content": "Creating the requested work item.",
+          "tool_calls": [
+            {
+              "id": "call_fake_work_item_create",
+              "type": "function",
+              "function": {
+                "name": "work_item.create",
+                "arguments": "{\"title\":\"Verify direct work item creation\",\"description\":\"Created by fake model scenario planner-create-work-item\",\"priority\":\"normal\"}"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 42,
+      "completion_tokens": 16,
+      "total_tokens": 58
+    }
+  },
+  "stream": {
+    "chunks": [
+      {
+        "id": "chatcmpl-fake-planner-create-work-item",
+        "model": "fake-openai-compatible",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant",
+              "content": "Creating "
+            },
+            "finish_reason": null
+          }
+        ]
+      },
+      {
+        "id": "chatcmpl-fake-planner-create-work-item",
+        "model": "fake-openai-compatible",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "the requested work item.",
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "id": "call_fake_work_item_create",
+                  "type": "function",
+                  "function": {
+                    "name": "work_item.create",
+                    "arguments": "{\"title\":\"Verify direct"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ]
+      },
+      {
+        "id": "chatcmpl-fake-planner-create-work-item",
+        "model": "fake-openai-compatible",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "function": {
+                    "arguments": " work item creation\",\"description\":\"Created by fake model scenario planner-create-work-item\",\"priority\":\"normal\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 42,
+          "completion_tokens": 16,
+          "total_tokens": 58
+        }
+      }
+    ]
+  }
+}

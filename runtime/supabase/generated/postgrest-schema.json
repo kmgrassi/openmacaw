@@ -1,0 +1,2066 @@
+{
+  "public": {
+    "agent": {
+      "row": {
+        "columns": [
+          "assistant_id",
+          "context",
+          "created_at",
+          "created_by_user_id",
+          "current_version",
+          "description",
+          "draft_version",
+          "execution_target_kind",
+          "id",
+          "is_active",
+          "model_settings",
+          "name",
+          "project_id",
+          "session_id",
+          "slug",
+          "status",
+          "tool_policy",
+          "type",
+          "updated_at",
+          "vector_store_id",
+          "workspace_id"
+        ],
+        "fields": {
+          "assistant_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "context": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "current_version": {
+            "ts_type": "number | null",
+            "value_kinds": [
+              "number",
+              "null"
+            ]
+          },
+          "description": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "draft_version": {
+            "ts_type": "number | null",
+            "value_kinds": [
+              "number",
+              "null"
+            ]
+          },
+          "execution_target_kind": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "is_active": {
+            "ts_type": "boolean | null",
+            "value_kinds": [
+              "boolean",
+              "null"
+            ]
+          },
+          "model_settings": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "name": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "slug": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "tool_policy": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "type": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "vector_store_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "credential": {
+      "row": {
+        "columns": [
+          "agent_id",
+          "created_at",
+          "display_name",
+          "format",
+          "id",
+          "key_value",
+          "provider",
+          "updated_at",
+          "user_id",
+          "validated_at",
+          "validation_state",
+          "workspace_id"
+        ],
+        "fields": {
+          "agent_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "display_name": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "format": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "key_value": {
+            "ts_type": "Json | null",
+            "value_kinds": [
+              "json",
+              "null"
+            ]
+          },
+          "provider": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "validated_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "validation_state": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "gateway_config": {
+      "row": {
+        "columns": [
+          "config_hash",
+          "config_json",
+          "id",
+          "scope_id",
+          "scope_type",
+          "updated_at",
+          "updated_by",
+          "version"
+        ],
+        "fields": {
+          "config_hash": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "config_json": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "scope_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "scope_type": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_by": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "version": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          }
+        }
+      }
+    },
+    "gateway_config_state": {
+      "row": {
+        "columns": [
+          "broker_instance_id",
+          "last_applied_hash",
+          "last_applied_version",
+          "last_apply_at",
+          "last_apply_error",
+          "last_apply_status",
+          "scope_id",
+          "scope_type",
+          "sync_error",
+          "sync_status",
+          "synced_at"
+        ],
+        "fields": {
+          "broker_instance_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "last_applied_hash": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "last_applied_version": {
+            "ts_type": "number | null",
+            "value_kinds": [
+              "number",
+              "null"
+            ]
+          },
+          "last_apply_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "last_apply_error": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "last_apply_status": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "scope_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "scope_type": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "sync_error": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "sync_status": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "synced_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "work_items": {
+      "row": {
+        "columns": [
+          "completion_gates",
+          "created_at",
+          "depends_on",
+          "description",
+          "id",
+          "identifier",
+          "instructions",
+          "labels",
+          "last_polled_at",
+          "manager_runner_id",
+          "metadata",
+          "next_poll_at",
+          "not_before_at",
+          "plan_id",
+          "poll_cadence_seconds",
+          "priority",
+          "repository",
+          "runner_kind",
+          "scheduled_by_user_id",
+          "scheduled_reason",
+          "source",
+          "state",
+          "task_id",
+          "title",
+          "updated_at",
+          "url",
+          "workspace_id"
+        ],
+        "fields": {
+          "completion_gates": {
+            "ts_type": "string[]",
+            "value_kinds": [
+              "unknown"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "depends_on": {
+            "ts_type": "string[]",
+            "value_kinds": [
+              "unknown"
+            ]
+          },
+          "description": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "identifier": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "instructions": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "labels": {
+            "ts_type": "string[]",
+            "value_kinds": [
+              "unknown"
+            ]
+          },
+          "last_polled_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "manager_runner_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "next_poll_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "not_before_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "plan_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "poll_cadence_seconds": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "priority": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "runner_kind": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "scheduled_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "scheduled_reason": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "state": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "task_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "url": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "plan": {
+      "row": {
+        "columns": [
+          "created_at",
+          "default_model",
+          "default_runner_kind",
+          "description",
+          "id",
+          "intent",
+          "is_ongoing",
+          "message_id",
+          "metadata",
+          "name",
+          "schema_version",
+          "status",
+          "type",
+          "updated_at",
+          "workspace_id"
+        ],
+        "fields": {
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "default_model": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "default_runner_kind": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "intent": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "is_ongoing": {
+            "ts_type": "boolean | null",
+            "value_kinds": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "name": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "schema_version": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "status": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "type": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "routing_rule": {
+      "row": {
+        "columns": [
+          "created_at",
+          "credential_alias",
+          "credential_id",
+          "enabled",
+          "execution_location",
+          "fallback_mode",
+          "hit_count",
+          "id",
+          "last_hit_at",
+          "model",
+          "name",
+          "next_fallback_rule_id",
+          "priority",
+          "provider",
+          "runner_family",
+          "runner_kind",
+          "transport",
+          "updated_at",
+          "updated_by",
+          "version",
+          "workspace_id"
+        ],
+        "fields": {
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "credential_alias": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "credential_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "ts_type": "boolean",
+            "value_kinds": [
+              "boolean"
+            ]
+          },
+          "execution_location": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "fallback_mode": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "hit_count": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "last_hit_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "next_fallback_rule_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "provider": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "runner_family": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "runner_kind": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "transport": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_by": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "routing_rule_match": {
+      "row": {
+        "columns": [
+          "created_at",
+          "id",
+          "key",
+          "kind",
+          "rule_id",
+          "value",
+          "workspace_id"
+        ],
+        "fields": {
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "key": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "rule_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "value": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "local_runtime_machine": {
+      "row": {
+        "columns": [
+          "advertised_runner_kinds",
+          "created_at",
+          "display_name",
+          "helper_version",
+          "id",
+          "last_seen_at",
+          "revoked_at",
+          "runner_kinds",
+          "updated_at",
+          "user_id",
+          "workspace_id"
+        ],
+        "fields": {
+          "advertised_runner_kinds": {
+            "ts_type": "string[] | null",
+            "value_kinds": [
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "display_name": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "helper_version": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "last_seen_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "runner_kinds": {
+            "ts_type": "string[]",
+            "value_kinds": [
+              "unknown"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "user_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "local_runtime_token": {
+      "row": {
+        "columns": [
+          "created_at",
+          "created_by_user_id",
+          "id",
+          "last_used_at",
+          "machine_id",
+          "revoked_at",
+          "token_hash",
+          "workspace_id"
+        ],
+        "fields": {
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "created_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "last_used_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "machine_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "revoked_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "token_hash": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "tool": {
+      "row": {
+        "columns": [
+          "agent_id",
+          "created_at",
+          "created_by_user_id",
+          "id",
+          "tool_id",
+          "updated_at"
+        ],
+        "fields": {
+          "agent_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "tool_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "agent_tool": {
+      "row": {
+        "columns": [
+          "agent_id",
+          "created_at",
+          "created_by_user_id",
+          "id",
+          "tool_id",
+          "updated_at"
+        ],
+        "fields": {
+          "agent_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "tool_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "tool_call": {
+      "row": {
+        "columns": [
+          "created_at",
+          "id",
+          "input",
+          "message_id",
+          "output",
+          "tool_id"
+        ],
+        "fields": {
+          "created_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "input": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "message_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "output": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "message": {
+      "row": {
+        "columns": [
+          "agent_id",
+          "content",
+          "created_at",
+          "deleted_at",
+          "generated_by",
+          "group_chat_id",
+          "id",
+          "is_deleted",
+          "message_type",
+          "metadata",
+          "model",
+          "payload",
+          "project_id",
+          "provider",
+          "reply_to_message_id",
+          "request_id",
+          "response_id",
+          "role",
+          "run_id",
+          "runner_kind",
+          "session_id",
+          "thread_id",
+          "user_id",
+          "workspace_id"
+        ],
+        "fields": {
+          "agent_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "deleted_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "generated_by": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "group_chat_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "is_deleted": {
+            "ts_type": "boolean | null",
+            "value_kinds": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_type": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "ts_type": "Json | null",
+            "value_kinds": [
+              "json",
+              "null"
+            ]
+          },
+          "model": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "payload": {
+            "ts_type": "Json | null",
+            "value_kinds": [
+              "json",
+              "null"
+            ]
+          },
+          "project_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "reply_to_message_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "request_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "response_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "ts_type": "Database[\"public\"][\"Enums\"][\"role\"]",
+            "value_kinds": [
+              "unknown"
+            ]
+          },
+          "run_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "runner_kind": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "planning_profile": {
+      "row": {
+        "columns": [
+          "created_at",
+          "created_by_user_id",
+          "definition_of_done",
+          "deleted_at",
+          "deleted_by_user_id",
+          "deleted_reason",
+          "description",
+          "environment_notes",
+          "handoff_policy",
+          "id",
+          "instructions",
+          "is_active",
+          "metadata",
+          "name",
+          "repo_boundaries",
+          "scope_id",
+          "scope_type",
+          "security_constraints",
+          "updated_at",
+          "updated_by_user_id",
+          "validation_commands",
+          "version",
+          "workspace_id"
+        ],
+        "fields": {
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "created_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "definition_of_done": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "deleted_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "deleted_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "deleted_reason": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "environment_notes": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "handoff_policy": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "instructions": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "is_active": {
+            "ts_type": "boolean",
+            "value_kinds": [
+              "boolean"
+            ]
+          },
+          "metadata": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "name": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "repo_boundaries": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "scope_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "scope_type": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "security_constraints": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "validation_commands": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "version": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "scheduled_task": {
+      "row": {
+        "columns": [
+          "agent_id",
+          "cancelled_reason",
+          "created_at",
+          "created_by_user_id",
+          "cron_schedule",
+          "delivery",
+          "enabled",
+          "id",
+          "instructions",
+          "is_active",
+          "is_completed",
+          "is_follow_up",
+          "job_id",
+          "last_error",
+          "last_run_at",
+          "last_run_status",
+          "metadata",
+          "next_interval",
+          "next_run_at",
+          "schedule",
+          "source_work_item_id",
+          "start_time",
+          "timezone",
+          "title",
+          "updated_at",
+          "workspace_id"
+        ],
+        "fields": {
+          "agent_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "cancelled_reason": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "created_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "cron_schedule": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "delivery": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "enabled": {
+            "ts_type": "boolean",
+            "value_kinds": [
+              "boolean"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "instructions": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "is_active": {
+            "ts_type": "boolean | null",
+            "value_kinds": [
+              "boolean",
+              "null"
+            ]
+          },
+          "is_completed": {
+            "ts_type": "boolean | null",
+            "value_kinds": [
+              "boolean",
+              "null"
+            ]
+          },
+          "is_follow_up": {
+            "ts_type": "boolean | null",
+            "value_kinds": [
+              "boolean",
+              "null"
+            ]
+          },
+          "job_id": {
+            "ts_type": "number | null",
+            "value_kinds": [
+              "number",
+              "null"
+            ]
+          },
+          "last_error": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "last_run_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "last_run_status": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "next_interval": {
+            "ts_type": "Json | null",
+            "value_kinds": [
+              "json",
+              "null"
+            ]
+          },
+          "next_run_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "schedule": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "source_work_item_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "start_time": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "title": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "scheduled_task_run": {
+      "row": {
+        "columns": [
+          "agent_id",
+          "attempt_count",
+          "created_at",
+          "error",
+          "finished_at",
+          "id",
+          "message_id",
+          "metadata",
+          "run_id",
+          "scheduled_for",
+          "scheduled_task_id",
+          "source_work_item_id",
+          "started_at",
+          "status",
+          "workspace_id"
+        ],
+        "fields": {
+          "agent_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "attempt_count": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "created_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "error": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "message_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "ts_type": "Json",
+            "value_kinds": [
+              "json"
+            ]
+          },
+          "run_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "scheduled_for": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "scheduled_task_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "source_work_item_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "status": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "workspace_settings": {
+      "row": {
+        "columns": [
+          "learning_enabled",
+          "max_concurrent_agents",
+          "tracker_credential_id",
+          "tracker_kind",
+          "updated_at",
+          "updated_by_user_id",
+          "workspace_id"
+        ],
+        "fields": {
+          "learning_enabled": {
+            "ts_type": "boolean",
+            "value_kinds": [
+              "boolean"
+            ]
+          },
+          "max_concurrent_agents": {
+            "ts_type": "number",
+            "value_kinds": [
+              "number"
+            ]
+          },
+          "tracker_credential_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "tracker_kind": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_at": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          },
+          "updated_by_user_id": {
+            "ts_type": "string | null",
+            "value_kinds": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "ts_type": "string",
+            "value_kinds": [
+              "string"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,78 @@
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "Dockerfile"
+      - ".dockerignore"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  AWS_REGION: "us-east-1"
+  ECR_REPOSITORY: "symphony-dev-server"
+
+jobs:
+  build-and-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::546771437:role/SymphonyTerraformRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr_login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          LATEST_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+          docker build \
+            --tag "$IMAGE_URI" \
+            --tag "$LATEST_URI" \
+            .
+
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "Pushed: ${IMAGE_URI}"
+
+      # ── Update SSM parameter for Terraform to pick up ──────
+      - name: Update SSM image URI
+        env:
+          IMAGE_URI: ${{ steps.build.outputs.image_uri }}
+        run: |
+          aws ssm put-parameter \
+            --name "/symphony/dev/server_image_uri" \
+            --value "$IMAGE_URI" \
+            --type String \
+            --overwrite
+
+      # ── Trigger Terraform deploy ───────────────────────────
+      - name: Trigger Terraform deploy
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          event-type: deploy
+          client-payload: '{"image_uri": "${{ steps.build.outputs.image_uri }}"}'

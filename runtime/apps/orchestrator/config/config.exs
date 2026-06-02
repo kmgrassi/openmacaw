@@ -1,0 +1,30 @@
+import Config
+
+config :phoenix, :json_library, Jason
+
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+
+config :tzdata,
+  # The local orchestrator runs as an escript. Tzdata's default priv lookup
+  # resolves under bin/symphony in that mode, so point it at the checked-out
+  # dependency data explicitly.
+  data_dir: Path.expand("../deps/tzdata/priv", __DIR__),
+  autoupdate: :disabled
+
+config :symphony_elixir, SymphonyElixirWeb.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [host: "localhost"],
+  render_errors: [
+    formats: [html: SymphonyElixirWeb.ErrorHTML, json: SymphonyElixirWeb.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: SymphonyElixir.PubSub,
+  live_view: [signing_salt: "symphony-live-view"],
+  secret_key_base: String.duplicate("s", 64),
+  check_origin: false,
+  server: false
+
+# Import environment-specific config (dev.exs, prod.exs, test.exs)
+if File.exists?(Path.expand("#{config_env()}.exs", __DIR__)) do
+  import_config "#{config_env()}.exs"
+end

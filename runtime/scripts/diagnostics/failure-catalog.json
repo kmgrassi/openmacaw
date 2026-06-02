@@ -1,0 +1,52 @@
+{
+  "cli_missing": {
+    "symptom": "Required CLI is missing",
+    "likely_cause": "Local development dependencies are not installed or not on PATH.",
+    "next_steps": ["mise install"]
+  },
+  "launcher_unreachable": {
+    "symptom": "Launcher health endpoint is unreachable",
+    "likely_cause": "The local runtime launcher is not running.",
+    "next_steps": ["pnpm run start:local", "tail -n 120 .run-logs/launcher.log"]
+  },
+  "launcher_unhealthy": {
+    "symptom": "Launcher health endpoint returned an unhealthy payload",
+    "likely_cause": "The launcher started but one of its dependencies is not healthy.",
+    "next_steps": ["pnpm run smoke:runtime", "tail -n 120 .run-logs/launcher.log"]
+  },
+  "orchestrator_unreachable": {
+    "symptom": "Orchestrator health endpoint is unreachable",
+    "likely_cause": "The local orchestrator is not running.",
+    "next_steps": ["pnpm run start:local", "tail -n 120 .run-logs/orchestrator.log"]
+  },
+  "orchestrator_unhealthy": {
+    "symptom": "Orchestrator health endpoint returned an unhealthy payload",
+    "likely_cause": "The orchestrator started but did not report a healthy status.",
+    "next_steps": ["pnpm run smoke:runtime", "tail -n 120 .run-logs/orchestrator.log"]
+  },
+  "port_collision": {
+    "symptom": "A runtime port is owned by an unexpected process",
+    "likely_cause": "Another local process is using a port needed by the runtime stack.",
+    "next_steps": ["lsof -nP -iTCP:<port> -sTCP:LISTEN"]
+  },
+  "env_missing": {
+    "symptom": "No local runtime .env file was found",
+    "likely_cause": "The worktree has not been configured with local runtime credentials.",
+    "next_steps": ["copy .env from the main repo or another configured worktree"]
+  },
+  "log_missing": {
+    "symptom": "Expected runtime log file is missing",
+    "likely_cause": "The local runtime has not been started from this worktree.",
+    "next_steps": ["pnpm run start:local"]
+  },
+  "log_stale": {
+    "symptom": "Expected runtime log file is stale",
+    "likely_cause": "The local runtime has not written logs recently or is running from another worktree.",
+    "next_steps": ["pnpm run start:local", "tail -n 120 .run-logs/<service>.log"]
+  },
+  "local_runtime_not_ready": {
+    "symptom": "Local runtime helper is not ready for the requested workspace",
+    "likely_cause": "No helper is connected for this workspace, the target runner kind is not registered, or the requested model/capabilities are unavailable.",
+    "next_steps": ["pnpm run smoke:local-relay -- --workspace-id <workspace-id>", "pnpm run logs:runtime -- --level error"]
+  }
+}
