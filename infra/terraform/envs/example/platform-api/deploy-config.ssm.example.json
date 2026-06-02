@@ -1,0 +1,27 @@
+{
+  "terraform_backend": {
+    "bucket": "YOUR_TERRAFORM_STATE_BUCKET",
+    "key": "openmacaw/dev/platform-api/terraform.tfstate",
+    "region": "us-east-1",
+    "dynamodb_table": "YOUR_TERRAFORM_LOCK_TABLE",
+    "encrypt": true
+  },
+  "terraform_vars": {
+    "project_name": "openmacaw",
+    "environment": "dev",
+    "aws_region": "us-east-1",
+    "orchestrator_base_url": "http://openmacaw-launcher-dev.openmacaw-dev.local:4100",
+    "launcher_base_url": "http://openmacaw-launcher-dev.openmacaw-dev.local:4100",
+    "cors_origins": "https://your-app.example.com",
+    "shared_platform_state_enabled": true,
+    "shared_platform_state_bucket": "YOUR_SHARED_PLATFORM_STATE_BUCKET",
+    "shared_platform_state_key": "openmacaw/shared/terraform.tfstate",
+    "shared_platform_state_region": "us-east-1",
+    "domain_name": "api.example.com",
+    "certificate_domains": ["api.example.com"],
+    "route53_zone_name": "example.com",
+    "manage_public_edge": false,
+    "github_org": "YOUR_GITHUB_ORG",
+    "github_repo": "openmacaw"
+  }
+}

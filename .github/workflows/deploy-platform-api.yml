@@ -1,0 +1,163 @@
+name: Deploy Platform API
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "platform/**"
+      - "infra/terraform/stacks/platform-api/**"
+      - ".github/workflows/deploy-platform-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-platform-api-main
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: infra/terraform/stacks/platform-api
+  DOCKERFILE: platform/apps/api/Dockerfile
+  BUILD_CONTEXT: platform
+  DOCKER_PLATFORM: linux/amd64
+  DEPLOY_CONFIG_PARAM: /openmacaw/dev/platform-api/deploy/config
+  IMAGE_URI_PARAM: /openmacaw/dev/platform-api/deploy/image-uri
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    timeout-minutes: 30
+    env:
+      TF_IN_AUTOMATION: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+
+      - name: Install platform dependencies
+        working-directory: platform
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck platform API
+        working-directory: platform
+        run: pnpm -C apps/api run typecheck
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve deploy config from SSM
+        id: deploy-config
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          CONFIG_JSON="$(aws ssm get-parameter \
+            --name "$DEPLOY_CONFIG_PARAM" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text)"
+
+          echo "$CONFIG_JSON" | jq -e '.terraform_backend and .terraform_vars' >/dev/null
+
+          jq -r '.terraform_backend | to_entries[] |
+            if (.value | type) == "boolean" or (.value | type) == "number" then
+              "\(.key) = \(.value)"
+            else
+              "\(.key) = \"\(.value)\""
+            end' <<<"$CONFIG_JSON" > "$RUNNER_TEMP/platform-api.backend.hcl"
+
+          jq -n \
+            --argjson cfg "$CONFIG_JSON" \
+            --arg image_tag "$IMAGE_TAG" \
+            --arg deploy_run_id "${{ github.run_id }}" \
+            '$cfg.terraform_vars + {
+              image_tag: $image_tag,
+              deploy_run_id: $deploy_run_id
+            }' > "$RUNNER_TEMP/platform-api.tfvars.json"
+
+          ECR_REPOSITORY_NAME="$(jq -r '(.project_name // "openmacaw") + "-" + (.environment // "dev") + "-server"' "$RUNNER_TEMP/platform-api.tfvars.json")"
+          echo "ecr_repository_name=${ECR_REPOSITORY_NAME}" >> "$GITHUB_OUTPUT"
+          echo "backend_file=$RUNNER_TEMP/platform-api.backend.hcl" >> "$GITHUB_OUTPUT"
+          echo "tfvars_file=$RUNNER_TEMP/platform-api.tfvars.json" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="${{ steps.deploy-config.outputs.backend_file }}"
+
+      - name: Ensure Terraform-managed ECR exists
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          terraform apply -input=false -auto-approve \
+            -target=aws_ecr_repository.app \
+            -target=aws_ecr_lifecycle_policy.app \
+            -var-file="${{ steps.deploy-config.outputs.tfvars_file }}"
+
+      - name: Resolve ECR repository URL from Terraform
+        id: ecr
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          echo "repository_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push platform API image
+        timeout-minutes: 12
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BUILD_CONTEXT }}
+          file: ${{ env.DOCKERFILE }}
+          platforms: ${{ env.DOCKER_PLATFORM }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.repository_url }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.repository_url }}:main
+          cache-from: type=gha,scope=openmacaw-platform-api
+          cache-to: type=gha,mode=max,scope=openmacaw-platform-api,ignore-error=true
+          provenance: false
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -input=false -auto-approve -var-file="${{ steps.deploy-config.outputs.tfvars_file }}"
+
+      - name: Persist deployed image URI pointer
+        env:
+          ECR_REPOSITORY_URL: ${{ steps.ecr.outputs.repository_url }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          aws ssm put-parameter \
+            --name "$IMAGE_URI_PARAM" \
+            --type String \
+            --overwrite \
+            --value "$ECR_REPOSITORY_URL:$IMAGE_TAG"

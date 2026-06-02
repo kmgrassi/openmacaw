@@ -1,0 +1,30 @@
+{
+  "terraform_backend": {
+    "bucket": "YOUR_TERRAFORM_STATE_BUCKET",
+    "key": "openmacaw/dev/runtime-orchestrator/terraform.tfstate",
+    "region": "us-east-1",
+    "dynamodb_table": "YOUR_TERRAFORM_LOCK_TABLE",
+    "encrypt": true
+  },
+  "terraform_vars": {
+    "aws_region": "us-east-1",
+    "project_name": "openmacaw",
+    "environment_name": "dev",
+    "service_name": "openmacaw-launcher-dev",
+    "ecr_repository_name": "openmacaw-dev-runtime-orchestrator",
+    "ecr_repository_uri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/openmacaw-dev-runtime-orchestrator",
+    "shared_platform_state_enabled": true,
+    "shared_platform_state_bucket": "YOUR_SHARED_PLATFORM_STATE_BUCKET",
+    "shared_platform_state_key": "openmacaw/shared/terraform.tfstate",
+    "shared_platform_state_region": "us-east-1",
+    "create_ecs_cluster": false,
+    "existing_ecs_cluster_name": "openmacaw-dev",
+    "service_discovery_namespace": "openmacaw-dev.local",
+    "service_discovery_service_name": "openmacaw-launcher-dev",
+    "enable_efs": false,
+    "supabase_url": "",
+    "supabase_anon_key": "",
+    "supabase_jwt_secret": "",
+    "supabase_service_role_key_ssm_arn": ""
+  }
+}
