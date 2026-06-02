@@ -5,6 +5,8 @@ the combined platform, runtime, and local helper repository.
 
 ## Start here
 
+- The root README documents `./openmacaw run`, the default command for starting
+  the local platform and runtime stack.
 - [Open source readiness scope](open-source-readiness-scope.md) defines the
   remaining work to make OpenMacaw understandable, runnable, auditable, and
   maintainable for external developers and self-hosters.
