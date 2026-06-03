@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScheduledTaskProjection } from "../../../../contracts/scheduled-tasks.js";
 import { distillWorkspaceSkills } from "./learning/distiller.js";
-import { computeScheduledTaskNextRunAt, dispatchScheduledTaskDelivery } from "./scheduled-tasks.js";
+import { computeScheduledTaskNextRunAt } from "./scheduled-tasks/schedule-calculator.js";
+import { dispatchScheduledTaskDelivery } from "./scheduled-tasks.js";
 
 const { logEvent } = vi.hoisted(() => ({
   logEvent: vi.fn(),
