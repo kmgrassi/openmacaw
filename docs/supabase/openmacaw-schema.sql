@@ -824,7 +824,7 @@ create index if not exists broker_run_agent_created_idx on public.broker_run (ag
 create index if not exists broker_task_run_idx on public.broker_task (run_id);
 create index if not exists credential_workspace_idx on public.credential (workspace_id);
 create index if not exists engine_instance_agent_status_idx on public.engine_instance (agent_id, status);
-create unique index if not exists gateway_config_scope_key on public.gateway_config (scope_type, scope_id) where active_to is null;
+create unique index if not exists gateway_config_scope_key on public.gateway_config (scope_type, scope_id);
 create index if not exists local_runtime_machine_workspace_idx on public.local_runtime_machine (workspace_id);
 create index if not exists local_runtime_token_machine_idx on public.local_runtime_token (machine_id);
 create index if not exists memory_items_workspace_idx on public.memory_items (workspace_id);
@@ -925,7 +925,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into public."user" (auth_id, email, full_name, avatar_url, source, type, created_at)
   values (new.id, new.email, new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'avatar_url', 'supabase', 'user', now())
-  on conflict (auth_id) do update set
+  on conflict (auth_id) where auth_id is not null do update set
     email = excluded.email,
     full_name = coalesce(excluded.full_name, public."user".full_name),
     avatar_url = coalesce(excluded.avatar_url, public."user".avatar_url);
