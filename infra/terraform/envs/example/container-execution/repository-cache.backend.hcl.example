@@ -1,0 +1,5 @@
+bucket         = "YOUR_TERRAFORM_STATE_BUCKET"
+key            = "openmacaw/dev/container-execution/repository-cache/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "YOUR_TERRAFORM_LOCK_TABLE"
+encrypt        = true

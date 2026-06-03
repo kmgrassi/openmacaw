@@ -1,0 +1,33 @@
+project_name = "openmacaw"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+image_tag     = "main"
+desired_count = 1
+cpu           = 256
+memory        = 512
+
+orchestrator_base_url = "http://openmacaw-launcher-dev.openmacaw-dev.local:4100"
+launcher_base_url     = "http://openmacaw-launcher-dev.openmacaw-dev.local:4100"
+cors_origins          = "http://localhost:5173"
+
+# Use explicit network values for standalone deployments.
+vpc_id                = "vpc_REPLACE_ME"
+private_subnet_ids    = ["subnet_REPLACE_ME"]
+public_subnet_ids     = ["subnet_REPLACE_ME"]
+ecs_cluster_arn       = "arn:aws:ecs:us-east-1:123456789012:cluster/openmacaw-dev"
+alb_arn               = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/openmacaw-dev/REPLACE_ME"
+alb_listener_arn      = "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/openmacaw-dev/REPLACE_ME/REPLACE_ME"
+alb_security_group_id = "sg_REPLACE_ME"
+
+domain_name         = "api.example.com"
+certificate_domains = ["api.example.com"]
+route53_zone_name   = "example.com"
+manage_public_edge  = true
+
+github_org  = "YOUR_GITHUB_ORG"
+github_repo = "openmacaw"
+
+# Store sensitive values in SSM/Secrets Manager and pass ARNs only.
+supabase_url                  = ""
+supabase_service_role_key_ssm_arn = ""
