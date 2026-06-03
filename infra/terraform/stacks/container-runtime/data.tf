@@ -1,5 +1,3 @@
-data "aws_caller_identity" "current" {}
-
 data "terraform_remote_state" "foundation" {
   backend = "s3"
 
@@ -12,11 +10,12 @@ data "terraform_remote_state" "foundation" {
 
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
-  account_id  = data.aws_caller_identity.current.account_id
 
   executor_image = "${data.terraform_remote_state.foundation.outputs.container_executor_ecr_repository_url}:${var.executor_image_tag}"
 
-  artifact_bucket_name = lower(replace("${local.name_prefix}-container-artifacts-${local.account_id}", "_", "-"))
+  artifact_bucket_name = data.terraform_remote_state.foundation.outputs.container_artifact_bucket_name
+  artifact_bucket_arn  = "arn:aws:s3:::${local.artifact_bucket_name}"
+  artifact_kms_key_arn = data.terraform_remote_state.foundation.outputs.container_artifact_kms_key_arn
   artifact_prefix_root = trim(var.artifact_prefix_root, "/")
   artifact_write_prefix = join("/", [
     local.artifact_prefix_root,

@@ -123,12 +123,6 @@ variable "artifact_run_id" {
   default     = "dev-smoke-run"
 }
 
-variable "artifact_retention_days" {
-  description = "Number of days to retain executor artifacts in S3"
-  type        = number
-  default     = 30
-}
-
 variable "log_retention_days" {
   description = "CloudWatch log retention period for executor lifecycle logs"
   type        = number

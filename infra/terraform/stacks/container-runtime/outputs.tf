@@ -35,7 +35,7 @@ output "executor_container_name" {
 
 output "artifact_bucket_name" {
   description = "S3 bucket where executor tasks write durable run artifacts"
-  value       = aws_s3_bucket.artifacts.bucket
+  value       = local.artifact_bucket_name
 }
 
 output "artifact_prefix_root" {

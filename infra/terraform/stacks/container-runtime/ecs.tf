@@ -32,7 +32,7 @@ resource "aws_ecs_task_definition" "executor" {
           { name = "EXECUTION_ADAPTER", value = "aws_ecs" },
           { name = "WORKSPACE_ROOT", value = var.workspace_root },
           { name = "RESOURCE_ROOT", value = var.resource_root },
-          { name = "ARTIFACT_BUCKET", value = aws_s3_bucket.artifacts.bucket },
+          { name = "ARTIFACT_BUCKET", value = local.artifact_bucket_name },
           { name = "ARTIFACT_PREFIX_ROOT", value = local.artifact_prefix_root },
           { name = "ARTIFACT_PREFIX", value = local.artifact_write_prefix },
           { name = "NETWORK_POLICY_JSON", value = var.network_policy_json },

@@ -61,7 +61,7 @@ resource "aws_iam_role_policy" "executor_task_artifacts" {
           "s3:PutObject",
           "s3:PutObjectTagging",
         ]
-        Resource = "${aws_s3_bucket.artifacts.arn}/${local.artifact_write_prefix}/*"
+        Resource = "${local.artifact_bucket_arn}/${local.artifact_write_prefix}/*"
       },
       {
         Sid    = "ReadOwnRunArtifacts"
@@ -70,13 +70,13 @@ resource "aws_iam_role_policy" "executor_task_artifacts" {
           "s3:GetObject",
           "s3:GetObjectTagging",
         ]
-        Resource = "${aws_s3_bucket.artifacts.arn}/${local.artifact_write_prefix}/*"
+        Resource = "${local.artifact_bucket_arn}/${local.artifact_write_prefix}/*"
       },
       {
         Sid      = "ListArtifactPrefix"
         Effect   = "Allow"
         Action   = "s3:ListBucket"
-        Resource = aws_s3_bucket.artifacts.arn
+        Resource = local.artifact_bucket_arn
         Condition = {
           StringLike = {
             "s3:prefix" = [
@@ -94,7 +94,7 @@ resource "aws_iam_role_policy" "executor_task_artifacts" {
           "kms:Encrypt",
           "kms:GenerateDataKey",
         ]
-        Resource = aws_kms_key.artifacts.arn
+        Resource = local.artifact_kms_key_arn
       }
     ]
   })
