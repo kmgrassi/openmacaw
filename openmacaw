@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+LOG_DIR="$ROOT_DIR/.run-logs"
+RUN_DIR="$LOG_DIR/openmacaw"
+PLATFORM_PID_FILE="$RUN_DIR/platform.pid"
+RUNTIME_PID_FILE="$RUN_DIR/runtime.pid"
+
+API_PORT="${API_PORT:-}"
+WEB_PORT="${WEB_PORT:-}"
+LAUNCHER_PORT="${LAUNCHER_PORT:-}"
+LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-}"
+ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-}"
+WORKTREE_KIND="main"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./openmacaw run       Start the local OpenMacaw stack
+  ./openmacaw status    Show local service health
+  ./openmacaw stop      Stop a stack started by ./openmacaw run
+  ./openmacaw doctor    Check command-line prerequisites
+
+The default run command starts:
+  - platform API
+  - platform web app
+  - runtime launcher
+  - runtime orchestrator
+
+Environment overrides:
+  API_PORT, WEB_PORT, LAUNCHER_PORT, LAUNCHER_START_PORT, ORCHESTRATOR_PORT
+  OPENMACAW_SKIP_BOOTSTRAP=1     Do not install missing dependencies
+  OPENMACAW_HEALTH_TIMEOUT=60    Startup health wait in seconds
+EOF
+}
+
+die() {
+  echo "[openmacaw] $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+derive_ports() {
+  local git_dir
+  local git_common_dir
+  local is_main_worktree=0
+
+  git_dir="$(git -C "$ROOT_DIR" rev-parse --absolute-git-dir 2>/dev/null || true)"
+  git_common_dir="$(git -C "$ROOT_DIR" rev-parse --git-common-dir 2>/dev/null || true)"
+
+  if [ -n "$git_common_dir" ]; then
+    case "$git_common_dir" in
+      /*) ;;
+      *) git_common_dir="$ROOT_DIR/$git_common_dir" ;;
+    esac
+    if [ -d "$git_common_dir" ]; then
+      git_common_dir="$(cd "$git_common_dir" && pwd -P)"
+    fi
+  fi
+
+  if [ -n "$git_dir" ] && [ "$git_dir" = "$git_common_dir" ]; then
+    is_main_worktree=1
+  fi
+
+  if [ "$is_main_worktree" -eq 1 ]; then
+    WORKTREE_KIND="main"
+    API_PORT="${API_PORT:-3100}"
+    WEB_PORT="${WEB_PORT:-5173}"
+    LAUNCHER_PORT="${LAUNCHER_PORT:-4100}"
+    ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-4000}"
+    LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-4001}"
+  else
+    local hash_hex
+    local offset
+    WORKTREE_KIND="linked"
+    hash_hex="$(printf '%s' "$ROOT_DIR" | LC_ALL=C LANG=C shasum -a 1 | cut -c1-4)"
+    offset=$(( 0x$hash_hex % 80 + 1 ))
+    API_PORT="${API_PORT:-$((3100 + offset))}"
+    WEB_PORT="${WEB_PORT:-$((5173 + offset))}"
+    LAUNCHER_PORT="${LAUNCHER_PORT:-$((4100 + offset))}"
+    ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-$((4000 + offset))}"
+    LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-$((4001 + offset))}"
+  fi
+}
+
+bootstrap_if_needed() {
+  if [ "${OPENMACAW_SKIP_BOOTSTRAP:-0}" = "1" ]; then
+    echo "[openmacaw] skipping dependency bootstrap"
+    return 0
+  fi
+
+  if [ ! -d "$ROOT_DIR/platform/node_modules" ]; then
+    echo "[openmacaw] installing platform dependencies"
+    pnpm -C "$ROOT_DIR/platform" install
+  fi
+
+  if [ ! -d "$ROOT_DIR/runtime/node_modules" ]; then
+    echo "[openmacaw] installing runtime Node dependencies"
+    pnpm -C "$ROOT_DIR/runtime" install
+  fi
+
+  if [ ! -d "$ROOT_DIR/runtime/apps/orchestrator/deps" ]; then
+    echo "[openmacaw] installing runtime Elixir dependencies"
+    (cd "$ROOT_DIR/runtime/apps/orchestrator" && mix deps.get)
+  fi
+}
+
+pid_is_running() {
+  local pid_file="$1"
+  local pid
+
+  [ -f "$pid_file" ] || return 1
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+stop_from_pid_file() {
+  local name="$1"
+  local pid_file="$2"
+  local pid
+
+  if ! [ -f "$pid_file" ]; then
+    echo "[openmacaw] ${name}: no pid file"
+    return 0
+  fi
+
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+    echo "[openmacaw] ${name}: not running"
+    rm -f "$pid_file"
+    return 0
+  fi
+
+  echo "[openmacaw] stopping ${name} (pid ${pid})"
+  kill "$pid" 2>/dev/null || true
+  rm -f "$pid_file"
+}
+
+wait_for_http() {
+  local name="$1"
+  local url="$2"
+  local timeout="${OPENMACAW_HEALTH_TIMEOUT:-60}"
+  local deadline=$((SECONDS + timeout))
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "[openmacaw] ${name} ready: ${url}"
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "[openmacaw] ${name} did not become ready within ${timeout}s: ${url}" >&2
+  return 1
+}
+
+print_summary() {
+  cat <<EOF
+
+[openmacaw] OpenMacaw is running (${WORKTREE_KIND} worktree)
+  Web:          http://127.0.0.1:${WEB_PORT}
+  API:          http://127.0.0.1:${API_PORT}
+  Runtime:      http://127.0.0.1:${ORCHESTRATOR_PORT}
+  Launcher:     http://127.0.0.1:${LAUNCHER_PORT}
+
+  Logs:
+    $LOG_DIR/platform.log
+    $LOG_DIR/runtime.log
+
+Press Ctrl+C to stop this stack.
+EOF
+}
+
+doctor() {
+  derive_ports
+  require_cmd git
+  require_cmd node
+  require_cmd pnpm
+  require_cmd elixir
+  require_cmd mix
+  require_cmd curl
+  require_cmd lsof
+  require_cmd shasum
+
+  echo "[openmacaw] prerequisites available"
+  echo "[openmacaw] ports: web=${WEB_PORT} api=${API_PORT} runtime=${ORCHESTRATOR_PORT} launcher=${LAUNCHER_PORT} launcher-start=${LAUNCHER_START_PORT}"
+}
+
+status() {
+  derive_ports
+  echo "[openmacaw] process status"
+  if pid_is_running "$PLATFORM_PID_FILE"; then
+    echo "  platform wrapper: running (pid $(cat "$PLATFORM_PID_FILE"))"
+  else
+    echo "  platform wrapper: not running"
+  fi
+  if pid_is_running "$RUNTIME_PID_FILE"; then
+    echo "  runtime wrapper:  running (pid $(cat "$RUNTIME_PID_FILE"))"
+  else
+    echo "  runtime wrapper:  not running"
+  fi
+
+  echo
+  echo "[openmacaw] service health"
+  curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 \
+    && echo "  api:          healthy http://127.0.0.1:${API_PORT}/health" \
+    || echo "  api:          not healthy http://127.0.0.1:${API_PORT}/health"
+  curl -fsS "http://127.0.0.1:${WEB_PORT}" >/dev/null 2>&1 \
+    && echo "  web:          reachable http://127.0.0.1:${WEB_PORT}" \
+    || echo "  web:          not reachable http://127.0.0.1:${WEB_PORT}"
+  curl -fsS "http://127.0.0.1:${LAUNCHER_PORT}/health" >/dev/null 2>&1 \
+    && echo "  launcher:     healthy http://127.0.0.1:${LAUNCHER_PORT}/health" \
+    || echo "  launcher:     not healthy http://127.0.0.1:${LAUNCHER_PORT}/health"
+  curl -fsS "http://127.0.0.1:${ORCHESTRATOR_PORT}/api/v1/health" >/dev/null 2>&1 \
+    && echo "  runtime:      healthy http://127.0.0.1:${ORCHESTRATOR_PORT}/api/v1/health" \
+    || echo "  runtime:      not healthy http://127.0.0.1:${ORCHESTRATOR_PORT}/api/v1/health"
+}
+
+stop_stack() {
+  stop_from_pid_file "platform" "$PLATFORM_PID_FILE"
+  stop_from_pid_file "runtime" "$RUNTIME_PID_FILE"
+}
+
+run_stack() {
+  derive_ports
+  doctor
+  bootstrap_if_needed
+
+  mkdir -p "$RUN_DIR"
+  : > "$LOG_DIR/platform.log"
+  : > "$LOG_DIR/runtime.log"
+
+  echo "[openmacaw] starting platform API/web"
+  (
+    cd "$ROOT_DIR/platform"
+    exec env \
+      API_PORT="$API_PORT" \
+      WEB_PORT="$WEB_PORT" \
+      OPENMACAW_ORCHESTRATOR_BASE_URL="http://127.0.0.1:${ORCHESTRATOR_PORT}" \
+      OPENMACAW_ORCHESTRATOR_WS_URL="ws://127.0.0.1:${ORCHESTRATOR_PORT}" \
+      OPENMACAW_LAUNCHER_BASE_URL="http://127.0.0.1:${LAUNCHER_PORT}" \
+      pnpm run dev
+  ) >"$LOG_DIR/platform.log" 2>&1 &
+  PLATFORM_PID=$!
+  echo "$PLATFORM_PID" > "$PLATFORM_PID_FILE"
+
+  echo "[openmacaw] starting runtime launcher/orchestrator"
+  (
+    cd "$ROOT_DIR/runtime"
+    exec env LAUNCHER_PORT="$LAUNCHER_PORT" LAUNCHER_START_PORT="$LAUNCHER_START_PORT" ORCHESTRATOR_PORT="$ORCHESTRATOR_PORT" pnpm run start:local
+  ) >"$LOG_DIR/runtime.log" 2>&1 &
+  RUNTIME_PID=$!
+  echo "$RUNTIME_PID" > "$RUNTIME_PID_FILE"
+
+  cleanup() {
+    printf '\n[openmacaw] stopping stack...\n'
+    stop_stack
+  }
+  trap cleanup INT TERM EXIT
+
+  wait_for_http "api" "http://127.0.0.1:${API_PORT}/livez"
+  wait_for_http "web" "http://127.0.0.1:${WEB_PORT}"
+  wait_for_http "launcher" "http://127.0.0.1:${LAUNCHER_PORT}/health"
+  wait_for_http "runtime" "http://127.0.0.1:${ORCHESTRATOR_PORT}/api/v1/health"
+  print_summary
+
+  while true; do
+    if ! kill -0 "$PLATFORM_PID" 2>/dev/null; then
+      echo "[openmacaw] platform process exited; see $LOG_DIR/platform.log" >&2
+      exit 1
+    fi
+    if ! kill -0 "$RUNTIME_PID" 2>/dev/null; then
+      echo "[openmacaw] runtime process exited; see $LOG_DIR/runtime.log" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
+case "${1:-}" in
+  run)
+    shift
+    [ "$#" -eq 0 ] || die "unknown run argument: $*"
+    run_stack
+    ;;
+  status)
+    shift
+    [ "$#" -eq 0 ] || die "unknown status argument: $*"
+    status
+    ;;
+  stop)
+    shift
+    [ "$#" -eq 0 ] || die "unknown stop argument: $*"
+    stop_stack
+    ;;
+  doctor)
+    shift
+    [ "$#" -eq 0 ] || die "unknown doctor argument: $*"
+    doctor
+    ;;
+  help|--help|-h|"")
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 64
+    ;;
+esac

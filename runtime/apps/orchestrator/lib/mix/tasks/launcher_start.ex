@@ -7,25 +7,28 @@ defmodule Mix.Tasks.Launcher.Start do
 
   ## Usage
 
-      mix launcher.start [--port PORT] [--state-dir DIR]
+      mix launcher.start [--port PORT] [--state-dir DIR] [--start-port PORT]
 
   ## Options
 
   - `--port` — Port for the Launcher HTTP API (default: 4100, env: LAUNCHER_PORT)
   - `--state-dir` — Directory for persisting orchestrator state
     (default: ~/.symphony/launcher, env: LAUNCHER_STATE_DIR)
+  - `--start-port` — First port for launched agent orchestrators
+    (default: 4000, env: LAUNCHER_START_PORT)
 
   ## Environment variables
 
   - `LAUNCHER_PORT` — Same as `--port`
   - `LAUNCHER_STATE_DIR` — Same as `--state-dir`
+  - `LAUNCHER_START_PORT` — Same as `--start-port`
   - `LAUNCHER_BIND_HOST` — Bind host for the Launcher HTTP API
     (default: 127.0.0.1; set to 0.0.0.0 only behind a private listener)
   """
 
   use Mix.Task
 
-  @switches [port: :integer, state_dir: :string]
+  @switches [port: :integer, state_dir: :string, start_port: :integer]
 
   @impl true
   def run(args) do
@@ -40,10 +43,15 @@ defmodule Mix.Tasks.Launcher.Start do
       Keyword.get(opts, :port) ||
         parse_env_int("LAUNCHER_PORT")
 
+    start_port =
+      Keyword.get(opts, :start_port) ||
+        parse_env_int("LAUNCHER_START_PORT")
+
     sup_opts =
       []
       |> maybe_put(:port, port)
       |> maybe_put(:state_dir, state_dir && Path.expand(state_dir))
+      |> maybe_put(:start_port, start_port)
 
     # Start dependencies. Use the single source of truth in
     # `SymphonyElixir.CLI.launcher_required_apps/0` rather than a parallel

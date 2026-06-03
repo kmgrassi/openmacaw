@@ -16,6 +16,7 @@ defmodule SymphonyElixir.CLI do
   @launcher_switches [
     port: :integer,
     state_dir: :string,
+    start_port: :integer,
     workflow: :string
   ]
 
@@ -201,6 +202,7 @@ defmodule SymphonyElixir.CLI do
     []
     |> maybe_put(:port, Keyword.get(opts, :port) || parse_env_int("LAUNCHER_PORT"))
     |> maybe_put(:state_dir, launcher_state_dir(opts))
+    |> maybe_put(:start_port, Keyword.get(opts, :start_port) || parse_env_int("LAUNCHER_START_PORT"))
   end
 
   defp launcher_state_dir(opts) do

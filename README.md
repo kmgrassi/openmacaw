@@ -68,38 +68,44 @@ for the current readiness plan and PR breakdown.
 
 ## Local development
 
-There is not yet a single root command that installs and validates every
-subsystem. Until that command surface lands, use the subsystem commands:
-
-- Platform: run commands from `platform/` with pnpm.
-- Runtime: run commands from `runtime/` with pnpm, and Elixir commands from
-  `runtime/apps/orchestrator/`.
-- Local helper: run Go commands from `local-runtime-helper/`.
-
-Useful starting points:
+Start the local OpenMacaw stack from the repository root:
 
 ```sh
-cd platform
-pnpm install
-pnpm run doctor
+./openmacaw run
 ```
+
+That command checks the required command-line tools, installs missing
+JavaScript and Elixir dependencies, then starts the platform API, platform web
+app, runtime launcher, and runtime orchestrator together.
+
+When the stack is ready, the command prints the local URLs and log paths:
+
+- Web: `http://127.0.0.1:5173`
+- API: `http://127.0.0.1:3100`
+- Runtime orchestrator: `http://127.0.0.1:4000`
+- Runtime launcher: `http://127.0.0.1:4100`
+
+Press `Ctrl+C` to stop the stack.
+
+Useful root commands:
 
 ```sh
-cd runtime
-pnpm install
-pnpm run doctor:runtime
+./openmacaw doctor
+./openmacaw status
+./openmacaw stop
 ```
 
-```sh
-cd local-runtime-helper
-go build ./...
-go test ./...
-go vet ./...
-```
+Linked git worktrees automatically use an offset port range so multiple agents
+can run OpenMacaw side by side. Override ports with `API_PORT`, `WEB_PORT`,
+`ORCHESTRATOR_PORT`, `LAUNCHER_PORT`, or `LAUNCHER_START_PORT` when needed.
 
-These commands may require local services, environment variables, or sibling
-subsystem setup depending on the workflow. The open-source readiness work will
-make those prerequisites explicit.
+The local runtime helper remains a separate daemon for workflows that need
+local model or local tool execution. Configure it from `local-runtime-helper/`
+after the core stack is running.
+
+Some workflows still require local services, environment variables, provider
+credentials, or a configured Supabase/database path. The open-source readiness
+work will keep narrowing those prerequisites and making them explicit.
 
 ## Documentation
 

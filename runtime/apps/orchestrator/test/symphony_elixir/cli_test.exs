@@ -169,7 +169,16 @@ defmodule SymphonyElixir.CLITest do
 
     assert :ok =
              CLI.evaluate_launcher(
-               ["--port", "4100", "--state-dir", state_dir, "--workflow", workflow_path],
+               [
+                 "--port",
+                 "4100",
+                 "--start-port",
+                 "4101",
+                 "--state-dir",
+                 state_dir,
+                 "--workflow",
+                 workflow_path
+               ],
                deps
              )
 
@@ -177,7 +186,7 @@ defmodule SymphonyElixir.CLITest do
     assert_received {:workflow_set, ^expanded_workflow_path}
     assert_received :launcher_deps_started
     assert_received :tracker_api_started
-    assert_received {:launcher_started, [state_dir: ^expanded_state_dir, port: 4100]}
+    assert_received {:launcher_started, [start_port: 4101, state_dir: ^expanded_state_dir, port: 4100]}
   end
 
   test "launcher mode reports missing workflow before starting dependencies" do
