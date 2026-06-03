@@ -10,6 +10,7 @@ RUNTIME_PID_FILE="$RUN_DIR/runtime.pid"
 API_PORT="${API_PORT:-}"
 WEB_PORT="${WEB_PORT:-}"
 LAUNCHER_PORT="${LAUNCHER_PORT:-}"
+LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-}"
 ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-}"
 WORKTREE_KIND="main"
 
@@ -28,7 +29,7 @@ The default run command starts:
   - runtime orchestrator
 
 Environment overrides:
-  API_PORT, WEB_PORT, LAUNCHER_PORT, ORCHESTRATOR_PORT
+  API_PORT, WEB_PORT, LAUNCHER_PORT, LAUNCHER_START_PORT, ORCHESTRATOR_PORT
   OPENMACAW_SKIP_BOOTSTRAP=1     Do not install missing dependencies
   OPENMACAW_HEALTH_TIMEOUT=60    Startup health wait in seconds
 EOF
@@ -71,6 +72,7 @@ derive_ports() {
     WEB_PORT="${WEB_PORT:-5173}"
     LAUNCHER_PORT="${LAUNCHER_PORT:-4100}"
     ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-4000}"
+    LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-4001}"
   else
     local hash_hex
     local offset
@@ -81,6 +83,7 @@ derive_ports() {
     WEB_PORT="${WEB_PORT:-$((5173 + offset))}"
     LAUNCHER_PORT="${LAUNCHER_PORT:-$((4100 + offset))}"
     ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-$((4000 + offset))}"
+    LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-$((4001 + offset))}"
   fi
 }
 
@@ -185,7 +188,7 @@ doctor() {
   require_cmd shasum
 
   echo "[openmacaw] prerequisites available"
-  echo "[openmacaw] ports: web=${WEB_PORT} api=${API_PORT} runtime=${ORCHESTRATOR_PORT} launcher=${LAUNCHER_PORT}"
+  echo "[openmacaw] ports: web=${WEB_PORT} api=${API_PORT} runtime=${ORCHESTRATOR_PORT} launcher=${LAUNCHER_PORT} launcher-start=${LAUNCHER_START_PORT}"
 }
 
 status() {
@@ -249,7 +252,7 @@ run_stack() {
   echo "[openmacaw] starting runtime launcher/orchestrator"
   (
     cd "$ROOT_DIR/runtime"
-    exec env LAUNCHER_PORT="$LAUNCHER_PORT" ORCHESTRATOR_PORT="$ORCHESTRATOR_PORT" pnpm run start:local
+    exec env LAUNCHER_PORT="$LAUNCHER_PORT" LAUNCHER_START_PORT="$LAUNCHER_START_PORT" ORCHESTRATOR_PORT="$ORCHESTRATOR_PORT" pnpm run start:local
   ) >"$LOG_DIR/runtime.log" 2>&1 &
   RUNTIME_PID=$!
   echo "$RUNTIME_PID" > "$RUNTIME_PID_FILE"

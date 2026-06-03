@@ -97,7 +97,7 @@ Useful root commands:
 
 Linked git worktrees automatically use an offset port range so multiple agents
 can run OpenMacaw side by side. Override ports with `API_PORT`, `WEB_PORT`,
-`ORCHESTRATOR_PORT`, or `LAUNCHER_PORT` when needed.
+`ORCHESTRATOR_PORT`, `LAUNCHER_PORT`, or `LAUNCHER_START_PORT` when needed.
 
 The local runtime helper remains a separate daemon for workflows that need
 local model or local tool execution. Configure it from `local-runtime-helper/`
