@@ -51,6 +51,11 @@ When a PR merges to `main`, GitHub Actions evaluates path filters:
 
 Both workflows can also be run manually through `workflow_dispatch`.
 
+Automatic push-triggered runs deploy the `development` GitHub Environment and
+use the `dev` SSM path segment. Manual runs can deploy `development`,
+`staging`, or `production`; production should be run with
+`deploy_environment=production` and `environment_slug=prod`.
+
 Each workflow:
 
 1. checks out OpenMacaw;
@@ -123,8 +128,23 @@ The current workflow defaults use:
 /openmacaw/dev/runtime-orchestrator/deploy/image-uri
 ```
 
-For staging/production, use the same shape with environment-specific paths, then
-update workflow environment variables or add environment-aware workflow inputs.
+For production, the manual workflow defaults resolve to:
+
+```text
+/openmacaw/prod/platform-api/deploy/config
+/openmacaw/prod/platform-api/deploy/image-uri
+/openmacaw/prod/runtime-orchestrator/deploy/config
+/openmacaw/prod/runtime-orchestrator/deploy/image-uri
+```
+
+For staging, use the same shape under `/openmacaw/staging/...`. If an existing
+AWS account uses a different naming scheme, set the manual workflow
+`deploy_config_param` and `image_uri_param` inputs to the full SSM paths.
+
+Use `SecureString` for deploy config parameters when the JSON contains any
+sensitive Terraform values. Prefer SSM or Secrets Manager ARNs for runtime
+secrets so ECS injects them into the task at startup instead of storing
+plaintext secret values in Terraform state.
 
 The deploy config parameter contains:
 
@@ -147,6 +167,11 @@ The deploy config parameter contains:
 Use the example files in `infra/terraform/envs/example/` as the source shape.
 The real SSM JSON should include all required stack variables for the target
 environment.
+
+Production examples are provided as sanitized templates:
+
+- `infra/terraform/envs/example/platform-api/deploy-config.production.ssm.example.json`
+- `infra/terraform/envs/example/runtime-orchestrator/deploy-config.production.ssm.example.json`
 
 ## Platform API Deploy Contract
 
@@ -195,7 +220,8 @@ The deploy config must provide:
 - ECR repository name/URI;
 - image tag, supplied by the workflow;
 - shared platform state pointers or explicit VPC/subnet/ECS values;
-- Supabase URL, anon key, JWT secret, and service-role-key SSM ARN as needed;
+- Supabase URL and SSM-backed Supabase anon key, JWT secret, and
+  service-role-key values as needed;
 - Cloud Map service discovery values for VPC-internal API-to-launcher routing;
 - EFS workspace mount values when persistent runtime workspaces are enabled.
 
@@ -249,8 +275,17 @@ From GitHub Actions, run:
 - `Deploy Platform API`
 - `Deploy Runtime Orchestrator`
 
+For production, choose:
+
+```text
+deploy_environment=production
+environment_slug=prod
+```
+
 The workflow uses the commit selected by the manual run and the configured SSM
-deploy config path.
+deploy config path. Leave `deploy_config_param` and `image_uri_param` empty to
+use the `/openmacaw/prod/...` defaults, or set them to full SSM paths for a
+private naming convention.
 
 ## Migration From Existing Harper-Owned Infrastructure
 
@@ -267,10 +302,14 @@ For an existing Harper-owned AWS environment:
    first OpenMacaw apply recreate shared production resources.
 6. Deploy development first, then staging/production.
 
+During cutover from the previous Parallel Agent repos, keep the old automatic
+deploy workflows enabled until OpenMacaw has successfully deployed the matching
+service once. After the OpenMacaw production deploy is confirmed, disable or
+make the old repo workflow manual-only so future merges there cannot overwrite
+OpenMacaw-managed ECS task definitions.
+
 ## What Still Needs To Be Added
 
-- Environment-aware deploy inputs for `dev`, `staging`, and `prod` rather than
-  only hard-coded `dev` SSM paths.
 - A separate public web client deploy workflow, if the web client is deployed
   outside the platform API.
 - A one-time checklist for importing/adopting existing AWS resources into the

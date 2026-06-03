@@ -46,7 +46,14 @@ The deploy workflows read JSON from SSM:
 ```text
 /openmacaw/dev/platform-api/deploy/config
 /openmacaw/dev/runtime-orchestrator/deploy/config
+/openmacaw/prod/platform-api/deploy/config
+/openmacaw/prod/runtime-orchestrator/deploy/config
 ```
+
+Use `SecureString` for deploy config parameters when the JSON contains any
+sensitive Terraform values. Prefer passing runtime secrets as SSM/Secrets
+Manager ARNs through `container_secrets` rather than embedding plaintext values
+in the deploy config JSON.
 
 Each parameter should contain:
 
@@ -69,7 +76,9 @@ Each parameter should contain:
 Use the fuller examples in:
 
 - `infra/terraform/envs/example/platform-api/deploy-config.ssm.example.json`
+- `infra/terraform/envs/example/platform-api/deploy-config.production.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.ssm.example.json`
+- `infra/terraform/envs/example/runtime-orchestrator/deploy-config.production.ssm.example.json`
 
 ## Deploy Workflows
 
@@ -80,6 +89,27 @@ stack:
 - `.github/workflows/deploy-runtime-orchestrator.yml`
 
 They can also be run manually through `workflow_dispatch`.
+
+Push-triggered deploys use the `development` GitHub Environment and the `dev`
+SSM path segment by default. For staging or production, run the workflow
+manually and choose:
+
+```text
+deploy_environment=production
+environment_slug=prod
+```
+
+That resolves the default production SSM paths:
+
+```text
+/openmacaw/prod/platform-api/deploy/config
+/openmacaw/prod/platform-api/deploy/image-uri
+/openmacaw/prod/runtime-orchestrator/deploy/config
+/openmacaw/prod/runtime-orchestrator/deploy/image-uri
+```
+
+For private deployments that use a different naming convention, provide
+`deploy_config_param` and `image_uri_param` in the manual workflow run.
 
 Each workflow:
 
