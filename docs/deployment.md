@@ -90,6 +90,9 @@ Each workflow:
 5. runs `terraform apply` with the temporary tfvars file
 6. writes the deployed image URI pointer back to SSM
 
+For the operational model around deploying OpenMacaw changes into an existing
+AWS environment, see [AWS deployment operations](aws-deployment-operations.md).
+
 ## Harper Deployment Values
 
 For Harper-owned AWS environments, keep the concrete values in SSM instead of
