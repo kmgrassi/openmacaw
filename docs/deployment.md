@@ -1,7 +1,7 @@
 # Deployment
 
-OpenMacaw now includes the initial AWS deployment scaffold migrated from the
-previous Parallel Agent platform/runtime deployments.
+OpenMacaw includes AWS deployment scaffolding for the platform API and runtime
+orchestrator services.
 
 The repo contains reusable Terraform stacks and deploy workflows, but it does
 not contain private account configuration. Keep AWS account IDs, backend
@@ -22,6 +22,34 @@ infra/terraform/
 
 The public examples in `infra/terraform/envs/example` document the expected
 shape for backend config, local `tfvars`, and SSM deploy config JSON.
+
+## Self-Hosting AWS Quick Start
+
+OpenMacaw can be used as the deploy source for an AWS environment, but the
+public repository intentionally does not include private AWS account details.
+At a high level, a self-hosted deploy looks like this:
+
+1. Fork or clone OpenMacaw.
+2. Create an AWS Terraform backend bucket and DynamoDB lock table.
+3. Create or choose shared AWS infrastructure: VPC, subnets, ECS cluster,
+   service discovery, and optionally ALB, Route53, CloudFront, S3, and EFS.
+4. Create a GitHub OIDC deploy role scoped to the OpenMacaw repository or to a
+   private deployment repository.
+5. Store private deploy config JSON in AWS SSM as `SecureString` parameters.
+6. Store runtime secrets in SSM or Secrets Manager and pass only ARNs in the
+   deploy config.
+7. Run the service deploy workflows manually, or call them from a private
+   orchestration workflow.
+8. Verify ECS service health, target groups, API health endpoints, and
+   CloudWatch logs.
+
+The OpenMacaw repo provides Terraform stacks, Docker build contexts, and
+reusable GitHub Actions. The AWS account or private deployment repo provides
+account IDs, domains, backend names, cluster names, service names, secret ARNs,
+and production orchestration.
+
+For a detailed walkthrough, see
+[AWS deployment operations](aws-deployment-operations.md).
 
 ## GitHub Secrets
 
@@ -92,6 +120,14 @@ deployment repository with `workflow_call`. Keep environment-specific
 orchestration, health checks, service names, cluster names, and notification
 rules in the private deployment repository for that environment.
 
+For third-party production deployments, the recommended model is:
+
+- keep OpenMacaw generic and public;
+- keep deploy config generation and SSM upload scripts in a private repository;
+- keep any autonomous production workflow in that private repository;
+- have the private workflow check out OpenMacaw at a known ref and call or
+  reproduce the service deployment steps with private environment values.
+
 Manual service workflow runs default to the `development` GitHub Environment
 and the `dev` SSM path segment. For staging or production one-service deploys,
 run the relevant service workflow manually and choose:
@@ -127,9 +163,3 @@ Each workflow:
 
 For the operational model around deploying OpenMacaw changes into an existing
 AWS environment, see [AWS deployment operations](aws-deployment-operations.md).
-
-## Harper Deployment Values
-
-For Harper-owned AWS environments, keep the concrete values in SSM instead of
-committing `tfvars` files. That lets OpenMacaw remain the deploy source of truth
-while keeping private infrastructure details private.
