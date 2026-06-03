@@ -79,6 +79,7 @@ Use the fuller examples in:
 - `infra/terraform/envs/example/platform-api/deploy-config.production.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.production.ssm.example.json`
+- `infra/terraform/envs/example/openclaw-instance/deploy-config.ssm.example.json`
 
 ## Deploy Workflows
 
@@ -110,6 +111,12 @@ That resolves the default production SSM paths:
 
 For private deployments that use a different naming convention, provide
 `deploy_config_param` and `image_uri_param` in the manual workflow run.
+
+OpenMacaw also includes an experimental `Deploy OpenClaw Instance` workflow for
+running an existing OpenClaw broker/gateway deployment from OpenMacaw. It is
+manual-only by design. Start with `apply=false` and point its SSM config at the
+existing OpenClaw Terraform backend/state so Terraform plans against the already
+managed resources rather than trying to recreate them.
 
 Each workflow:
 
