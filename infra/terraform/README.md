@@ -16,6 +16,7 @@ infra/terraform/
     container-runtime/             # ECS task definition/runtime launch support
     repository-cache/              # EFS-backed repository/session cache
     runtime-orchestrator/          # OpenMacaw runtime launcher/orchestrator
+    openclaw-instance/             # Experimental OpenClaw broker/gateway deploy adapter
   envs/
     example/                       # backend/tfvars examples only
 ```
@@ -42,8 +43,19 @@ Recommended SSM parameters:
 
 - `/openmacaw/dev/platform-api/deploy/config`
 - `/openmacaw/dev/runtime-orchestrator/deploy/config`
+- `/openmacaw/prod/platform-api/deploy/config`
+- `/openmacaw/prod/runtime-orchestrator/deploy/config`
+- `/openmacaw/prod/openclaw-instance/deploy/config`
 
-See the JSON examples in `envs/example/*/deploy-config.ssm.example.json`.
+Push-triggered workflow runs default to the `dev` SSM path segment. Manual
+workflow runs can select `dev`, `staging`, or `prod`, and can override the full
+SSM parameter paths for private deployments with a different naming convention.
+
+See the JSON examples in `envs/example/*/deploy-config*.ssm.example.json`.
+
+The OpenClaw instance adapter is intended for migration/pilot deployments. When
+driving an existing OpenClaw AWS instance, point the backend config at the
+existing OpenClaw Terraform state and run a manual plan before enabling apply.
 
 ## Manual Plan
 

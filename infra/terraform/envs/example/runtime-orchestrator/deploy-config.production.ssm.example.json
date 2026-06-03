@@ -1,0 +1,44 @@
+{
+  "terraform_backend": {
+    "bucket": "YOUR_TERRAFORM_STATE_BUCKET",
+    "key": "openmacaw/prod/runtime-orchestrator/terraform.tfstate",
+    "region": "us-east-1",
+    "dynamodb_table": "YOUR_TERRAFORM_LOCK_TABLE",
+    "encrypt": true
+  },
+  "terraform_vars": {
+    "aws_region": "us-east-1",
+    "project_name": "openmacaw",
+    "environment_name": "prod",
+    "service_name": "openmacaw-launcher-prod",
+    "ecr_repository_name": "openmacaw-prod-runtime-orchestrator",
+    "ecr_repository_uri": "YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/openmacaw-prod-runtime-orchestrator",
+    "task_cpu": 2048,
+    "task_memory": 4096,
+    "desired_count": 1,
+    "container_port": 4100,
+    "shared_platform_state_enabled": true,
+    "shared_platform_state_bucket": "YOUR_SHARED_PLATFORM_STATE_BUCKET",
+    "shared_platform_state_key": "YOUR_SHARED_PLATFORM_STATE_KEY",
+    "shared_platform_state_region": "us-east-1",
+    "create_ecs_cluster": false,
+    "existing_ecs_cluster_name": "YOUR_EXISTING_ECS_CLUSTER_NAME",
+    "service_discovery_namespace": "openmacaw-prod.local",
+    "service_discovery_service_name": "openmacaw-launcher-prod",
+    "enable_efs": true,
+    "efs_file_system_id": "YOUR_EFS_FILE_SYSTEM_ID",
+    "efs_access_point_id": "YOUR_EFS_ACCESS_POINT_ID",
+    "workspace_mount_path": "/tmp/openmacaw_workspaces",
+    "supabase_url": "https://YOUR_SUPABASE_PROJECT.supabase.co",
+    "supabase_service_role_key_ssm_arn": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/service-role-key",
+    "container_secrets": {
+      "SUPABASE_ANON_KEY": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/anon-key",
+      "SUPABASE_JWT_SECRET": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/jwt-secret",
+      "LINEAR_API_KEY": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/linear/api-key",
+      "CODEX_API_KEY": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/codex/api-key"
+    },
+    "secretsmanager_secret_arns": [
+      "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:openmacaw/prod/agent/*"
+    ]
+  }
+}
