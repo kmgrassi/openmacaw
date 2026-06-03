@@ -34,7 +34,7 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
 }
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "openclaw-frontend-oac-dev"
+  name                              = var.frontend_oac_name
   description                       = "OAC for OpenClaw frontend static site"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"

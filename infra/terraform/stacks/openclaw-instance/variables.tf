@@ -123,6 +123,12 @@ variable "openclaw_model" {
   default     = "openai/gpt-4.1-mini"
 }
 
+variable "openclaw_gateway_protocol" {
+  description = "Negotiated OpenClaw broker/gateway wire protocol version."
+  type        = string
+  default     = "3"
+}
+
 variable "openclaw_supabase_url" {
   description = "Supabase project URL for broker auth/session and DB API routes."
   type        = string
@@ -346,4 +352,202 @@ variable "worker_default_scale_in_messages" {
   description = "Scale in threshold for visible messages on default queue."
   type        = number
   default     = 0
+}
+
+variable "gateway_discovery_namespace_name" {
+  description = "Cloud Map private DNS namespace for the OpenClaw gateway."
+  type        = string
+  default     = "openclaw-dev.local"
+}
+
+variable "gateway_discovery_namespace_description" {
+  description = "Cloud Map private DNS namespace description."
+  type        = string
+  default     = "Private DNS namespace for OpenClaw services (dev)"
+}
+
+variable "gateway_discovery_service_name" {
+  description = "Cloud Map service name for the OpenClaw gateway."
+  type        = string
+  default     = "openclaw-gateway"
+}
+
+variable "broker_log_group_name" {
+  description = "CloudWatch log group name for the OpenClaw broker."
+  type        = string
+  default     = "/ecs/openclaw-broker-dev"
+}
+
+variable "gateway_log_group_name" {
+  description = "CloudWatch log group name for the colocated legacy gateway container."
+  type        = string
+  default     = "/ecs/openclaw-gateway-dev"
+}
+
+variable "gateway_standalone_log_group_name" {
+  description = "CloudWatch log group name for the standalone gateway ECS service."
+  type        = string
+  default     = "/ecs/openclaw-gateway-standalone-dev"
+}
+
+variable "broker_security_group_name" {
+  description = "Security group name for the broker ECS service."
+  type        = string
+  default     = "openclaw-broker-service-dev"
+}
+
+variable "gateway_security_group_name" {
+  description = "Security group name for the gateway ECS service."
+  type        = string
+  default     = "openclaw-gateway-service-dev"
+}
+
+variable "state_efs_creation_token" {
+  description = "Creation token for the OpenClaw state EFS file system."
+  type        = string
+  default     = "openclaw-state-dev"
+}
+
+variable "state_efs_security_group_name" {
+  description = "Security group name for the OpenClaw state EFS mount targets."
+  type        = string
+  default     = "openclaw-state-efs-dev"
+}
+
+variable "broker_task_execution_role_name" {
+  description = "IAM role name for broker/gateway ECS task execution."
+  type        = string
+  default     = "openclaw-ecs-task-execution-dev"
+}
+
+variable "broker_task_execution_secrets_policy_name" {
+  description = "IAM policy name for broker/gateway task execution secret reads."
+  type        = string
+  default     = "openclaw-ecs-task-execution-secrets-dev"
+}
+
+variable "broker_task_role_name" {
+  description = "IAM task role name for the broker/gateway ECS tasks."
+  type        = string
+  default     = "openclaw-ecs-task-dev"
+}
+
+variable "broker_task_queue_policy_name" {
+  description = "IAM policy name for broker queue/artifact access."
+  type        = string
+  default     = "openclaw-ecs-task-broker-queue-mode-dev"
+}
+
+variable "broker_task_family" {
+  description = "ECS task definition family for the OpenClaw broker."
+  type        = string
+  default     = "openclaw-broker-dev"
+}
+
+variable "broker_service_name" {
+  description = "ECS service name for the OpenClaw broker."
+  type        = string
+  default     = "openclaw-broker-dev"
+}
+
+variable "gateway_task_family" {
+  description = "ECS task definition family for the standalone OpenClaw gateway."
+  type        = string
+  default     = "openclaw-gateway-dev"
+}
+
+variable "gateway_service_name" {
+  description = "ECS service name for the standalone OpenClaw gateway."
+  type        = string
+  default     = "openclaw-gateway-dev"
+}
+
+variable "worker_log_group_name" {
+  description = "CloudWatch log group name for the default OpenClaw worker."
+  type        = string
+  default     = "/ecs/openclaw-worker-default-dev"
+}
+
+variable "worker_gateway_log_group_name" {
+  description = "CloudWatch log group name for the gateway sidecar in the default worker task."
+  type        = string
+  default     = "/ecs/openclaw-gateway-worker-default-dev"
+}
+
+variable "worker_security_group_name" {
+  description = "Security group name for the default OpenClaw worker ECS service."
+  type        = string
+  default     = "openclaw-worker-default-service-dev"
+}
+
+variable "worker_task_execution_role_name" {
+  description = "IAM execution role name for the default OpenClaw worker task."
+  type        = string
+  default     = "openclaw-ecs-task-execution-worker-default-dev"
+}
+
+variable "worker_task_execution_secrets_policy_name" {
+  description = "IAM policy name for default worker execution secret reads."
+  type        = string
+  default     = "openclaw-ecs-task-execution-worker-default-secrets-dev"
+}
+
+variable "worker_task_role_name" {
+  description = "IAM task role name for the default OpenClaw worker."
+  type        = string
+  default     = "openclaw-ecs-task-worker-default-dev"
+}
+
+variable "worker_task_policy_name" {
+  description = "IAM policy name for default worker queue/artifact access."
+  type        = string
+  default     = "openclaw-ecs-task-worker-default-dev"
+}
+
+variable "worker_task_family" {
+  description = "ECS task definition family for the default OpenClaw worker."
+  type        = string
+  default     = "openclaw-worker-default-dev"
+}
+
+variable "worker_service_name" {
+  description = "ECS service name for the default OpenClaw worker."
+  type        = string
+  default     = "openclaw-worker-default-dev"
+}
+
+variable "worker_scale_out_policy_name" {
+  description = "Application Autoscaling scale-out policy name for the default OpenClaw worker."
+  type        = string
+  default     = "openclaw-worker-default-scale-out-dev"
+}
+
+variable "worker_scale_in_policy_name" {
+  description = "Application Autoscaling scale-in policy name for the default OpenClaw worker."
+  type        = string
+  default     = "openclaw-worker-default-scale-in-dev"
+}
+
+variable "worker_queue_scale_out_alarm_name" {
+  description = "CloudWatch alarm name for worker queue scale-out."
+  type        = string
+  default     = "openclaw-worker-default-queue-scale-out-dev"
+}
+
+variable "worker_queue_scale_in_alarm_name" {
+  description = "CloudWatch alarm name for worker queue scale-in."
+  type        = string
+  default     = "openclaw-worker-default-queue-scale-in-dev"
+}
+
+variable "frontend_oac_name" {
+  description = "CloudFront origin access control name for the OpenClaw frontend."
+  type        = string
+  default     = "openclaw-frontend-oac-dev"
+}
+
+variable "artifacts_lifecycle_rule_id" {
+  description = "S3 lifecycle rule ID for expiring OpenClaw artifacts."
+  type        = string
+  default     = "expire-dev-artifacts"
 }

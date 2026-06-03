@@ -122,17 +122,17 @@ locals {
 }
 
 resource "aws_cloudwatch_log_group" "worker_default" {
-  name              = "/ecs/openclaw-worker-default-dev"
+  name              = var.worker_log_group_name
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "gateway_worker_default" {
-  name              = "/ecs/openclaw-gateway-worker-default-dev"
+  name              = var.worker_gateway_log_group_name
   retention_in_days = 14
 }
 
 resource "aws_security_group" "worker_default_service" {
-  name        = "openclaw-worker-default-service-dev"
+  name        = var.worker_security_group_name
   description = "Security group for default worker ECS service"
   vpc_id      = local.platform_vpc_id
 
@@ -146,7 +146,7 @@ resource "aws_security_group" "worker_default_service" {
 }
 
 resource "aws_iam_role" "ecs_task_execution_worker_default" {
-  name = "openclaw-ecs-task-execution-worker-default-dev"
+  name = var.worker_task_execution_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -178,7 +178,7 @@ data "aws_iam_policy_document" "ecs_task_execution_worker_default_secrets" {
 }
 
 resource "aws_iam_policy" "ecs_task_execution_worker_default_secrets" {
-  name   = "openclaw-ecs-task-execution-worker-default-secrets-dev"
+  name   = var.worker_task_execution_secrets_policy_name
   policy = data.aws_iam_policy_document.ecs_task_execution_worker_default_secrets.json
 }
 
@@ -188,7 +188,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_worker_default_sec
 }
 
 resource "aws_iam_role" "ecs_task_worker_default" {
-  name = "openclaw-ecs-task-worker-default-dev"
+  name = var.worker_task_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -243,7 +243,7 @@ data "aws_iam_policy_document" "ecs_task_worker_default" {
 }
 
 resource "aws_iam_policy" "ecs_task_worker_default" {
-  name   = "openclaw-ecs-task-worker-default-dev"
+  name   = var.worker_task_policy_name
   policy = data.aws_iam_policy_document.ecs_task_worker_default.json
 }
 
@@ -253,7 +253,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_worker_default" {
 }
 
 resource "aws_ecs_task_definition" "openclaw_worker_default" {
-  family                   = "openclaw-worker-default-dev"
+  family                   = var.worker_task_family
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.worker_default_task_cpu
@@ -282,7 +282,7 @@ resource "aws_ecs_task_definition" "openclaw_worker_default" {
 }
 
 resource "aws_ecs_service" "openclaw_worker_default" {
-  name            = "openclaw-worker-default-dev"
+  name            = var.worker_service_name
   cluster         = local.platform_ecs_cluster
   task_definition = aws_ecs_task_definition.openclaw_worker_default.arn
   desired_count   = var.worker_default_desired_count
@@ -318,7 +318,7 @@ resource "aws_appautoscaling_target" "worker_default" {
 }
 
 resource "aws_appautoscaling_policy" "worker_default_scale_out" {
-  name               = "openclaw-worker-default-scale-out-dev"
+  name               = var.worker_scale_out_policy_name
   service_namespace  = "ecs"
   resource_id        = aws_appautoscaling_target.worker_default.resource_id
   scalable_dimension = aws_appautoscaling_target.worker_default.scalable_dimension
@@ -337,7 +337,7 @@ resource "aws_appautoscaling_policy" "worker_default_scale_out" {
 }
 
 resource "aws_appautoscaling_policy" "worker_default_scale_in" {
-  name               = "openclaw-worker-default-scale-in-dev"
+  name               = var.worker_scale_in_policy_name
   service_namespace  = "ecs"
   resource_id        = aws_appautoscaling_target.worker_default.resource_id
   scalable_dimension = aws_appautoscaling_target.worker_default.scalable_dimension
@@ -356,7 +356,7 @@ resource "aws_appautoscaling_policy" "worker_default_scale_in" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "worker_default_queue_scale_out" {
-  alarm_name          = "openclaw-worker-default-queue-scale-out-dev"
+  alarm_name          = var.worker_queue_scale_out_alarm_name
   alarm_description   = "Scale out default worker when queue depth increases"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
@@ -373,7 +373,7 @@ resource "aws_cloudwatch_metric_alarm" "worker_default_queue_scale_out" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "worker_default_queue_scale_in" {
-  alarm_name          = "openclaw-worker-default-queue-scale-in-dev"
+  alarm_name          = var.worker_queue_scale_in_alarm_name
   alarm_description   = "Scale in default worker when queue is empty"
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = 10

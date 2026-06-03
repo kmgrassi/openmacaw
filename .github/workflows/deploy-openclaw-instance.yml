@@ -207,6 +207,11 @@ jobs:
           NEGOTIATED_MAX=$(( B_MAX < G_MAX ? B_MAX : G_MAX ))
           echo "negotiated_min=$NEGOTIATED_MIN" >> "$GITHUB_OUTPUT"
           echo "negotiated_max=$NEGOTIATED_MAX" >> "$GITHUB_OUTPUT"
+          jq \
+            --arg protocol "$NEGOTIATED_MAX" \
+            '. + { openclaw_gateway_protocol: $protocol }' \
+            "${{ steps.images.outputs.tfvars_file }}" > "$RUNNER_TEMP/openclaw-instance.with-protocol.tfvars.json"
+          echo "tfvars_file=$RUNNER_TEMP/openclaw-instance.with-protocol.tfvars.json" >> "$GITHUB_OUTPUT"
           echo "Protocol compatible: broker[$B_MIN,$B_MAX] gateway[$G_MIN,$G_MAX] negotiated[$NEGOTIATED_MIN,$NEGOTIATED_MAX]"
 
       - name: Terraform init
@@ -219,7 +224,7 @@ jobs:
 
       - name: Terraform plan
         working-directory: ${{ env.TF_DIR }}
-        run: terraform plan -input=false -out=tfplan -var-file="${{ steps.images.outputs.tfvars_file }}"
+        run: terraform plan -input=false -out=tfplan -var-file="${{ steps.protocol.outputs.tfvars_file }}"
 
       - name: Acquire deploy serialization lock
         if: ${{ inputs.apply == 'true' }}

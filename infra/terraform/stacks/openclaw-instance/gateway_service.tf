@@ -1,17 +1,17 @@
 resource "aws_cloudwatch_log_group" "gateway_standalone" {
-  name              = "/ecs/openclaw-gateway-standalone-dev"
+  name              = var.gateway_standalone_log_group_name
   retention_in_days = 14
 }
 
 resource "aws_efs_file_system" "openclaw_state" {
-  creation_token   = "openclaw-state-dev"
+  creation_token   = var.state_efs_creation_token
   encrypted        = true
   performance_mode = "generalPurpose"
   throughput_mode  = "bursting"
 }
 
 resource "aws_security_group" "openclaw_state_efs" {
-  name        = "openclaw-state-efs-dev"
+  name        = var.state_efs_security_group_name
   description = "Allow ECS services to mount OpenClaw state EFS"
   vpc_id      = local.platform_vpc_id
 
@@ -54,7 +54,7 @@ resource "aws_efs_access_point" "openclaw_state" {
 }
 
 resource "aws_security_group" "gateway_service" {
-  name        = "openclaw-gateway-service-dev"
+  name        = var.gateway_security_group_name
   description = "Dedicated gateway ECS service security group"
   vpc_id      = local.platform_vpc_id
 
@@ -76,13 +76,13 @@ resource "aws_security_group" "gateway_service" {
 }
 
 resource "aws_service_discovery_private_dns_namespace" "openclaw" {
-  name        = "openclaw-dev.local"
-  description = "Private DNS namespace for OpenClaw services (dev)"
+  name        = var.gateway_discovery_namespace_name
+  description = var.gateway_discovery_namespace_description
   vpc         = local.platform_vpc_id
 }
 
 resource "aws_service_discovery_service" "gateway" {
-  name = "openclaw-gateway"
+  name = var.gateway_discovery_service_name
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.openclaw.id
@@ -101,7 +101,7 @@ resource "aws_service_discovery_service" "gateway" {
 }
 
 resource "aws_ecs_task_definition" "openclaw_gateway" {
-  family                   = "openclaw-gateway-dev"
+  family                   = var.gateway_task_family
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.ecs_task_cpu
@@ -231,7 +231,7 @@ resource "aws_ecs_task_definition" "openclaw_gateway" {
 }
 
 resource "aws_ecs_service" "openclaw_gateway" {
-  name            = "openclaw-gateway-dev"
+  name            = var.gateway_service_name
   cluster         = local.platform_ecs_cluster
   task_definition = aws_ecs_task_definition.openclaw_gateway.arn
   desired_count   = var.gateway_service_desired_count

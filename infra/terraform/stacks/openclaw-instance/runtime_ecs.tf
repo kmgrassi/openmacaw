@@ -42,11 +42,11 @@ locals {
         },
         {
           name  = "OPENCLAW_GATEWAY_URL"
-          value = "http://openclaw-gateway.openclaw-dev.local:18789"
+          value = "http://${var.gateway_discovery_service_name}.${var.gateway_discovery_namespace_name}:18789"
         },
         {
           name  = "OPENCLAW_GATEWAY_PROTOCOL"
-          value = "3"
+          value = var.openclaw_gateway_protocol
         },
         {
           name  = "OPENCLAW_ENGINE_CLIENT_ID"
@@ -138,17 +138,17 @@ locals {
 }
 
 resource "aws_cloudwatch_log_group" "broker" {
-  name              = "/ecs/openclaw-broker-dev"
+  name              = var.broker_log_group_name
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "gateway" {
-  name              = "/ecs/openclaw-gateway-dev"
+  name              = var.gateway_log_group_name
   retention_in_days = 14
 }
 
 resource "aws_security_group" "broker_service" {
-  name        = "openclaw-broker-service-dev"
+  name        = var.broker_security_group_name
   description = "Broker ECS service security group"
   vpc_id      = local.platform_vpc_id
 
@@ -177,7 +177,7 @@ resource "aws_security_group" "broker_service" {
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "openclaw-ecs-task-execution-dev"
+  name = var.broker_task_execution_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -209,7 +209,7 @@ data "aws_iam_policy_document" "ecs_task_execution_secrets" {
 }
 
 resource "aws_iam_policy" "ecs_task_execution_secrets" {
-  name   = "openclaw-ecs-task-execution-secrets-dev"
+  name   = var.broker_task_execution_secrets_policy_name
   policy = data.aws_iam_policy_document.ecs_task_execution_secrets.json
 }
 
@@ -219,7 +219,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_secrets" {
 }
 
 resource "aws_iam_role" "ecs_task" {
-  name = "openclaw-ecs-task-dev"
+  name = var.broker_task_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -285,7 +285,7 @@ data "aws_iam_policy_document" "ecs_task_broker_queue_mode" {
 }
 
 resource "aws_iam_policy" "ecs_task_broker_queue_mode" {
-  name   = "openclaw-ecs-task-broker-queue-mode-dev"
+  name   = var.broker_task_queue_policy_name
   policy = data.aws_iam_policy_document.ecs_task_broker_queue_mode.json
 }
 
@@ -295,7 +295,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_broker_queue_mode" {
 }
 
 resource "aws_ecs_task_definition" "openclaw_broker" {
-  family                   = "openclaw-broker-dev"
+  family                   = var.broker_task_family
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.ecs_task_cpu
@@ -309,7 +309,7 @@ resource "aws_ecs_task_definition" "openclaw_broker" {
 }
 
 resource "aws_ecs_service" "openclaw_broker" {
-  name            = "openclaw-broker-dev"
+  name            = var.broker_service_name
   cluster         = local.platform_ecs_cluster
   task_definition = aws_ecs_task_definition.openclaw_broker.arn
   desired_count   = var.broker_service_desired_count

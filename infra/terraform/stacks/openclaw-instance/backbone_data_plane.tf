@@ -29,7 +29,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
   bucket = aws_s3_bucket.artifacts.id
 
   rule {
-    id     = "expire-dev-artifacts"
+    id     = var.artifacts_lifecycle_rule_id
     status = "Enabled"
 
     filter {
