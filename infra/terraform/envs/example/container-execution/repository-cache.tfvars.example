@@ -1,0 +1,11 @@
+project_name = "openmacaw"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+vpc_id             = "vpc_REPLACE_ME"
+private_subnet_ids = ["subnet_REPLACE_ME"]
+
+execution_task_security_group_ids = ["sg_REPLACE_ME"]
+allowed_nfs_cidr_blocks           = []
+
+enable_cleanup_schedule = false

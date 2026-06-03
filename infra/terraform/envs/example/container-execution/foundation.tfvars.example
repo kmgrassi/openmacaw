@@ -1,0 +1,9 @@
+project_name = "openmacaw"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+vpc_id                    = "vpc_REPLACE_ME"
+private_subnet_ids        = ["subnet_REPLACE_ME"]
+endpoint_security_group_id = "sg_REPLACE_ME"
+create_vpc_endpoints      = true
+artifact_retention_days   = 30

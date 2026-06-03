@@ -1,0 +1,144 @@
+name: Deploy Runtime Orchestrator
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "runtime/**"
+      - "infra/terraform/stacks/runtime-orchestrator/**"
+      - ".github/workflows/deploy-runtime-orchestrator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-runtime-orchestrator-main
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: infra/terraform/stacks/runtime-orchestrator
+  DOCKERFILE: runtime/apps/orchestrator/deploy/Dockerfile
+  BUILD_CONTEXT: runtime/apps/orchestrator
+  DEPLOY_CONFIG_PARAM: /openmacaw/dev/runtime-orchestrator/deploy/config
+  IMAGE_URI_PARAM: /openmacaw/dev/runtime-orchestrator/deploy/image-uri
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    timeout-minutes: 35
+    env:
+      TF_IN_AUTOMATION: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve deploy config from SSM
+        id: deploy-config
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          CONFIG_JSON="$(aws ssm get-parameter \
+            --name "$DEPLOY_CONFIG_PARAM" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text)"
+
+          echo "$CONFIG_JSON" | jq -e '.terraform_backend and .terraform_vars' >/dev/null
+
+          jq -r '.terraform_backend | to_entries[] |
+            if (.value | type) == "boolean" or (.value | type) == "number" then
+              "\(.key) = \(.value)"
+            else
+              "\(.key) = \"\(.value)\""
+            end' <<<"$CONFIG_JSON" > "$RUNNER_TEMP/runtime-orchestrator.backend.hcl"
+
+          jq -n \
+            --argjson cfg "$CONFIG_JSON" \
+            --arg image_tag "$IMAGE_TAG" \
+            '$cfg.terraform_vars + {
+              image_tag: $image_tag
+            }' > "$RUNNER_TEMP/runtime-orchestrator.tfvars.json"
+
+          ECR_REPOSITORY_URI="$(jq -er '.ecr_repository_uri' "$RUNNER_TEMP/runtime-orchestrator.tfvars.json")"
+          ECR_REPOSITORY_NAME="$(jq -r '.ecr_repository_name // (.ecr_repository_uri | split("/")[-1])' "$RUNNER_TEMP/runtime-orchestrator.tfvars.json")"
+          echo "ecr_repository_uri=$ECR_REPOSITORY_URI" >> "$GITHUB_OUTPUT"
+          echo "ecr_repository_name=$ECR_REPOSITORY_NAME" >> "$GITHUB_OUTPUT"
+          echo "backend_file=$RUNNER_TEMP/runtime-orchestrator.backend.hcl" >> "$GITHUB_OUTPUT"
+          echo "tfvars_file=$RUNNER_TEMP/runtime-orchestrator.tfvars.json" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure ECR repository exists
+        env:
+          ECR_REPOSITORY_NAME: ${{ steps.deploy-config.outputs.ecr_repository_name }}
+        run: |
+          set -euo pipefail
+          if ! aws ecr describe-repositories \
+            --repository-names "$ECR_REPOSITORY_NAME" \
+            --region "$AWS_REGION" >/dev/null 2>&1; then
+            aws ecr create-repository \
+              --repository-name "$ECR_REPOSITORY_NAME" \
+              --image-tag-mutability MUTABLE \
+              --image-scanning-configuration scanOnPush=true \
+              --region "$AWS_REGION"
+          fi
+
+          aws ecr put-lifecycle-policy \
+            --repository-name "$ECR_REPOSITORY_NAME" \
+            --lifecycle-policy-text '{"rules":[{"rulePriority":1,"description":"Keep last 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}' \
+            --region "$AWS_REGION" >/dev/null
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push runtime orchestrator image
+        timeout-minutes: 18
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BUILD_CONTEXT }}
+          file: ${{ env.DOCKERFILE }}
+          push: true
+          tags: |
+            ${{ steps.deploy-config.outputs.ecr_repository_uri }}:${{ github.sha }}
+            ${{ steps.deploy-config.outputs.ecr_repository_uri }}:main
+          cache-from: type=gha,scope=openmacaw-runtime-orchestrator
+          cache-to: type=gha,mode=max,scope=openmacaw-runtime-orchestrator,ignore-error=true
+          provenance: false
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="${{ steps.deploy-config.outputs.backend_file }}"
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -input=false -auto-approve -var-file="${{ steps.deploy-config.outputs.tfvars_file }}"
+
+      - name: Persist deployed image URI pointer
+        env:
+          ECR_REPOSITORY_URI: ${{ steps.deploy-config.outputs.ecr_repository_uri }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          aws ssm put-parameter \
+            --name "$IMAGE_URI_PARAM" \
+            --type String \
+            --overwrite \
+            --value "$ECR_REPOSITORY_URI:$IMAGE_TAG"

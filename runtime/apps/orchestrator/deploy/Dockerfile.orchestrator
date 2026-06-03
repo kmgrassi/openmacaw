@@ -1,0 +1,48 @@
+FROM hexpm/elixir:1.19.0-erlang-26.2.5.19-ubuntu-jammy-20260217 AS builder
+
+ENV MIX_ENV=prod
+ENV ERL_AFLAGS="-kernel shell_history enabled"
+
+WORKDIR /app
+
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+COPY apps/orchestrator/mix.exs apps/orchestrator/mix.lock ./
+RUN mix deps.get
+
+COPY apps/orchestrator/ .
+RUN mix do deps.get, escript.build
+
+FROM hexpm/elixir:1.19.0-erlang-26.2.5.19-ubuntu-jammy-20260217
+
+WORKDIR /app
+RUN useradd --create-home --shell /bin/bash appuser
+
+# DEBIAN_FRONTEND=noninteractive on the install step suppresses the
+# tzdata configuration prompt ("Geographic area:") that one of the
+# transitively-pulled packages (introduced when git was added in
+# #393) triggers in this Ubuntu Jammy base. Without it, the build
+# hangs indefinitely on the prompt with no TTY attached.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /app/bin /app/elixir /tmp/openmacaw && \
+    chown -R appuser:appuser /app /tmp/openmacaw
+
+COPY --from=builder --chown=appuser:appuser /app/bin/symphony /app/bin/symphony
+COPY --chown=appuser:appuser apps/orchestrator/WORKFLOW.md /app/elixir/WORKFLOW.md
+
+RUN chmod 755 /app/bin/symphony && \
+    chmod 644 /app/elixir/WORKFLOW.md
+
+USER appuser
+
+ENV PATH="/app:${PATH}"
+ENV RELAY_SOCKET_PORT=4000
+
+EXPOSE 4000
+
+ENTRYPOINT ["/app/bin/symphony"]
+CMD ["--i-understand-that-this-will-be-running-without-the-usual-guardrails", "/app/elixir/WORKFLOW.md"]

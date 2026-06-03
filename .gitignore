@@ -18,5 +18,10 @@ deps/
 
 .terraform/
 .terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
 
 *.log
