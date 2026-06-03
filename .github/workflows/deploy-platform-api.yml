@@ -85,6 +85,12 @@ jobs:
         working-directory: platform
         run: pnpm install --frozen-lockfile
 
+      - name: Build platform workspace packages
+        working-directory: platform
+        run: |
+          pnpm -C packages/plan-schema run build
+          pnpm -C packages/supabase-schema run build
+
       - name: Typecheck platform API
         working-directory: platform
         run: pnpm -C apps/api run typecheck
