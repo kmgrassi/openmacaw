@@ -10,12 +10,11 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
 
   alias SymphonyElixir.RuntimeLog
   alias SymphonyElixir.WorkerBridge.RepositoryCredential
+  alias SymphonyElixir.WorkerBridge.RepositoryManager.Metadata
+  alias SymphonyElixir.WorkerBridge.RepositoryManager.MirrorLock
 
-  @metadata_filename ".symphony-cache.json"
-  @workspace_metadata_filename ".symphony-workspace.json"
   @askpass_filename "git-askpass.sh"
   @alias_pattern ~r/^[a-z0-9_-]+$/
-  @lock_poll_ms 50
   # Default mirror-lock wait: 10 minutes. A large repo clone over EFS can
   # legitimately take many minutes, so timing out concurrent requests just
   # causes the second request to retry the same slow path. The previous 30s
@@ -143,7 +142,7 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
   @spec cleanup_workspace(Path.t()) :: :ok | {:error, term()}
   def cleanup_workspace(workspace_path) when is_binary(workspace_path) do
     with :ok <- assert_child_path(workspace_path, session_root()) do
-      metadata = workspace_metadata(workspace_path)
+      metadata = Metadata.workspace_metadata(workspace_path)
       started_at = System.monotonic_time()
 
       result =
@@ -176,7 +175,7 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
         entries
         |> Enum.map(&Path.join(sessions, &1))
         |> Enum.filter(&File.dir?/1)
-        |> Enum.flat_map(&workspace_snapshot/1)
+        |> Enum.flat_map(&Metadata.workspace_snapshot/1)
         |> Enum.sort_by(&Map.get(&1, "workspace_path"))
 
       {:error, :enoent} ->
@@ -409,27 +408,21 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
       |> Map.merge(credential_metadata(credential))
       |> maybe_put("last_rebuild_reason", telemetry[:rebuild_reason])
 
-    case Jason.encode(metadata, pretty: true) do
-      {:ok, encoded} ->
-        File.write!(metadata_path(cache_path), encoded <> "\n")
-
-        {:ok,
-         %{
-           repo_id: repo_id,
-           repo_url: normalized_url,
-           cache_path: cache_path,
-           cache_kind: "mirror",
-           fetched_at: fetched_at,
-           revision: revision,
-           cache_event: telemetry.cache_event,
-           cache_hit: telemetry.cache_hit,
-           fetch_ms: telemetry.fetch_ms,
-           rebuild_reason: telemetry[:rebuild_reason],
-           metadata: metadata
-         }}
-
-      {:error, reason} ->
-        {:error, {:metadata_encode_failed, reason}}
+    with :ok <- Metadata.write_cache_metadata(cache_path, metadata) do
+      {:ok,
+       %{
+         repo_id: repo_id,
+         repo_url: normalized_url,
+         cache_path: cache_path,
+         cache_kind: "mirror",
+         fetched_at: fetched_at,
+         revision: revision,
+         cache_event: telemetry.cache_event,
+         cache_hit: telemetry.cache_hit,
+         fetch_ms: telemetry.fetch_ms,
+         rebuild_reason: telemetry[:rebuild_reason],
+         metadata: metadata
+       }}
     end
   end
 
@@ -625,7 +618,7 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
         Map.merge(base_status, %{
           "status" => "unavailable",
           "commit" => nil,
-          "error" => safe_error(reason, resource)
+          "error" => Metadata.safe_error(reason, resource["url"])
         })
     end
   end
@@ -639,40 +632,16 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
   """
   @spec sanitize_url(any()) :: any()
   def sanitize_url(url) when is_binary(url) do
-    case URI.new(url) do
-      {:ok, %URI{userinfo: nil} = uri} ->
-        URI.to_string(uri)
-
-      {:ok, %URI{} = uri} ->
-        uri
-        |> Map.put(:userinfo, nil)
-        |> URI.to_string()
-
-      {:error, _reason} ->
-        safe_locator(url)
-    end
+    Metadata.sanitize_url(url)
   end
 
   def sanitize_url(other), do: other
 
   defp safe_locator(locator) when is_binary(locator) do
-    String.replace(locator, ~r/^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^@\/?#]+@/, "\\1")
+    Metadata.safe_locator(locator)
   end
 
   defp safe_locator(locator), do: locator
-
-  defp safe_error(reason, resource) do
-    reason
-    |> inspect(limit: 20)
-    |> redact_value(resource["url"], sanitize_url(resource["url"]))
-  end
-
-  defp redact_value(message, value, replacement)
-       when is_binary(message) and is_binary(value) and value != "" and is_binary(replacement) do
-    String.replace(message, value, replacement)
-  end
-
-  defp redact_value(message, _value, _replacement), do: message
 
   defp resource_required?(%{"required" => false}), do: false
   defp resource_required?(%{"required" => "false"}), do: false
@@ -723,14 +692,6 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
 
   defp cache_path(repo_id) do
     Path.join(repo_cache_root(), repo_id)
-  end
-
-  defp metadata_path(cache_path) do
-    Path.join(cache_path, @metadata_filename)
-  end
-
-  defp workspace_metadata_path(workspace_path) do
-    Path.join(workspace_path, @workspace_metadata_filename)
   end
 
   defp session_slug(repo_id, session_id) do
@@ -875,49 +836,16 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
     Path.join(repo_cache_root(), ".locks")
   end
 
-  defp lock_path(repo_id) do
-    Path.join(lock_root(), "#{repo_id}.lock")
-  end
-
   defp with_mirror_lock(repo_id, fun) when is_function(fun, 0) do
-    File.mkdir_p!(lock_root())
-    path = lock_path(repo_id)
-    owner = "#{System.os_time(:millisecond)}-#{inspect(self())}"
-
-    with :ok <- acquire_lock(path, owner, System.monotonic_time(:millisecond) + lock_timeout_ms()) do
-      try do
-        fun.()
-      after
-        File.rm_rf!(path)
-      end
-    end
+    MirrorLock.with_lock(lock_root(), repo_id, lock_timeout_ms(), fun)
   end
 
   defp lock_timeout_ms do
     Application.get_env(:symphony_elixir, :mirror_lock_timeout_ms, @default_lock_timeout_ms)
   end
 
-  defp acquire_lock(path, owner, deadline_ms) do
-    case File.mkdir(path) do
-      :ok ->
-        File.write!(Path.join(path, "owner"), owner)
-        :ok
-
-      {:error, :eexist} ->
-        if System.monotonic_time(:millisecond) >= deadline_ms do
-          {:error, {:mirror_lock_timeout, path}}
-        else
-          Process.sleep(@lock_poll_ms)
-          acquire_lock(path, owner, deadline_ms)
-        end
-
-      {:error, reason} ->
-        {:error, {:mirror_lock_failed, path, reason}}
-    end
-  end
-
   defp rebuild_count(cache_path, "rebuild") do
-    previous_metadata(cache_path)
+    Metadata.previous_cache_metadata(cache_path)
     |> Map.get("rebuild_count", 0)
     |> case do
       count when is_integer(count) -> count + 1
@@ -926,20 +854,11 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
   end
 
   defp rebuild_count(cache_path, _event) do
-    previous_metadata(cache_path)
+    Metadata.previous_cache_metadata(cache_path)
     |> Map.get("rebuild_count", 0)
     |> case do
       count when is_integer(count) -> count
       _ -> 0
-    end
-  end
-
-  defp previous_metadata(cache_path) do
-    with {:ok, content} <- File.read(metadata_path(cache_path)),
-         {:ok, metadata} when is_map(metadata) <- Jason.decode(content) do
-      metadata
-    else
-      _ -> %{}
     end
   end
 
@@ -968,76 +887,8 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
       }
       |> maybe_put("rebuild_reason", cache_result.rebuild_reason)
 
-    case Jason.encode(metadata, pretty: true) do
-      {:ok, encoded} ->
-        File.write!(workspace_metadata_path(workspace_path), encoded <> "\n")
-        :ok
-
-      {:error, reason} ->
-        {:error, {:workspace_metadata_encode_failed, reason}}
-    end
+    Metadata.write_workspace_metadata(workspace_path, metadata)
   end
-
-  defp workspace_snapshot(workspace_path) do
-    case workspace_metadata(workspace_path) do
-      metadata when map_size(metadata) > 0 ->
-        [
-          metadata
-          |> sanitize_workspace_metadata()
-          |> Map.put("workspace_path", workspace_path)
-          |> Map.put("exists", File.dir?(workspace_path))
-        ]
-
-      _metadata ->
-        []
-    end
-  end
-
-  defp workspace_metadata(workspace_path) do
-    metadata_path = workspace_metadata_path(workspace_path)
-
-    with true <- File.exists?(metadata_path),
-         {:ok, content} <- File.read(metadata_path),
-         {:ok, metadata} when is_map(metadata) <- Jason.decode(content) do
-      metadata
-    else
-      _ -> %{}
-    end
-  end
-
-  defp sanitize_workspace_metadata(metadata) when is_map(metadata) do
-    Map.new(metadata, fn
-      {"repo_url", value} -> {"repo_url", sanitize_url(value)}
-      {"metadata", value} when is_map(value) -> {"metadata", sanitize_workspace_metadata(value)}
-      {key, value} when is_binary(key) and is_binary(value) ->
-        if key in ["url", "locator"] or String.ends_with?(key, "_url") do
-          {key, sanitize_url(value)}
-        else
-          {key, value}
-        end
-
-      {key, value} when is_list(value) ->
-        {key, Enum.map(value, &sanitize_workspace_metadata_value(key, &1))}
-
-      entry ->
-        entry
-    end)
-  end
-
-  defp sanitize_workspace_metadata(value), do: value
-
-  defp sanitize_workspace_metadata_value(_key, value) when is_map(value),
-    do: sanitize_workspace_metadata(value)
-
-  defp sanitize_workspace_metadata_value(key, value) when is_binary(value) do
-    if key in ["url", "locator"] or String.ends_with?(key, "_url") do
-      sanitize_url(value)
-    else
-      value
-    end
-  end
-
-  defp sanitize_workspace_metadata_value(_key, value), do: value
 
   defp cache_path_present?(cache_path) when is_binary(cache_path), do: File.dir?(cache_path)
   defp cache_path_present?(_cache_path), do: nil
