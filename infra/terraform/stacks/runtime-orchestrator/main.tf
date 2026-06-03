@@ -192,7 +192,7 @@ resource "aws_security_group" "ecs_service" {
   # ECS tasks still reference it via their ENIs. Keep this string stable;
   # the "VPC-internal only" semantics are documented in the locals-block
   # comment above, not in the resource description.
-  description = "Service security group for the OpenMacaw runtime ECS task."
+  description = "Service SG for symphony ECS task."
   vpc_id      = local.resolved_vpc_id
 
   ingress {
