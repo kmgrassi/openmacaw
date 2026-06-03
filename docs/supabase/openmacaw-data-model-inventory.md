@@ -6,7 +6,8 @@ Harper Supabase project and into a dedicated OpenMacaw Supabase project.
 The companion SQL bootstrap is
 [`openmacaw-schema.sql`](openmacaw-schema.sql). It is intended for a new
 Supabase project and recreates the OpenMacaw-owned tables, helpers, indexes,
-and minimal RLS policies.
+and minimal RLS policies. See [README.md](README.md) for the Supabase project
+creation and migration workflow.
 
 ## Sources Reviewed
 
@@ -111,14 +112,18 @@ columns.
 ## New Project Bootstrap
 
 1. Create a new Supabase project.
-2. Run `docs/supabase/openmacaw-schema.sql` in the Supabase SQL editor or via
-   `psql`.
-3. Configure OpenMacaw environment variables to point at the new project:
+2. Create an initial migration with `supabase migration new openmacaw_schema`.
+3. Copy `docs/supabase/openmacaw-schema.sql` into the generated migration file.
+4. Test locally with `supabase db reset`.
+5. Link the new project with `supabase link --project-ref <project-ref>`.
+6. Preview and push the migration with `supabase db push --dry-run`, then
+   `supabase db push`.
+7. Configure OpenMacaw environment variables to point at the new project:
    `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the browser-facing anon key.
-4. Run the existing schema sync commands to regenerate local type artifacts:
+8. Run the existing schema sync commands to regenerate local type artifacts:
    `pnpm -C platform run db:schema:sync` and
    `pnpm -C runtime run supabase:schema:sync`.
-5. Re-run platform/runtime smoke flows against the new project before migrating
+9. Re-run platform/runtime smoke flows against the new project before migrating
    real workspace data.
 
 The SQL recreates schema and minimal access policy only. It does not copy rows
