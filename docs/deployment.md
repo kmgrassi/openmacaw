@@ -82,23 +82,15 @@ Use the fuller examples in:
 
 ## Deploy Workflows
 
-The default production path is the autonomous orchestrator workflow:
-
-- `.github/workflows/deploy-kg-production.yml`
-
-It runs on pushes to `main` that touch deployable platform/runtime inputs. It
-deploys the runtime orchestrator first, waits for ECS stability, deploys the
-platform API, waits for ECS stability, then checks the configured API health
-URL. On failure or cancellation it opens or comments on a `deploy-failure`
-GitHub issue with the run URL and job results.
-
-The service workflows remain available as manual/reusable building blocks:
+The service workflows are available as manual/reusable building blocks:
 
 - `.github/workflows/deploy-platform-api.yml`
 - `.github/workflows/deploy-runtime-orchestrator.yml`
 
-They can be run manually through `workflow_dispatch` and are called by the
-autonomous KG production workflow.
+They can be run manually through `workflow_dispatch` or called from a private
+deployment repository with `workflow_call`. Keep environment-specific
+orchestration, health checks, service names, cluster names, and notification
+rules in the private deployment repository for that environment.
 
 Manual service workflow runs default to the `development` GitHub Environment
 and the `dev` SSM path segment. For staging or production one-service deploys,
@@ -123,30 +115,6 @@ For private deployments that use a different naming convention, provide
 If `environment_slug=prod` or `deploy_config_param` contains `/prod/`, the
 workflow forces the GitHub Environment to `production` so production approvals
 and credentials are always used.
-
-The autonomous workflow reads environment-specific values from GitHub
-Environment variables when present:
-
-```text
-KG_AWS_REGION
-KG_ECS_CLUSTER
-KG_RUNTIME_DEPLOY_CONFIG_PARAM
-KG_RUNTIME_IMAGE_URI_PARAM
-KG_RUNTIME_SERVICE
-KG_PLATFORM_DEPLOY_CONFIG_PARAM
-KG_PLATFORM_IMAGE_URI_PARAM
-KG_PLATFORM_SERVICE
-KG_API_HEALTH_URL
-```
-
-If these variables are not set, the workflow uses the OpenMacaw KG production
-defaults. Other deployments can reuse the same workflow shape by defining their
-own environment values and SSM config paths.
-
-KG production deploys should use the platform API and runtime orchestrator
-workflows above. Do not create `/openmacaw/prod/openclaw-instance/deploy/config`;
-that path belonged to a deprecated standalone OpenClaw deployment pilot, not the
-Parallel Agent platform/runtime production adoption path.
 
 Each workflow:
 
