@@ -1,17 +1,18 @@
 # AWS Deployment Operations
 
-This document describes how to use OpenMacaw as the deploy source for an
-existing AWS environment.
+This document describes how to use OpenMacaw as the deploy source for an AWS
+environment. It covers both existing AWS environments and new self-hosted
+deployments.
 
 The goal is:
 
-- OpenMacaw source changes merge to `main`.
-- GitHub Actions builds the changed service image.
+- OpenMacaw source changes are selected for deployment.
+- GitHub Actions builds the selected service image.
 - GitHub Actions assumes a deploy role through OIDC.
 - The workflow reads private environment config from AWS SSM.
 - Terraform applies only the OpenMacaw service stack.
-- Existing shared AWS infrastructure remains owned by the existing platform
-  stack or by explicit SSM-provided values.
+- Shared AWS infrastructure remains owned by an existing platform stack or by a
+  private environment stack.
 
 ## Deployment Model
 
@@ -24,6 +25,7 @@ The repository owns:
 - Terraform modules/stacks for OpenMacaw services.
 - GitHub Actions deploy workflows.
 - Public example SSM config shapes.
+- Manual/reusable service deploy workflows.
 
 The AWS account owns:
 
@@ -34,30 +36,34 @@ The AWS account owns:
 - Supabase keys and other secrets;
 - SSM parameter values used by deploy workflows.
 
-## What Deploys On OpenMacaw Updates
+A private deployment repository can own:
+
+- scripts that generate real SSM deploy config from private values;
+- scripts that upload config to SSM;
+- autonomous environment-specific workflows;
+- post-deploy health checks and notifications;
+- rollback or promotion policy.
+
+That split lets OpenMacaw stay reusable while keeping operational details out
+of a public repository.
+
+## Service Deploy Workflows
 
 There are currently two service deploy workflows:
 
 - `.github/workflows/deploy-platform-api.yml`
 - `.github/workflows/deploy-runtime-orchestrator.yml`
 
-When a PR merges to `main`, GitHub Actions evaluates path filters:
+Both workflows can be run manually through `workflow_dispatch` or called by
+another workflow through `workflow_call`. The public OpenMacaw repository does
+not include environment-specific autonomous production deployment; keep that in
+a private deployment repository.
 
-- Changes under `platform/**` or `infra/terraform/stacks/platform-api/**`
-  deploy the platform API stack.
-- Changes under `runtime/**` or
-  `infra/terraform/stacks/runtime-orchestrator/**` deploy the runtime
-  launcher/orchestrator stack.
-
-Both workflows can also be run manually through `workflow_dispatch`.
-
-Automatic push-triggered runs deploy the `development` GitHub Environment and
-use the `dev` SSM path segment. Manual runs can deploy `development`,
-`staging`, or `production`; production should be run with
-`deploy_environment=production` and `environment_slug=prod`. If
-`environment_slug=prod` or `deploy_config_param` contains `/prod/`, the workflow
-forces the GitHub Environment to `production` so production approvals and
-credentials are always used.
+Manual runs can deploy `development`, `staging`, or `production`; production
+should be run with `deploy_environment=production` and `environment_slug=prod`.
+If `environment_slug=prod` or `deploy_config_param` contains `/prod/`, the
+workflow forces the GitHub Environment to `production` so production approvals
+and credentials are always used.
 
 Each workflow:
 
@@ -69,6 +75,64 @@ Each workflow:
 6. runs `terraform init`;
 7. runs `terraform apply`;
 8. writes the deployed image URI back to SSM.
+
+For autonomous deployment, create a private workflow that either calls these
+workflows with `workflow_call` or checks out OpenMacaw and reproduces the same
+service deployment steps with private environment values. The private workflow
+should define its own path filters, service order, health checks, and failure
+notifications.
+
+## Self-Hosted AWS Setup Checklist
+
+For a new AWS deployment, create these pieces before running the OpenMacaw
+service workflows:
+
+1. Terraform backend:
+
+```text
+S3 bucket:      <your-terraform-state-bucket>
+DynamoDB table: <your-terraform-lock-table>
+Region:         us-east-1 or your selected AWS region
+```
+
+2. Network and compute baseline:
+
+```text
+VPC
+Private subnets for ECS tasks
+Public subnets if you manage an ALB
+ECS cluster
+Cloud Map namespace for runtime discovery
+Security groups
+Optional EFS file system/access point for runtime workspaces
+Optional ALB/listener/target groups for public API traffic
+Optional Route53/ACM/CloudFront/S3 for public domains and web assets
+```
+
+3. GitHub configuration:
+
+```text
+GitHub Environment: development, staging, or production
+Secret: AWS_DEPLOY_ROLE_ARN
+```
+
+4. AWS private configuration:
+
+```text
+/openmacaw/<env>/platform-api/deploy/config
+/openmacaw/<env>/runtime-orchestrator/deploy/config
+```
+
+5. Runtime secrets:
+
+```text
+Supabase URL and SSM/Secrets Manager ARNs
+Model provider keys as SSM/Secrets Manager ARNs
+Any integration credentials as SSM/Secrets Manager ARNs
+```
+
+Do not commit real Terraform backend files, `tfvars` files, AWS account IDs,
+domain names, or secret values to a public repository.
 
 ## Existing Infrastructure Contract
 
@@ -99,6 +163,89 @@ OpenMacaw service stacks should own:
 - service-specific security groups;
 - service-specific Cloud Map registration for internal runtime discovery.
 
+## Private Deployment Repository Pattern
+
+For production, prefer a private repository that contains no plaintext secrets
+but does contain environment-specific deployment automation.
+
+Recommended contents:
+
+```text
+README.md
+scripts/
+  build-deploy-configs.mjs
+  put-deploy-configs.sh
+.github/workflows/
+  deploy-production.yml
+```
+
+The private repo workflow can:
+
+1. resolve the OpenMacaw commit to deploy;
+2. skip deployment when the deployed SSM image pointers already match;
+3. deploy the runtime orchestrator first;
+4. wait for runtime ECS stability;
+5. deploy the platform API;
+6. wait for platform ECS stability;
+7. check the public API health endpoint;
+8. notify or open an issue on failure.
+
+A minimal private orchestrator can call OpenMacaw's reusable workflows:
+
+```yaml
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-runtime:
+    uses: YOUR_ORG/OpenMacaw/.github/workflows/deploy-runtime-orchestrator.yml@main
+    with:
+      deploy_environment: production
+      environment_slug: prod
+      deploy_config_param: /openmacaw/prod/runtime-orchestrator/deploy/config
+      image_uri_param: /openmacaw/prod/runtime-orchestrator/deploy/image-uri
+    secrets: inherit
+
+  deploy-platform:
+    needs: deploy-runtime
+    uses: YOUR_ORG/OpenMacaw/.github/workflows/deploy-platform-api.yml@main
+    with:
+      deploy_environment: production
+      environment_slug: prod
+      deploy_config_param: /openmacaw/prod/platform-api/deploy/config
+      image_uri_param: /openmacaw/prod/platform-api/deploy/image-uri
+    secrets: inherit
+```
+
+If the private repo is not in the same organization or cannot use
+`secrets: inherit`, pass named secrets explicitly according to GitHub's reusable
+workflow rules.
+
+The deploy role trust should target the private repo and environment, for
+example:
+
+```json
+{
+  "StringEquals": {
+    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+    "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/YOUR_DEPLOY_REPO:environment:production"
+  }
+}
+```
+
+If you deploy directly from a private fork of OpenMacaw instead, scope the trust
+policy to that fork and production environment.
+
 ## Required GitHub Configuration
 
 Create a GitHub Environment for each deploy environment, such as
@@ -119,6 +266,21 @@ scoped to:
 - apply the specific OpenMacaw Terraform stacks;
 - write deployed image URI SSM pointer parameters;
 - read secret parameters referenced by ECS task definitions where needed.
+
+For public repositories, avoid allowing broad role assumption from all branches.
+Prefer one of these trust subjects:
+
+```text
+repo:YOUR_ORG/YOUR_PRIVATE_DEPLOY_REPO:environment:production
+repo:YOUR_ORG/YOUR_PRIVATE_OPENMACAW_FORK:environment:production
+```
+
+Avoid this for production unless the repository is private and branch controls
+are strict:
+
+```text
+repo:YOUR_ORG/YOUR_REPO:*
+```
 
 ## Required AWS SSM Parameters
 
@@ -249,20 +411,22 @@ http://openmacaw-launcher-dev.openmacaw-dev.local:4100
 
 ## Recommended Rollout Flow
 
-1. Merge OpenMacaw changes to `main`.
-2. Let path-filtered deploy workflows run automatically.
-3. Watch GitHub Actions for build, image push, and Terraform apply status.
-4. Check ECS service deployment health.
-5. Check CloudWatch logs for service startup.
-6. Check API health:
+1. Select the OpenMacaw commit to deploy.
+2. Update or confirm SSM deploy config for the target environment.
+3. Run the runtime orchestrator deploy.
+4. Wait for runtime ECS stability.
+5. Run the platform API deploy.
+6. Wait for platform ECS stability.
+7. Check CloudWatch logs for service startup.
+8. Check API health:
 
 ```sh
 curl https://<api-domain>/livez
 ```
 
-7. Check runtime/launcher health from inside the VPC or through the platform API
+9. Check runtime/launcher health from inside the VPC or through the platform API
    path that proxies runtime health.
-8. Confirm the SSM image URI pointer was updated to the commit SHA image.
+10. Confirm the SSM image URI pointer was updated to the commit SHA image.
 
 ## Manual Deploy Flow
 
@@ -290,9 +454,9 @@ deploy config path. Leave `deploy_config_param` and `image_uri_param` empty to
 use the `/openmacaw/prod/...` defaults, or set them to full SSM paths for a
 private naming convention.
 
-## Migration From Existing Harper-Owned Infrastructure
+## Migration From Existing Infrastructure
 
-For an existing Harper-owned AWS environment:
+For an existing AWS environment:
 
 1. Keep the existing Terraform backend/state bucket and lock table private.
 2. Keep existing VPC, ECS cluster, ALB, DNS, and private service-discovery
@@ -305,10 +469,10 @@ For an existing Harper-owned AWS environment:
    first OpenMacaw apply recreate shared production resources.
 6. Deploy development first, then staging/production.
 
-During cutover from the previous Parallel Agent repos, keep the old automatic
-deploy workflows enabled until OpenMacaw has successfully deployed the matching
-service once. After the OpenMacaw production deploy is confirmed, disable or
-make the old repo workflow manual-only so future merges there cannot overwrite
+During cutover from an older deployment source, keep the old automatic deploy
+workflows enabled until OpenMacaw has successfully deployed the matching service
+once. After the OpenMacaw production deploy is confirmed, disable or make the
+old workflow manual-only so future merges there cannot overwrite
 OpenMacaw-managed ECS task definitions.
 
 ## What Still Needs To Be Added
