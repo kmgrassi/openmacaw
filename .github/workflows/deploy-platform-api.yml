@@ -9,13 +9,40 @@ on:
       - "infra/terraform/stacks/platform-api/**"
       - ".github/workflows/deploy-platform-api.yml"
   workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use for the deploy."
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      environment_slug:
+        description: "Environment path/name segment used for SSM and Terraform values."
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploy_config_param:
+        description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/platform-api/deploy/config."
+        required: false
+        type: string
+      image_uri_param:
+        description: "Optional full SSM image pointer parameter path. Defaults to /openmacaw/<environment_slug>/platform-api/deploy/image-uri."
+        required: false
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: deploy-platform-api-main
+  group: deploy-platform-api-${{ inputs.environment_slug || 'dev' }}
   cancel-in-progress: false
 
 env:
@@ -24,13 +51,15 @@ env:
   DOCKERFILE: platform/apps/api/Dockerfile
   BUILD_CONTEXT: platform
   DOCKER_PLATFORM: linux/amd64
-  DEPLOY_CONFIG_PARAM: /openmacaw/dev/platform-api/deploy/config
-  IMAGE_URI_PARAM: /openmacaw/dev/platform-api/deploy/image-uri
+  DEPLOY_ENVIRONMENT: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
+  ENVIRONMENT_SLUG: ${{ inputs.environment_slug || 'dev' }}
+  DEPLOY_CONFIG_PARAM_OVERRIDE: ${{ inputs.deploy_config_param || '' }}
+  IMAGE_URI_PARAM_OVERRIDE: ${{ inputs.image_uri_param || '' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: development
+    environment: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
     timeout-minutes: 30
     env:
       TF_IN_AUTOMATION: "true"
@@ -75,6 +104,16 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           set -euo pipefail
+
+          DEPLOY_CONFIG_PARAM="${DEPLOY_CONFIG_PARAM_OVERRIDE:-/openmacaw/${ENVIRONMENT_SLUG}/platform-api/deploy/config}"
+          IMAGE_URI_PARAM="${IMAGE_URI_PARAM_OVERRIDE:-/openmacaw/${ENVIRONMENT_SLUG}/platform-api/deploy/image-uri}"
+
+          echo "deploy_config_param=${DEPLOY_CONFIG_PARAM}" >> "$GITHUB_OUTPUT"
+          echo "image_uri_param=${IMAGE_URI_PARAM}" >> "$GITHUB_OUTPUT"
+          echo "Deploy environment: ${DEPLOY_ENVIRONMENT}"
+          echo "Environment slug: ${ENVIRONMENT_SLUG}"
+          echo "Deploy config parameter: ${DEPLOY_CONFIG_PARAM}"
+          echo "Image URI parameter: ${IMAGE_URI_PARAM}"
 
           CONFIG_JSON="$(aws ssm get-parameter \
             --name "$DEPLOY_CONFIG_PARAM" \
@@ -154,6 +193,7 @@ jobs:
         env:
           ECR_REPOSITORY_URL: ${{ steps.ecr.outputs.repository_url }}
           IMAGE_TAG: ${{ github.sha }}
+          IMAGE_URI_PARAM: ${{ steps.deploy-config.outputs.image_uri_param }}
         run: |
           set -euo pipefail
           aws ssm put-parameter \

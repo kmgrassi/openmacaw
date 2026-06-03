@@ -42,8 +42,14 @@ Recommended SSM parameters:
 
 - `/openmacaw/dev/platform-api/deploy/config`
 - `/openmacaw/dev/runtime-orchestrator/deploy/config`
+- `/openmacaw/prod/platform-api/deploy/config`
+- `/openmacaw/prod/runtime-orchestrator/deploy/config`
 
-See the JSON examples in `envs/example/*/deploy-config.ssm.example.json`.
+Push-triggered workflow runs default to the `dev` SSM path segment. Manual
+workflow runs can select `dev`, `staging`, or `prod`, and can override the full
+SSM parameter paths for private deployments with a different naming convention.
+
+See the JSON examples in `envs/example/*/deploy-config*.ssm.example.json`.
 
 ## Manual Plan
 

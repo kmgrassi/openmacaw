@@ -1,0 +1,33 @@
+{
+  "terraform_backend": {
+    "bucket": "YOUR_TERRAFORM_STATE_BUCKET",
+    "key": "openmacaw/prod/platform-api/terraform.tfstate",
+    "region": "us-east-1",
+    "dynamodb_table": "YOUR_TERRAFORM_LOCK_TABLE",
+    "encrypt": true
+  },
+  "terraform_vars": {
+    "project_name": "openmacaw",
+    "environment": "prod",
+    "aws_region": "us-east-1",
+    "desired_count": 2,
+    "cpu": 512,
+    "memory": 1024,
+    "orchestrator_base_url": "http://openmacaw-launcher-prod.openmacaw-prod.local:4100",
+    "launcher_base_url": "http://openmacaw-launcher-prod.openmacaw-prod.local:4100",
+    "cors_origins": "https://app.example.com",
+    "supabase_url": "https://YOUR_SUPABASE_PROJECT.supabase.co",
+    "supabase_service_role_key_ssm_arn": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/service-role-key",
+    "shared_platform_state_enabled": true,
+    "shared_platform_state_bucket": "YOUR_SHARED_PLATFORM_STATE_BUCKET",
+    "shared_platform_state_key": "YOUR_SHARED_PLATFORM_STATE_KEY",
+    "shared_platform_state_region": "us-east-1",
+    "domain_name": "api.example.com",
+    "certificate_domains": ["api.example.com"],
+    "route53_zone_name": "example.com",
+    "manage_public_edge": false,
+    "github_org": "YOUR_GITHUB_ORG",
+    "github_repo": "openmacaw",
+    "log_retention_days": 30
+  }
+}
