@@ -32,7 +32,7 @@ resource "aws_ecs_task_definition" "app" {
         protocol      = "tcp"
       }]
 
-      environment = [
+      environment = concat([
         { name = "PORT", value = tostring(var.app_port) },
         { name = "ORCHESTRATOR_BASE_URL", value = var.orchestrator_base_url },
         { name = "LAUNCHER_BASE_URL", value = var.launcher_base_url },
@@ -44,7 +44,9 @@ resource "aws_ecs_task_definition" "app" {
         { name = "APP_ENV", value = var.environment },
         { name = "SERVICE_NAME", value = "${local.name_prefix}-platform-api" },
         { name = "DEPLOY_RUN_ID", value = var.deploy_run_id },
-      ]
+        ], var.local_relay_ws_url != "" ? [
+        { name = "LOCAL_RELAY_WS_URL", value = var.local_relay_ws_url }
+      ] : [])
 
       secrets = var.supabase_service_role_key_ssm_arn != "" ? [
         {

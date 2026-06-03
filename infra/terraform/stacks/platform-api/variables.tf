@@ -77,6 +77,12 @@ variable "cors_origins" {
   default     = "http://localhost:5173"
 }
 
+variable "local_relay_ws_url" {
+  description = "Optional WebSocket URL for the local runtime relay endpoint."
+  type        = string
+  default     = ""
+}
+
 variable "supabase_url" {
   description = "Supabase project URL used for server-side data reads"
   type        = string
