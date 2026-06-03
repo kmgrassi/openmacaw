@@ -79,6 +79,7 @@ Use the fuller examples in:
 - `infra/terraform/envs/example/platform-api/deploy-config.production.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.production.ssm.example.json`
+- `infra/terraform/envs/example/openclaw-instance/deploy-config.ssm.example.json`
 
 ## Deploy Workflows
 
@@ -113,6 +114,12 @@ For private deployments that use a different naming convention, provide
 If `environment_slug=prod` or `deploy_config_param` contains `/prod/`, the
 workflow forces the GitHub Environment to `production` so production approvals
 and credentials are always used.
+
+OpenMacaw also includes an experimental `Deploy OpenClaw Instance` workflow for
+running an existing OpenClaw broker/gateway deployment from OpenMacaw. It is
+manual-only by design. Start with `apply=false` and point its SSM config at the
+existing OpenClaw Terraform backend/state so Terraform plans against the already
+managed resources rather than trying to recreate them.
 
 Each workflow:
 
