@@ -50,7 +50,7 @@ env:
   TF_DIR: infra/terraform/stacks/runtime-orchestrator
   DOCKERFILE: runtime/apps/orchestrator/deploy/Dockerfile
   BUILD_CONTEXT: runtime/apps/orchestrator
-  DEPLOY_ENVIRONMENT: ${{ inputs.deploy_environment || 'development' }}
+  DEPLOY_ENVIRONMENT: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
   ENVIRONMENT_SLUG: ${{ inputs.environment_slug || 'dev' }}
   DEPLOY_CONFIG_PARAM_OVERRIDE: ${{ inputs.deploy_config_param || '' }}
   IMAGE_URI_PARAM_OVERRIDE: ${{ inputs.image_uri_param || '' }}
@@ -58,7 +58,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.deploy_environment || 'development' }}
+    environment: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
     timeout-minutes: 35
     env:
       TF_IN_AUTOMATION: "true"

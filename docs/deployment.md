@@ -110,6 +110,9 @@ That resolves the default production SSM paths:
 
 For private deployments that use a different naming convention, provide
 `deploy_config_param` and `image_uri_param` in the manual workflow run.
+If `environment_slug=prod` or `deploy_config_param` contains `/prod/`, the
+workflow forces the GitHub Environment to `production` so production approvals
+and credentials are always used.
 
 Each workflow:
 

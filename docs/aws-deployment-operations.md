@@ -54,7 +54,10 @@ Both workflows can also be run manually through `workflow_dispatch`.
 Automatic push-triggered runs deploy the `development` GitHub Environment and
 use the `dev` SSM path segment. Manual runs can deploy `development`,
 `staging`, or `production`; production should be run with
-`deploy_environment=production` and `environment_slug=prod`.
+`deploy_environment=production` and `environment_slug=prod`. If
+`environment_slug=prod` or `deploy_config_param` contains `/prod/`, the workflow
+forces the GitHub Environment to `production` so production approvals and
+credentials are always used.
 
 Each workflow:
 
