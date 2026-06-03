@@ -1,13 +1,6 @@
 name: Deploy Platform API
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "platform/**"
-      - "infra/terraform/stacks/platform-api/**"
-      - ".github/workflows/deploy-platform-api.yml"
   workflow_dispatch:
     inputs:
       deploy_environment:
@@ -35,6 +28,28 @@ on:
       image_uri_param:
         description: "Optional full SSM image pointer parameter path. Defaults to /openmacaw/<environment_slug>/platform-api/deploy/image-uri."
         required: false
+        type: string
+  workflow_call:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use for the deploy."
+        required: false
+        default: production
+        type: string
+      environment_slug:
+        description: "Environment path/name segment used for SSM and Terraform values."
+        required: false
+        default: prod
+        type: string
+      deploy_config_param:
+        description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/platform-api/deploy/config."
+        required: false
+        default: ""
+        type: string
+      image_uri_param:
+        description: "Optional full SSM image pointer parameter path. Defaults to /openmacaw/<environment_slug>/platform-api/deploy/image-uri."
+        required: false
+        default: ""
         type: string
 
 permissions:

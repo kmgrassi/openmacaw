@@ -1,13 +1,6 @@
 name: Deploy Runtime Orchestrator
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "runtime/**"
-      - "infra/terraform/stacks/runtime-orchestrator/**"
-      - ".github/workflows/deploy-runtime-orchestrator.yml"
   workflow_dispatch:
     inputs:
       deploy_environment:
@@ -35,6 +28,28 @@ on:
       image_uri_param:
         description: "Optional full SSM image pointer parameter path. Defaults to /openmacaw/<environment_slug>/runtime-orchestrator/deploy/image-uri."
         required: false
+        type: string
+  workflow_call:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use for the deploy."
+        required: false
+        default: production
+        type: string
+      environment_slug:
+        description: "Environment path/name segment used for SSM and Terraform values."
+        required: false
+        default: prod
+        type: string
+      deploy_config_param:
+        description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/runtime-orchestrator/deploy/config."
+        required: false
+        default: ""
+        type: string
+      image_uri_param:
+        description: "Optional full SSM image pointer parameter path. Defaults to /openmacaw/<environment_slug>/runtime-orchestrator/deploy/image-uri."
+        required: false
+        default: ""
         type: string
 
 permissions:

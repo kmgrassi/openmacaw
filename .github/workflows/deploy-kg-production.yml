@@ -1,0 +1,204 @@
+name: Deploy KG Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "platform/**"
+      - "runtime/**"
+      - "infra/terraform/stacks/platform-api/**"
+      - "infra/terraform/stacks/runtime-orchestrator/**"
+      - ".github/workflows/deploy-kg-production.yml"
+      - ".github/workflows/deploy-platform-api.yml"
+      - ".github/workflows/deploy-runtime-orchestrator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: deploy-kg-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-runtime:
+    name: Deploy runtime orchestrator
+    uses: ./.github/workflows/deploy-runtime-orchestrator.yml
+    with:
+      deploy_environment: production
+      environment_slug: prod
+      deploy_config_param: ${{ vars.KG_RUNTIME_DEPLOY_CONFIG_PARAM || '/openmacaw/prod/runtime-orchestrator/deploy/config' }}
+      image_uri_param: ${{ vars.KG_RUNTIME_IMAGE_URI_PARAM || '/openmacaw/prod/runtime-orchestrator/deploy/image-uri' }}
+    secrets: inherit
+
+  wait-runtime:
+    name: Wait for runtime ECS stability
+    needs: deploy-runtime
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      AWS_REGION: ${{ vars.KG_AWS_REGION || 'us-east-1' }}
+      ECS_CLUSTER: ${{ vars.KG_ECS_CLUSTER || 'harper-medical-cluster' }}
+      RUNTIME_SERVICE: ${{ vars.KG_RUNTIME_SERVICE || 'symphony-orchestrator-prod' }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for runtime service stable
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$RUNTIME_SERVICE"
+
+      - name: Report runtime service state
+        run: |
+          set -euo pipefail
+          aws ecs describe-services \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$RUNTIME_SERVICE" \
+            --query 'services[0].{service:serviceName,running:runningCount,desired:desiredCount,pending:pendingCount,deployments:deployments[].{status:status,rolloutState:rolloutState,taskDefinition:taskDefinition}}' \
+            --output json
+
+  deploy-platform:
+    name: Deploy platform API
+    needs: wait-runtime
+    uses: ./.github/workflows/deploy-platform-api.yml
+    with:
+      deploy_environment: production
+      environment_slug: prod
+      deploy_config_param: ${{ vars.KG_PLATFORM_DEPLOY_CONFIG_PARAM || '/openmacaw/prod/platform-api/deploy/config' }}
+      image_uri_param: ${{ vars.KG_PLATFORM_IMAGE_URI_PARAM || '/openmacaw/prod/platform-api/deploy/image-uri' }}
+    secrets: inherit
+
+  wait-platform:
+    name: Wait for platform ECS stability
+    needs: deploy-platform
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      AWS_REGION: ${{ vars.KG_AWS_REGION || 'us-east-1' }}
+      ECS_CLUSTER: ${{ vars.KG_ECS_CLUSTER || 'harper-medical-cluster' }}
+      PLATFORM_SERVICE: ${{ vars.KG_PLATFORM_SERVICE || 'symphony-prod-server' }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for platform service stable
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$PLATFORM_SERVICE"
+
+      - name: Report platform service state
+        run: |
+          set -euo pipefail
+          aws ecs describe-services \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$PLATFORM_SERVICE" \
+            --query 'services[0].{service:serviceName,running:runningCount,desired:desiredCount,pending:pendingCount,deployments:deployments[].{status:status,rolloutState:rolloutState,taskDefinition:taskDefinition}}' \
+            --output json
+
+  verify:
+    name: Verify KG production health
+    needs:
+      - wait-runtime
+      - wait-platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API_HEALTH_URL: ${{ vars.KG_API_HEALTH_URL || 'https://clawapi.harper.new/livez' }}
+    steps:
+      - name: Check API health endpoint
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent "$API_HEALTH_URL"
+          printf '\n'
+
+  report-failure:
+    name: Open issue on deploy failure
+    if: ${{ always() && (failure() || cancelled()) }}
+    needs:
+      - deploy-runtime
+      - wait-runtime
+      - deploy-platform
+      - wait-platform
+      - verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update deploy failure issue
+        uses: actions/github-script@v7
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          DEPLOY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUNTIME_RESULT: ${{ needs.deploy-runtime.result }}
+          WAIT_RUNTIME_RESULT: ${{ needs.wait-runtime.result }}
+          PLATFORM_RESULT: ${{ needs.deploy-platform.result }}
+          WAIT_PLATFORM_RESULT: ${{ needs.wait-platform.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const sha = process.env.DEPLOY_SHA;
+            const runUrl = process.env.DEPLOY_RUN_URL;
+            const shortSha = sha.slice(0, 7);
+            const title = `KG production deploy failed for ${shortSha}`;
+            const statusLines = [
+              `runtime deploy: ${process.env.RUNTIME_RESULT}`,
+              `runtime stability: ${process.env.WAIT_RUNTIME_RESULT}`,
+              `platform deploy: ${process.env.PLATFORM_RESULT}`,
+              `platform stability: ${process.env.WAIT_PLATFORM_RESULT}`,
+              `health verification: ${process.env.VERIFY_RESULT}`,
+            ];
+            const body = [
+              `**Run:** ${runUrl}`,
+              `**Commit:** ${sha}`,
+              `**Triggered by:** ${context.actor}`,
+              ``,
+              `**Job results:**`,
+              ...statusLines.map((line) => `- ${line}`),
+              ``,
+              `Open the run link above for step-level logs. Close this issue after a later successful KG production deploy lands.`,
+            ].join("\n");
+
+            const existing = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} in:title "${title}" is:issue is:open`,
+            });
+
+            if (existing.data.total_count > 0) {
+              const issue = existing.data.items[0];
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Another deploy attempt failed at ${new Date().toISOString()} — ${runUrl}\n\n${statusLines.map((line) => `- ${line}`).join("\n")}`,
+              });
+              core.info(`Commented on existing issue #${issue.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+              core.info(`Opened issue #${created.data.number}`);
+            }
