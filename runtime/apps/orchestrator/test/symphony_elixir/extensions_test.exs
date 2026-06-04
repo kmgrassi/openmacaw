@@ -3,11 +3,14 @@ defmodule SymphonyElixir.ExtensionsTest do
 
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
+  import Plug.Conn, only: [put_req_header: 3]
+  import SymphonyElixir.TestSupport, only: [put_system_env: 2]
 
   alias SymphonyElixir.Tracker.Linear, as: Adapter
   alias SymphonyElixir.Tracker.Memory
 
   @endpoint SymphonyElixirWeb.Endpoint
+  @service_role_key "service-role-test-key"
 
   defmodule FakeLinearClient do
     def fetch_candidate_issues do
@@ -340,6 +343,7 @@ defmodule SymphonyElixir.ExtensionsTest do
   end
 
   test "phoenix observability api preserves state, issue, and refresh responses" do
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
     snapshot = static_snapshot()
     orchestrator_name = Module.concat(__MODULE__, :ObservabilityApiOrchestrator)
 
@@ -357,7 +361,7 @@ defmodule SymphonyElixir.ExtensionsTest do
 
     start_test_endpoint(orchestrator: orchestrator_name, snapshot_timeout_ms: 50)
 
-    conn = get(build_conn(), "/api/v1/state")
+    conn = get(authed_conn(), "/api/v1/state")
     state_payload = json_response(conn, 200)
     workspace_root = Config.settings!().workspace.root
 
@@ -411,7 +415,7 @@ defmodule SymphonyElixir.ExtensionsTest do
              "rate_limits" => %{"primary" => %{"remaining" => 11}}
            }
 
-    conn = get(build_conn(), "/api/v1/MT-HTTP")
+    conn = get(authed_conn(), "/api/v1/MT-HTTP")
     issue_payload = json_response(conn, 200)
     issue_workspace_path = Path.join(workspace_root, "MT-HTTP")
 
@@ -450,24 +454,26 @@ defmodule SymphonyElixir.ExtensionsTest do
              "tracked" => %{}
            }
 
-    conn = get(build_conn(), "/api/v1/MT-RETRY")
+    conn = get(authed_conn(), "/api/v1/MT-RETRY")
 
     assert %{"status" => "retrying", "retry" => %{"attempt" => 2, "error" => "boom"}} =
              json_response(conn, 200)
 
-    conn = get(build_conn(), "/api/v1/MT-MISSING")
+    conn = get(authed_conn(), "/api/v1/MT-MISSING")
 
     assert json_response(conn, 404) == %{
              "error" => %{"code" => "issue_not_found", "message" => "Issue not found"}
            }
 
-    conn = post(build_conn(), "/api/v1/refresh", %{})
+    conn = post(authed_conn(), "/api/v1/refresh", %{})
 
     assert %{"queued" => true, "coalesced" => false, "operations" => ["poll", "reconcile"]} =
              json_response(conn, 202)
   end
 
   test "phoenix observability api exposes local runtime diagnostics before issue routes" do
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
+
     Application.put_env(:symphony_elixir, :local_runtime_diagnostics_source, [
       %{
         workspace_id: "workspace-local",
@@ -492,7 +498,7 @@ defmodule SymphonyElixir.ExtensionsTest do
     )
 
     payload =
-      build_conn()
+      authed_conn()
       |> get("/api/v1/local-runtime/health?workspace_id=workspace-local&target_runner_kind=openai_compatible&model=qwen2.5-coder:latest&required_capabilities=streaming,json_mode")
       |> json_response(200)
 
@@ -503,18 +509,19 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert runner["runner_kind"] == "openai_compatible"
     assert runner["provider"] == "ollama"
 
-    assert json_response(post(build_conn(), "/api/v1/local-runtime/health", %{}), 405) ==
+    assert json_response(post(authed_conn(), "/api/v1/local-runtime/health", %{}), 405) ==
              %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
   end
 
   test "phoenix observability api preserves 405, 404, and unavailable behavior" do
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
     unavailable_orchestrator = Module.concat(__MODULE__, :UnavailableOrchestrator)
     start_test_endpoint(orchestrator: unavailable_orchestrator, snapshot_timeout_ms: 5)
 
-    assert json_response(post(build_conn(), "/api/v1/state", %{}), 405) ==
+    assert json_response(post(authed_conn(), "/api/v1/state", %{}), 405) ==
              %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
 
-    assert json_response(get(build_conn(), "/api/v1/refresh"), 405) ==
+    assert json_response(get(authed_conn(), "/api/v1/refresh"), 405) ==
              %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
 
     assert json_response(post(build_conn(), "/", %{}), 405) ==
@@ -526,7 +533,7 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert json_response(get(build_conn(), "/unknown"), 404) ==
              %{"error" => %{"code" => "not_found", "message" => "Route not found"}}
 
-    state_payload = json_response(get(build_conn(), "/api/v1/state"), 200)
+    state_payload = json_response(get(authed_conn(), "/api/v1/state"), 200)
 
     assert state_payload ==
              %{
@@ -534,7 +541,7 @@ defmodule SymphonyElixir.ExtensionsTest do
                "error" => %{"code" => "snapshot_unavailable", "message" => "Snapshot unavailable"}
              }
 
-    assert json_response(post(build_conn(), "/api/v1/refresh", %{}), 503) ==
+    assert json_response(post(authed_conn(), "/api/v1/refresh", %{}), 503) ==
              %{
                "error" => %{
                  "code" => "orchestrator_unavailable",
@@ -544,11 +551,12 @@ defmodule SymphonyElixir.ExtensionsTest do
   end
 
   test "phoenix observability api preserves snapshot timeout behavior" do
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
     timeout_orchestrator = Module.concat(__MODULE__, :TimeoutOrchestrator)
     {:ok, _pid} = SlowOrchestrator.start_link(name: timeout_orchestrator)
     start_test_endpoint(orchestrator: timeout_orchestrator, snapshot_timeout_ms: 1)
 
-    timeout_payload = json_response(get(build_conn(), "/api/v1/state"), 200)
+    timeout_payload = json_response(get(authed_conn(), "/api/v1/state"), 200)
 
     assert timeout_payload ==
              %{
@@ -688,6 +696,7 @@ defmodule SymphonyElixir.ExtensionsTest do
   end
 
   test "http server serves embedded assets, accepts form posts, and rejects invalid hosts" do
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
     spec = HttpServer.child_spec(port: 0)
     assert spec.id == HttpServer
     assert spec.start == {HttpServer, :start_link, [[port: 0]]}
@@ -719,7 +728,11 @@ defmodule SymphonyElixir.ExtensionsTest do
     port = wait_for_bound_port()
     assert port == HttpServer.bound_port()
 
-    response = Req.get!("http://127.0.0.1:#{port}/api/v1/state")
+    response =
+      Req.get!("http://127.0.0.1:#{port}/api/v1/state",
+        headers: [{"authorization", "Bearer #{@service_role_key}"}]
+      )
+
     assert response.status == 200
     assert response.body["counts"] == %{"running" => 1, "retrying" => 1}
 
@@ -733,7 +746,10 @@ defmodule SymphonyElixir.ExtensionsTest do
 
     refresh_response =
       Req.post!("http://127.0.0.1:#{port}/api/v1/refresh",
-        headers: [{"content-type", "application/x-www-form-urlencoded"}],
+        headers: [
+          {"authorization", "Bearer #{@service_role_key}"},
+          {"content-type", "application/x-www-form-urlencoded"}
+        ],
         body: ""
       )
 
@@ -742,7 +758,10 @@ defmodule SymphonyElixir.ExtensionsTest do
 
     method_not_allowed_response =
       Req.post!("http://127.0.0.1:#{port}/api/v1/state",
-        headers: [{"content-type", "application/x-www-form-urlencoded"}],
+        headers: [
+          {"authorization", "Bearer #{@service_role_key}"},
+          {"content-type", "application/x-www-form-urlencoded"}
+        ],
         body: ""
       )
 
@@ -750,6 +769,14 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert method_not_allowed_response.body["error"]["code"] == "method_not_allowed"
 
     assert {:error, _reason} = HttpServer.start_link(host: "bad host", port: 0)
+  end
+
+  test "phoenix observability api rejects unauthenticated requests" do
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
+    start_test_endpoint(orchestrator: Module.concat(__MODULE__, :UnauthorizedOrchestrator), snapshot_timeout_ms: 5)
+
+    assert json_response(get(build_conn(), "/api/v1/state"), 401) ==
+             %{"error" => %{"code" => "auth_required", "message" => "Service-role bearer token is required"}}
   end
 
   defp start_test_endpoint(overrides) do
@@ -761,6 +788,11 @@ defmodule SymphonyElixir.ExtensionsTest do
 
     Application.put_env(:symphony_elixir, SymphonyElixirWeb.Endpoint, endpoint_config)
     start_supervised!({SymphonyElixirWeb.Endpoint, []})
+  end
+
+  defp authed_conn do
+    build_conn()
+    |> put_req_header("authorization", "Bearer #{@service_role_key}")
   end
 
   defp static_snapshot do
