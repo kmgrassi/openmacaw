@@ -48,6 +48,8 @@ Runtime execution and observability:
 - `event_log`
 - `session_thread`
 - `message`
+- `work_item_comments`
+- `escalation`
 
 Planning and work tracking:
 

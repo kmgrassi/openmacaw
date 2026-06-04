@@ -31,6 +31,7 @@ coverage/
 *.swp
 *.swo
 .run-logs/
+.run-artifacts/
 .playwright-mcp/
 supabase/.temp/
 .claude/
