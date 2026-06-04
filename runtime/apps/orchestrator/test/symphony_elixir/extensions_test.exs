@@ -775,6 +775,14 @@ defmodule SymphonyElixir.ExtensionsTest do
     put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
     start_test_endpoint(orchestrator: Module.concat(__MODULE__, :UnauthorizedOrchestrator), snapshot_timeout_ms: 5)
 
+    health_payload = json_response(get(build_conn(), "/api/v1/health"), 200)
+
+    assert health_payload ==
+             %{
+               "generated_at" => health_payload["generated_at"],
+               "error" => %{"code" => "snapshot_unavailable", "message" => "Snapshot unavailable"}
+             }
+
     assert json_response(get(build_conn(), "/api/v1/state"), 401) ==
              %{"error" => %{"code" => "auth_required", "message" => "Service-role bearer token is required"}}
   end

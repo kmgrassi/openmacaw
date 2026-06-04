@@ -34,9 +34,13 @@ defmodule SymphonyElixirWeb.Router do
   end
 
   scope "/", SymphonyElixirWeb do
+    get("/api/v1/health", ObservabilityApiController, :health)
+    match(:*, "/api/v1/health", ObservabilityApiController, :method_not_allowed)
+  end
+
+  scope "/", SymphonyElixirWeb do
     pipe_through(:protected_api)
 
-    get("/api/v1/health", ObservabilityApiController, :health)
     get("/api/v1/state", ObservabilityApiController, :state)
     get("/api/v1/local-runtime/health", ObservabilityApiController, :local_runtime_health)
     get("/api/v1/local-runtime/capabilities", LocalRuntimeController, :capabilities)
@@ -44,7 +48,6 @@ defmodule SymphonyElixirWeb.Router do
     post("/api/v1/local-runtime/probe", LocalRuntimeController, :probe)
 
     match(:*, "/", ObservabilityApiController, :method_not_allowed)
-    match(:*, "/api/v1/health", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/v1/state", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/v1/local-runtime/health", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/v1/local-runtime/capabilities", ObservabilityApiController, :method_not_allowed)
