@@ -177,10 +177,12 @@ describe("agent proxy auth", () => {
       }
 
       if (req.method === "GET" && url.pathname === `/agents/${agentId}/runtime/api/v1/health`) {
+        expect(req.headers.authorization).toBe("Bearer service-role-key");
         return json(res, 200, { ok: true });
       }
 
       if (req.method === "GET" && url.pathname === `/agents/${agentId}/runtime/api/v1/state`) {
+        expect(req.headers.authorization).toBe("Bearer service-role-key");
         return json(res, 200, { agents: [{ id: agentId, workspace_id: workspaceId }] });
       }
 

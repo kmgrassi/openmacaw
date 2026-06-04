@@ -75,6 +75,22 @@ function normalizeRuntimeResponse(result: UpstreamResponse): UpstreamResponse {
   };
 }
 
+function internalRuntimeHeaders(req: Request): Record<string, string> {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+  if (!serviceRoleKey) {
+    throw new ApiRouteError(
+      503,
+      "service_role_unconfigured",
+      "Service-role authentication is not configured for runtime proxy requests",
+    );
+  }
+
+  return {
+    ...parseHeaders(req.headers as Record<string, string | string[] | undefined>),
+    authorization: `Bearer ${serviceRoleKey}`,
+  };
+}
+
 async function proxyRequest(
   runtimeRequest: (path: string, init?: RequestInit) => Promise<UpstreamResponse>,
   req: Request,
@@ -86,9 +102,7 @@ async function proxyRequest(
   try {
     const result = await runtimeRequest(upstreamPath, {
       method: req.method,
-      headers: {
-        ...parseHeaders(req.headers as Record<string, string | string[] | undefined>),
-      },
+      headers: internalRuntimeHeaders(req),
       body: req.method === "GET" || req.method === "HEAD" ? undefined : JSON.stringify(bodyOverride ?? req.body ?? {}),
     });
 
