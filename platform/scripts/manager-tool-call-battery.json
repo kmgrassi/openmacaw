@@ -1,6 +1,4 @@
 {
-  "agentId": "0e3859cf-617c-5d7a-9734-b15ff6660d62",
-  "workspaceId": "a8019dd7-5485-473c-81b9-4bf899401413",
   "apiBaseUrl": "http://127.0.0.1:3100",
   "defaultTimeoutMs": 90000,
   "defaultWaitMs": 30000,

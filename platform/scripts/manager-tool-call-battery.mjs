@@ -109,8 +109,9 @@ async function main() {
 function parseArgs(argv) {
   const parsed = {
     batteryPath: defaultBatteryPath,
-    agentId: null,
-    workspaceId: null,
+    agentId: process.env.MANAGER_AGENT_ID ?? process.env.OPENMACAW_MANAGER_AGENT_ID ?? process.env.OPENMACAW_AGENT_ID ?? null,
+    workspaceId:
+      process.env.MANAGER_WORKSPACE_ID ?? process.env.OPENMACAW_MANAGER_WORKSPACE_ID ?? process.env.OPENMACAW_WORKSPACE_ID ?? null,
     apiBaseUrl: process.env.PLATFORM_API_BASE_URL ?? process.env.OPENMACAW_API_BASE_URL ?? null,
     token: process.env.PLATFORM_API_TOKEN ?? process.env.OPENMACAW_ACCESS_TOKEN ?? null,
     caseIds: [],
@@ -155,6 +156,8 @@ Options:
   --run                 Actually send prompts. Omit for dry-run discovery.
   --case <id>           Run/list one case. May be repeated.
   --include-disabled    Include disabled cases when --case is not provided.
+  --agent-id <id>       Agent to message. Defaults to MANAGER_AGENT_ID or OPENMACAW_AGENT_ID.
+  --workspace-id <id>   Workspace context. Defaults to MANAGER_WORKSPACE_ID or OPENMACAW_WORKSPACE_ID.
   --api-base-url <url>  Platform API URL. Default comes from the battery file.
   --api-token <token>   Bearer token. Otherwise the script signs in using local env login values.
   --json                Print JSON only.
