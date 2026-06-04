@@ -37,7 +37,7 @@ async function main() {
   const battery = await readJson(args.batteryPath);
   const agentId = args.agentId ?? battery.agentId;
   const workspaceId = args.workspaceId ?? battery.workspaceId;
-  const apiBaseUrl = normalizeUrl(args.apiBaseUrl ?? battery.apiBaseUrl ?? "http://127.0.0.1:3310");
+  const apiBaseUrl = normalizeUrl(args.apiBaseUrl ?? battery.apiBaseUrl ?? "http://127.0.0.1:3100");
   const selectedCases = selectCases(battery);
 
   requireValue(agentId, "agentId");
