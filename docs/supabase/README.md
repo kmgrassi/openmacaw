@@ -14,7 +14,8 @@ Supabase project.
 1. Create a new project in the Supabase Dashboard.
 2. Save the project reference from the dashboard URL:
    `https://supabase.com/dashboard/project/<project-ref>`.
-3. Save the generated database password somewhere secure.
+3. Save the generated database password somewhere secure for break-glass
+   operational access.
 4. In the project dashboard, collect the values OpenMacaw will need later:
    `SUPABASE_URL`, anon key, and service role key.
 
@@ -132,8 +133,11 @@ reference schema changes. It can also be run manually from GitHub Actions with
 The workflow uses the `production` GitHub environment and requires:
 
 - `SUPABASE_ACCESS_TOKEN`
-- `SUPABASE_DB_PASSWORD`
 - `SUPABASE_PROJECT_ID` as either an environment variable or secret
+
+The workflow authenticates with the Supabase access token and links the remote
+project by project ref. Do not add the database password to GitHub unless a
+future deploy path explicitly needs password-based database access.
 
 ## Regenerate OpenMacaw Schema Artifacts
 
