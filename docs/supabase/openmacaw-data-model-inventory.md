@@ -45,6 +45,13 @@ Runtime execution and observability:
 - `broker_run`
 - `broker_task`
 - `agent_tool_call_event`
+- `agent_eval_suite`
+- `agent_eval_case`
+- `agent_eval_case_assertion`
+- `agent_eval_run`
+- `agent_eval_run_case`
+- `agent_eval_assertion_result`
+- `agent_eval_observation`
 - `event_log`
 - `session_thread`
 - `message`
