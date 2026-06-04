@@ -1,0 +1,58 @@
+name: Validate Supabase Migrations
+
+on:
+  pull_request:
+    paths:
+      - "platform/supabase/**"
+      - "docs/supabase/openmacaw-schema.sql"
+      - ".github/workflows/validate-supabase-migrations.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "platform/supabase/**"
+      - "docs/supabase/openmacaw-schema.sql"
+      - ".github/workflows/validate-supabase-migrations.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-supabase-migrations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Supabase migrations locally
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENAI_API_KEY: ci-placeholder
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.47.2
+
+      - name: Start local Supabase
+        working-directory: platform
+        run: |
+          set -euo pipefail
+          supabase start
+
+      - name: Apply migrations to fresh local database
+        working-directory: platform
+        run: supabase db reset
+
+      - name: Show local migration status
+        working-directory: platform
+        run: supabase migration list --local
+
+      - name: Stop local Supabase
+        if: always()
+        working-directory: platform
+        run: supabase stop --no-backup
