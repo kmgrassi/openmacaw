@@ -2,6 +2,7 @@ import type {
   ClaudeCodeDiagnosticStatus,
   CodexOAuthDiagnosticStatus,
 } from "../../../api/agent-diagnostic";
+import { formatStatusLabel as formatSharedStatusLabel } from "../../../lib/status-labels";
 
 export function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
@@ -17,9 +18,7 @@ export function formatSessionTime(ts: number | null | undefined): string {
 }
 
 export function formatStatusLabel(status: string | null | undefined): string {
-  const normalized = status?.trim().replace(/[_-]+/g, " ");
-  if (!normalized) return "Unknown";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  return formatSharedStatusLabel(status);
 }
 
 export function formatExitStatus(

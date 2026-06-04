@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { formatStatusLabel } from "../../lib/status-labels";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -43,15 +44,6 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
           ? "warning"
           : "default";
   return <Badge variant={variant}>{formatStatusLabel(status)}</Badge>;
-}
-
-function formatStatusLabel(status: string | null | undefined) {
-  if (!status) return "Unknown";
-  return status
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
 }
 
 function getEngineStatusMeta(status: string | null | undefined) {

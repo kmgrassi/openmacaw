@@ -1,4 +1,5 @@
 import { useGatewayContext } from "../context/GatewayContext";
+import { formatStatusLabel } from "../lib/status-labels";
 import { DiagnosticsExportButton } from "./DiagnosticsExportButton";
 import { Badge } from "./ui/Badge";
 
@@ -9,12 +10,6 @@ function badgeVariant(
   if (status === "error" || status === "scope_missing") return "error";
   if (status === "connecting" || status === "resolving_scope") return "warning";
   return "default";
-}
-
-function formatStatusLabel(status: string | null | undefined): string {
-  const normalized = status?.trim().replace(/[_-]+/g, " ");
-  if (!normalized) return "Unknown";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
 }
 
 function formatProviderLabel(provider: string | null | undefined): string {
