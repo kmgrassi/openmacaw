@@ -208,11 +208,14 @@ the entire codebase rather than adding a compatibility layer.
 - **Never manually edit generated files.** In particular,
   `packages/supabase-schema/src/database.types.ts` must only change by running
   `pnpm run db:schema:sync` against the intended Supabase project.
-- **All database migrations live in the `harper-server` repo.** Do not create
-  Supabase migration files in this repo.
-- **Do not run forced database migrations.** Schema changes must be made as
-  migration files in `harper-server`, then code reviewed, merged, and applied
-  by that repo's CI/CD pipeline.
+- Historical Harper/Parallel Agent schema changes still live in the
+  `harper-server` repo. Do not add migrations there from this repo.
+- OpenMacaw-owned schema changes live under `platform/supabase/migrations/`
+  with the matching reference SQL in `docs/supabase/openmacaw-schema.sql`.
+  Create reviewable migration files here; do not make direct remote Dashboard
+  schema edits.
+- **Do not run forced database migrations.** Apply OpenMacaw migrations through
+  the documented Supabase migration workflow in `docs/supabase/README.md`.
 - If generated Supabase types do not match migrations or application code,
   treat that as a schema deployment or migration-ordering problem. Fix the
   migration state first, then regenerate and sync the types.

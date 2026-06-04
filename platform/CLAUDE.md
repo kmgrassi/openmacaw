@@ -204,14 +204,16 @@ the entire codebase rather than adding a compatibility layer.
 
 ## Database Migrations
 
-- **All database migrations live in the `harper-server` repo.** Do not create
-  Supabase migration files in this repo.
-- **Do not run forced database migrations.** Schema changes must be made as
-  migration files in `harper-server`, then code reviewed, merged, and applied
-  by that repo's CI/CD pipeline.
-- After the migration has been applied through `harper-server` CI/CD,
-  regenerate database types here with `pnpm run db:schema:sync` if this repo
-  needs updated Supabase types.
+- Historical Harper/Parallel Agent schema changes still live in the
+  `harper-server` repo. Do not add those migrations from this repo.
+- OpenMacaw-owned schema changes live under `platform/supabase/migrations/`
+  with the matching reference SQL in `docs/supabase/openmacaw-schema.sql`.
+  Create reviewable migration files here; do not make direct remote Dashboard
+  schema edits.
+- **Do not run forced database migrations.** Apply OpenMacaw migrations through
+  the documented Supabase migration workflow in `docs/supabase/README.md`.
+- After migrations are applied, regenerate database types here with
+  `pnpm run db:schema:sync` if this repo needs updated Supabase types.
 
 ## Docs Conventions
 
