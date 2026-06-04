@@ -49,7 +49,20 @@ export async function loadWorkspaceAgentDiagnostic(
     return unreachable(`Runtime diagnostic endpoint returned ${response.status}`);
   }
 
-  const runtimeDiagnostic = WorkspaceAgentDiagnosticRuntimeResponseSchema.parse(response.body);
+  const parsedRuntimeDiagnostic = WorkspaceAgentDiagnosticRuntimeResponseSchema.safeParse(response.body);
+  if (!parsedRuntimeDiagnostic.success) {
+    logEvent({
+      event: "workspace_agent_diagnostic_runtime_invalid",
+      level: "warn",
+      workspace_id: workspaceId,
+      upstream_status: response.status,
+      upstream_body_type: typeof response.body,
+      validation_error: parsedRuntimeDiagnostic.error.flatten(),
+    });
+    return unreachable("Runtime diagnostic endpoint returned an invalid response");
+  }
+
+  const runtimeDiagnostic = parsedRuntimeDiagnostic.data;
   return WorkspaceAgentDiagnosticResponseSchema.parse({
     ok: true,
     workspaceId: runtimeDiagnostic.workspace_id,

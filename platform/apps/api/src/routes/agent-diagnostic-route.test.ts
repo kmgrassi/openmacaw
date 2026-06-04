@@ -211,4 +211,23 @@ describe("agent diagnostic route — auth", () => {
       details: "Runtime diagnostic endpoint returned 404",
     });
   });
+
+  it("returns a structured unreachable payload when the runtime batch endpoint returns an invalid body", async () => {
+    runtimeRequest.mockResolvedValueOnce({
+      status: 200,
+      headers: { "content-type": "text/html" },
+      body: "<!doctype html>",
+    });
+
+    const response = await fetch(`${baseUrl}/api/diagnostic/workspace/${workspaceId}/agents`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      reason: "runtime_unreachable",
+      details: "Runtime diagnostic endpoint returned an invalid response",
+    });
+  });
 });
