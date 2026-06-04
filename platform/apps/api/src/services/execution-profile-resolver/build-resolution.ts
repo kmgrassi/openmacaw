@@ -2,8 +2,10 @@ import { ExecutionProviderSchema } from "../../../../../contracts/execution-prof
 import type {
   AgentRole,
   ExecutionProfile,
+  ExecutionProfileAdapterConfig,
   ExecutionProfileMissingRequirement,
   ExecutionProfileResolution,
+  ExecutionProfileSourceMetadata,
 } from "../../../../../contracts/execution-profile.js";
 import {
   capabilitiesForRunnerKind,
@@ -27,6 +29,8 @@ export function buildResolution(input: {
   credentialAlias: string | null;
   fallbackUsed: boolean;
   legacyGatewayConfigUsed: boolean;
+  adapterConfig?: ExecutionProfileAdapterConfig;
+  sourceMetadata?: ExecutionProfileSourceMetadata;
 }): ExecutionProfileResolution {
   const missing: ExecutionProfileMissingRequirement[] = [];
   const parsedProvider = input.provider ? ExecutionProviderSchema.safeParse(input.provider) : null;
@@ -64,6 +68,8 @@ export function buildResolution(input: {
               ? { sandbox: "workspace_write", approvalPolicy: "on_request" }
               : undefined,
             capabilityRequirements: localCodingProfile ? { toolCalls: true, jsonMode: true } : undefined,
+            adapterConfig: nonEmptyObject(input.adapterConfig),
+            sourceMetadata: nonEmptyObject(input.sourceMetadata),
             capabilities: capabilitiesForRunnerKind(input.runnerKind, input.role),
           }
         : null,
@@ -75,4 +81,8 @@ export function buildResolution(input: {
       legacyGatewayConfigUsed: input.legacyGatewayConfigUsed,
     },
   };
+}
+
+function nonEmptyObject<T extends Record<string, unknown>>(value: T | undefined): T | undefined {
+  return value && Object.keys(value).length > 0 ? value : undefined;
 }

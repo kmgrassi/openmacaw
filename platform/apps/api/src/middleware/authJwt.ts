@@ -85,7 +85,7 @@ function verifyJwt(token: string, key: string, issuer: string) {
       token,
       key,
       {
-        algorithms: ["RS256"],
+        algorithms: ["RS256", "ES256"],
         audience: "authenticated",
         issuer,
       },
@@ -155,7 +155,7 @@ export async function verifyBearerToken(token: string): Promise<VerifiedAuth> {
       return await verifyWithSupabaseAuth(trimmed);
     }
 
-    if (header?.alg !== "RS256") {
+    if (header?.alg !== "RS256" && header?.alg !== "ES256") {
       throw new AuthJwtError("invalid_token", "JWT algorithm is not allowed");
     }
 

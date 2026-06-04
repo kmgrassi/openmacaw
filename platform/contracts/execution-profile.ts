@@ -44,6 +44,15 @@ export const ExecutionProfileCapabilitiesSchema = z.object({
   interrupt: z.boolean(),
 });
 
+export const ExecutionProfileAdapterConfigSchema = z.record(
+  z.string(),
+  z.unknown(),
+);
+export const ExecutionProfileSourceMetadataSchema = z.record(
+  z.string(),
+  z.unknown(),
+);
+
 export const WorkspaceSandboxSchema = z.enum(["read_only", "workspace_write"]);
 
 export const ApprovalPolicySchema = z.enum([
@@ -213,6 +222,8 @@ export const ExecutionProfileSchema = z.object({
   workspacePolicy: WorkspacePolicySchema.optional(),
   capabilityRequirements: CapabilityRequirementsSchema.optional(),
   toolDefinitions: z.array(ToolDefinitionSchema).optional(),
+  adapterConfig: ExecutionProfileAdapterConfigSchema.optional(),
+  sourceMetadata: ExecutionProfileSourceMetadataSchema.optional(),
   capabilities: ExecutionProfileCapabilitiesSchema,
 });
 
@@ -263,6 +274,12 @@ export type ToolProfile = z.infer<typeof ToolProfileSchema>;
 export type CredentialReference = z.infer<typeof CredentialReferenceSchema>;
 export type ExecutionProfileCapabilities = z.infer<
   typeof ExecutionProfileCapabilitiesSchema
+>;
+export type ExecutionProfileAdapterConfig = z.infer<
+  typeof ExecutionProfileAdapterConfigSchema
+>;
+export type ExecutionProfileSourceMetadata = z.infer<
+  typeof ExecutionProfileSourceMetadataSchema
 >;
 export type WorkspaceSandbox = z.infer<typeof WorkspaceSandboxSchema>;
 export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;

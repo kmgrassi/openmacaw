@@ -51,6 +51,7 @@ export async function resolveExecutionProfile(
       role,
       rule,
       rulesById: new Map(rules.map((candidate) => [candidate.id, candidate])),
+      matches,
       accessToken: input.accessToken,
     });
     if (resolution) return resolution;

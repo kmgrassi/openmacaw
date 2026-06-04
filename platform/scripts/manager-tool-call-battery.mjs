@@ -320,7 +320,7 @@ async function runCase(input) {
           errorMessage: gateway.errorMessage ?? null,
         }
       : null;
-  const evidence =
+  const dbEvidence =
     runtimeFailure == null
       ? await waitForToolEvidence({
           agentId: input.agentId,
@@ -334,6 +334,7 @@ async function runCase(input) {
           workspaceId: input.workspaceId,
           startedAt,
         });
+  const evidence = mergeToolEvidence(dbEvidence, toolEvidenceFromGatewayEvents(gateway.events));
   await writeJson(path.join(caseDir, "evidence.json"), evidence);
 
   const assertionResults = evaluateAssertions(input.testCase.assertions, evidence);
@@ -638,7 +639,7 @@ function evaluateAssertions(assertions, evidence) {
     const hintsPassed =
       assertion.argumentHints.length === 0 ||
       matchingCalls.some((call) => {
-        const haystack = JSON.stringify({ input: call.input, output: call.output });
+        const haystack = evidenceText({ input: call.input, output: call.output });
         return assertion.argumentHints.every((hint) => haystack.includes(hint));
       });
     const status = minPassed && maxPassed && hintsPassed ? "passed" : "failed";
@@ -655,6 +656,22 @@ function evaluateAssertions(assertions, evidence) {
       required: assertion.required,
     };
   });
+}
+
+function evidenceText(value) {
+  return flattenEvidenceText(value).join(" ");
+}
+
+function flattenEvidenceText(value) {
+  if (value == null) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [String(value)];
+  }
+  if (Array.isArray(value)) return value.flatMap(flattenEvidenceText);
+  if (typeof value === "object") {
+    return [JSON.stringify(value), ...Object.values(value).flatMap(flattenEvidenceText)];
+  }
+  return [];
 }
 
 function numberOrNull(value) {
@@ -957,6 +974,10 @@ function rememberGatewayFrame(events, frame) {
       frame.payload && typeof frame.payload === "object" && !Array.isArray(frame.payload)
         ? Object.keys(frame.payload).sort()
         : [],
+    payload:
+      frame.payload && typeof frame.payload === "object" && !Array.isArray(frame.payload)
+        ? sanitizeForArtifact(frame.payload)
+        : null,
     error: frame.error ?? null,
   });
 }
@@ -998,8 +1019,8 @@ async function waitForToolEvidence(input) {
 }
 
 async function loadToolEvidence({ agentId, workspaceId, startedAt }) {
-  const rows = await postgrestGet("message", {
-    select: "id,role,created_at,run_id,content,tool_call(id,tool_id,input,output,created_at)",
+  const messages = await postgrestGet("message", {
+    select: "id,role,created_at,run_id,content",
     agent_id: `eq.${agentId}`,
     workspace_id: `eq.${workspaceId}`,
     deleted_at: "is.null",
@@ -1007,32 +1028,89 @@ async function loadToolEvidence({ agentId, workspaceId, startedAt }) {
     order: "created_at.desc",
     limit: "30",
   });
+  const messageIds = messages.map((message) => message.id).filter(Boolean);
+  const toolCallRows =
+    messageIds.length === 0
+      ? []
+      : await postgrestGet("tool_call", {
+          select: "id,message_id,tool_id,input,output,created_at",
+          message_id: `in.(${messageIds.join(",")})`,
+          order: "created_at.desc",
+          limit: "100",
+        });
+  const messageById = new Map(messages.map((message) => [message.id, message]));
 
-  const toolCalls = rows.flatMap((message) =>
-    Array.isArray(message.tool_call)
-      ? message.tool_call.map((toolCall) => ({
-          id: toolCall.id,
-          messageId: message.id,
-          runId: message.run_id,
-          createdAt: toolCall.created_at,
-          toolSlug: toolSlugFromCall(toolCall),
-          input: safeJson(toolCall.input),
-          output: safeJson(toolCall.output),
-        }))
-      : [],
-  );
+  const toolCalls = toolCallRows.map((toolCall) => {
+    const message = messageById.get(toolCall.message_id) ?? {};
+    return {
+      id: toolCall.id,
+      messageId: toolCall.message_id,
+      runId: message.run_id,
+      createdAt: toolCall.created_at,
+      toolSlug: toolSlugFromCall(toolCall),
+      input: safeJson(toolCall.input),
+      output: safeJson(toolCall.output),
+    };
+  });
   const observedToolSlugs = Array.from(new Set(toolCalls.map((call) => call.toolSlug).filter(Boolean))).sort();
 
   return {
     observedToolSlugs,
     toolCalls,
-    messages: rows.map((message) => ({
+    messages: messages.map((message) => ({
       id: message.id,
       role: message.role,
       createdAt: message.created_at,
       runId: message.run_id,
       contentPreview: typeof message.content === "string" ? message.content.slice(0, 500) : "",
     })),
+  };
+}
+
+function toolEvidenceFromGatewayEvents(events) {
+  const toolCallsByKey = new Map();
+  for (const event of events) {
+    const payload = event?.payload && typeof event.payload === "object" ? event.payload : null;
+    if (!payload) continue;
+    const toolSlug = payload.tool_slug || payload.toolSlug || payload.tool_name || payload.toolName;
+    if (typeof toolSlug !== "string" || toolSlug.trim() === "") continue;
+    const id = typeof payload.tool_call_id === "string" ? payload.tool_call_id : null;
+    const key = `${toolSlug.trim()}:${id ?? toolCallsByKey.size}`;
+    const existing = toolCallsByKey.get(key) ?? {};
+    toolCallsByKey.set(key, {
+      ...existing,
+      id,
+      messageId: null,
+      runId: typeof payload.runId === "string" ? payload.runId : null,
+      createdAt: null,
+      toolSlug: toolSlug.trim(),
+      input: existing.input ?? safeJson(payload.arguments) ?? {},
+      output: {
+        success: payload.success ?? existing.output?.success ?? null,
+        resultSizeBytes: payload.result_size_bytes ?? existing.output?.resultSizeBytes ?? null,
+      },
+      evidenceKind: "gateway_event",
+    });
+  }
+
+  const toolCalls = Array.from(toolCallsByKey.values());
+  return {
+    observedToolSlugs: Array.from(new Set(toolCalls.map((call) => call.toolSlug))).sort(),
+    toolCalls,
+    messages: [],
+  };
+}
+
+function mergeToolEvidence(left, right) {
+  const toolCalls = [...(left.toolCalls ?? []), ...(right.toolCalls ?? [])];
+  const observedToolSlugs = Array.from(
+    new Set([...(left.observedToolSlugs ?? []), ...(right.observedToolSlugs ?? [])].filter(Boolean)),
+  ).sort();
+
+  return {
+    observedToolSlugs,
+    toolCalls,
+    messages: left.messages ?? [],
   };
 }
 
