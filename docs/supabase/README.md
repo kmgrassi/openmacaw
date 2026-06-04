@@ -121,23 +121,26 @@ Supabase records applied migrations in
 `supabase_migrations.schema_migrations`, so later pushes only apply migrations
 that have not already been applied.
 
-## GitHub Migration Deploy
+## GitHub Migration Validation
 
-The root workflow `.github/workflows/deploy-supabase-migrations.yml` deploys
-OpenMacaw migrations to the production Supabase project.
+The root workflow `.github/workflows/validate-supabase-migrations.yml` validates
+OpenMacaw migrations against a fresh local Supabase stack.
 
-It runs automatically on pushes to `main` when Supabase migration files or the
-reference schema changes. It can also be run manually from GitHub Actions with
-`apply=false` for a dry-run only or `apply=true` to apply pending migrations.
+It runs automatically on pull requests and pushes to `main` when Supabase
+migration files, local Supabase config, or the reference schema changes. The
+workflow starts local Supabase, resets the local database from migrations, and
+prints local migration status.
 
-The workflow uses the `production` GitHub environment and requires:
+This public repository workflow does not require hosted Supabase credentials and
+does not deploy to a production database.
 
-- `SUPABASE_ACCESS_TOKEN`
-- `SUPABASE_PROJECT_ID` as either an environment variable or secret
+## Production Migration Deploys
 
-The workflow authenticates with the Supabase access token and links the remote
-project by project ref. Do not add the database password to GitHub unless a
-future deploy path explicitly needs password-based database access.
+Production migration deploys should live in a private deployment repository for
+the target environment. For KG production, the private deployment repo checks
+out `kmgrassi/OpenMacaw` at the selected ref and applies these migrations to the
+KG Supabase project using that private repo's protected GitHub environment
+secrets.
 
 ## Regenerate OpenMacaw Schema Artifacts
 
