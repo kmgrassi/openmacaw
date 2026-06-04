@@ -1,0 +1,69 @@
+{
+  "agentId": "0e3859cf-617c-5d7a-9734-b15ff6660d62",
+  "workspaceId": "a8019dd7-5485-473c-81b9-4bf899401413",
+  "apiBaseUrl": "http://127.0.0.1:3310",
+  "defaultTimeoutMs": 90000,
+  "defaultWaitMs": 30000,
+  "cases": [
+    {
+      "id": "git-run-gh-repo-view",
+      "enabled": true,
+      "expectedToolSlugs": ["git.run"],
+      "prompt": "Use the GitHub inspection tool to verify local GitHub access. Call git.run with command exactly: gh repo view --json nameWithOwner,url. Then reply with whether the command worked and the repo name."
+    },
+    {
+      "id": "scheduled-task-list",
+      "enabled": true,
+      "expectedToolSlugs": ["scheduled_task.list"],
+      "prompt": "List the scheduled tasks visible in workspace {{workspaceId}} using the scheduled task list tool. Then summarize how many tasks were returned."
+    },
+    {
+      "id": "scheduled-task-create",
+      "enabled": false,
+      "expectedToolSlugs": ["scheduled_task.create"],
+      "prompt": "Create a one-shot scheduled task in workspace {{workspaceId}} for agent {{agentId}}. The task should deliver this exact instruction: \"Manual manager tool battery {{timestamp}}\". Schedule it for {{futureIso}} UTC. Use scheduled_task.create, then reply with the created scheduled task id."
+    },
+    {
+      "id": "scheduled-task-read",
+      "enabled": false,
+      "expectedToolSlugs": ["scheduled_task.read"],
+      "prompt": "Read scheduled task {{scheduledTaskId}} in workspace {{workspaceId}} using scheduled_task.read. Then summarize its enabled flag and next_run_at."
+    },
+    {
+      "id": "scheduled-task-update",
+      "enabled": false,
+      "expectedToolSlugs": ["scheduled_task.update"],
+      "prompt": "Update scheduled task {{scheduledTaskId}} in workspace {{workspaceId}} using scheduled_task.update. Set enabled to false and add metadata {\"manual_battery\":\"{{timestamp}}\"}. Then reply with whether the update succeeded."
+    },
+    {
+      "id": "scheduled-task-delete",
+      "enabled": false,
+      "expectedToolSlugs": ["scheduled_task.delete"],
+      "prompt": "Disable scheduled task {{scheduledTaskId}} in workspace {{workspaceId}} using scheduled_task.delete. Then reply with whether it was disabled."
+    },
+    {
+      "id": "snooze-work-item",
+      "enabled": false,
+      "expectedToolSlugs": ["snooze"],
+      "prompt": "Snooze work item {{workItemId}} for 60 seconds using the snooze tool. Then reply with the new polling status."
+    },
+    {
+      "id": "mark-done-work-item",
+      "enabled": false,
+      "expectedToolSlugs": ["mark_done"],
+      "prompt": "Mark work item {{workItemId}} done using mark_done. Then reply with whether it was completed."
+    },
+    {
+      "id": "dispatch-runner-reviewer",
+      "enabled": false,
+      "expectedToolSlugs": ["dispatch_runner"],
+      "prompt": "Dispatch a reviewer runner for work item {{workItemId}} using dispatch_runner. Use runner_kind \"codex\" and intent \"review the latest local changes for correctness and missing tests\". Then reply with the dispatch result."
+    },
+    {
+      "id": "escalate-to-human",
+      "enabled": false,
+      "expectedToolSlugs": ["escalate_to_human"],
+      "prompt": "Escalate work item {{workItemId}} to a human using escalate_to_human. Use trigger_kind \"self_flagged\", urgency \"low\", question \"Manual tool battery escalation test - no action needed\", and context_summary \"Testing manager tool routing.\" Then reply with the escalation result."
+    }
+  ]
+}

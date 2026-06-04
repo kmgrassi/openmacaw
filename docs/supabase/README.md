@@ -25,13 +25,14 @@ edits can put migration history out of sync.
 
 ## Initialize Local Supabase Config
 
-From the repository root:
+From the platform package:
 
 ```sh
+cd platform
 supabase init
 ```
 
-This creates the root `supabase/` directory if it does not exist. If the CLI
+This creates the `platform/supabase/` directory if it does not exist. If the CLI
 reports that Supabase is already initialized, keep the existing config and
 continue.
 
@@ -45,22 +46,28 @@ The local stack requires Docker or another compatible container runtime.
 
 ## Create The Initial Migration
 
-Generate the migration file:
+The initial migration is already checked in at:
+
+```text
+platform/supabase/migrations/20260604133000_openmacaw_initial_schema.sql
+```
+
+For future schema changes, generate a migration file from `platform/`:
 
 ```sh
 supabase migration new openmacaw_schema
 ```
 
-The CLI creates a timestamped file under `supabase/migrations/`, for example:
+The CLI creates a timestamped file under `platform/supabase/migrations/`, for example:
 
 ```text
-supabase/migrations/20260603120000_openmacaw_schema.sql
+platform/supabase/migrations/20260603120000_openmacaw_schema.sql
 ```
 
-Copy the schema SQL into that migration file:
+For the initial migration only, the migration file should match the reference SQL:
 
 ```sh
-cp docs/supabase/openmacaw-schema.sql supabase/migrations/<timestamp>_openmacaw_schema.sql
+cp ../docs/supabase/openmacaw-schema.sql supabase/migrations/20260604133000_openmacaw_initial_schema.sql
 ```
 
 Commit both the migration file and the source SQL. The source SQL remains a
@@ -75,7 +82,7 @@ supabase db reset
 ```
 
 This recreates the local database and applies all files in
-`supabase/migrations/` in timestamp order.
+`platform/supabase/migrations/` in timestamp order.
 
 For a quicker local-only apply after the database is already running, use:
 
