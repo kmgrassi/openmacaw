@@ -120,6 +120,21 @@ Supabase records applied migrations in
 `supabase_migrations.schema_migrations`, so later pushes only apply migrations
 that have not already been applied.
 
+## GitHub Migration Deploy
+
+The root workflow `.github/workflows/deploy-supabase-migrations.yml` deploys
+OpenMacaw migrations to the production Supabase project.
+
+It runs automatically on pushes to `main` when Supabase migration files or the
+reference schema changes. It can also be run manually from GitHub Actions with
+`apply=false` for a dry-run only or `apply=true` to apply pending migrations.
+
+The workflow uses the `production` GitHub environment and requires:
+
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_DB_PASSWORD`
+- `SUPABASE_PROJECT_ID` as either an environment variable or secret
+
 ## Regenerate OpenMacaw Schema Artifacts
 
 After the new project has the schema, point local environment variables at the

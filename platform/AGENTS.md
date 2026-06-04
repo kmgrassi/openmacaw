@@ -226,9 +226,11 @@ the entire codebase rather than adding a compatibility layer.
 
 - For HTTP boundary changes, update the Zod contracts in `contracts/` first,
   then update API behavior, web callers, and route tests.
-- For DB boundary changes, add the Supabase migration in `harper-server`
-  first. After that migration is reviewed, merged, and applied by CI/CD,
-  regenerate database types here with `pnpm run db:schema:sync`.
+- For OpenMacaw DB boundary changes, add the Supabase migration under
+  `platform/supabase/migrations/` first and update
+  `docs/supabase/openmacaw-schema.sql` when the bootstrap schema changes. After
+  that migration is reviewed, merged, and applied, regenerate database types
+  here with `pnpm run db:schema:sync` if needed.
 - See `docs/reference/contracts-directory-guidelines.md` for the repo-local
   contract change order and PR review signals.
 
