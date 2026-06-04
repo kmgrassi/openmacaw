@@ -1,4 +1,5 @@
 import { isApprovalRequiredText } from "../ApprovalRequiredNotice";
+import { formatStatusLabel as formatSharedStatusLabel } from "../../lib/status-labels";
 
 export function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat("en-US").format(value ?? 0);
@@ -67,9 +68,7 @@ export function statusVariant(
 }
 
 export function formatStatusLabel(status: string | null | undefined) {
-  const normalized = status?.trim().replace(/[_-]+/g, " ");
-  if (!normalized) return "Unknown";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  return formatSharedStatusLabel(status);
 }
 
 export function formatDuration(value: number | null | undefined) {
