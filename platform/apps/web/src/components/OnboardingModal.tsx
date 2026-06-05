@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/auth";
+import { useOnboardingStore } from "../stores/onboarding";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 
@@ -8,6 +9,7 @@ const DISMISSED_KEY_PREFIX = "onboarding-dismissed";
 
 export function OnboardingModal() {
   const { defaultAgentOnboarding, userId, workspaceId } = useAuthStore();
+  const resetOnboarding = useOnboardingStore((state) => state.reset);
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const dismissedKey = useMemo(() => {
@@ -34,10 +36,11 @@ export function OnboardingModal() {
     setVisible(false);
   }, [dismissedKey]);
 
-  const goToSettings = useCallback(() => {
+  const goToOnboarding = useCallback(() => {
     dismiss();
-    navigate("/settings/agents");
-  }, [dismiss, navigate]);
+    resetOnboarding();
+    navigate("/onboarding");
+  }, [dismiss, navigate, resetOnboarding]);
 
   if (!visible) return null;
 
@@ -92,10 +95,10 @@ export function OnboardingModal() {
           </Button>
           <Button
             type="button"
-            onClick={goToSettings}
+            onClick={goToOnboarding}
             className="px-4 hover:bg-blue-500"
           >
-            Go to Settings
+            Finish setup
           </Button>
         </div>
       </div>
