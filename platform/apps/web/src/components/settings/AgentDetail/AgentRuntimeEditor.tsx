@@ -10,8 +10,8 @@ import type { Agent } from "../../../types/agents";
 import type { AgentRuntimeProfile } from "../../../../../../contracts/agents";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
-import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
+import { HostedModelSelect } from "../HostedModelSelect";
 import { RUNTIME_PROVIDER_OPTIONS } from "./constants";
 
 type AgentRuntimeEditorProps = {
@@ -236,11 +236,12 @@ export function AgentRuntimeEditor({
             )}
           </div>
         ) : (
-          <Input
+          <HostedModelSelect
             label="Model"
             value={runtimeModel}
-            onChange={(event) => setRuntimeModel(event.target.value)}
-            placeholder="openai/gpt-5.2"
+            workspaceId={agent.workspaceId}
+            provider={runtimeProvider}
+            onChange={setRuntimeModel}
             disabled={runtimeProfileLoading}
           />
         )}

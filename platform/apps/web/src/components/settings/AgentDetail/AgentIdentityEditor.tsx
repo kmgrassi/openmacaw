@@ -8,6 +8,7 @@ import { Card } from "../../ui/Card";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { SegmentedControl } from "../../ui/SegmentedControl";
+import { HostedModelSelect } from "../HostedModelSelect";
 import { AGENT_KIND_OPTIONS, PLANNING_DESTINATION_OPTIONS } from "./constants";
 
 type AgentIdentityEditorProps = {
@@ -72,11 +73,11 @@ export function AgentIdentityEditor({
             onChange={(event) => setName(event.target.value)}
             placeholder="My Agent"
           />
-          <Input
+          <HostedModelSelect
             label="Primary model"
             value={model}
-            onChange={(event) => setModel(event.target.value)}
-            placeholder="openai/gpt-5.2"
+            workspaceId={agent.workspaceId}
+            onChange={setModel}
           />
         </div>
 

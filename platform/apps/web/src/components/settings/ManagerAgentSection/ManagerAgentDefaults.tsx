@@ -9,6 +9,7 @@ import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { CredentialEditor } from "../CredentialEditor";
+import { HostedModelSelect } from "../HostedModelSelect";
 import {
   CADENCE_OPTIONS,
   DEFAULT_LOCAL_BASE_URL,
@@ -112,16 +113,30 @@ export function ManagerAgentDefaults({
           onChange={(event) => {
             const nextProvider = event.target.value as SchedulerRuntimeProvider;
             setProvider(nextProvider);
-            setModel(DEFAULT_MODELS[nextProvider]);
+            setModel(
+              nextProvider === "openai_compatible"
+                ? DEFAULT_MODELS[nextProvider]
+                : "",
+            );
           }}
           options={providerOptions}
         />
-        <Input
-          label="Model"
-          value={model}
-          onChange={(event) => setModel(event.target.value)}
-          placeholder={DEFAULT_MODELS[provider]}
-        />
+        {localProvider ? (
+          <Input
+            label="Model"
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+            placeholder={DEFAULT_MODELS[provider]}
+          />
+        ) : (
+          <HostedModelSelect
+            label="Model"
+            value={model}
+            workspaceId={workspaceId}
+            provider={provider}
+            onChange={setModel}
+          />
+        )}
         {localProvider && (
           <Input
             label="Base URL"

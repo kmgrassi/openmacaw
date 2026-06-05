@@ -116,14 +116,6 @@ export function useAgentModelPolicy({
     setSavedLocalRelayTarget(nextRelayTarget);
   }, [agent.id, agent.provider, savedProvider]);
 
-  const availableProviders = new Set(
-    credentials
-      .map((credential) => credential.provider)
-      .filter((provider): provider is string => Boolean(provider)),
-  );
-  const filteredModels = models.filter((model) =>
-    availableProviders.has(model.provider),
-  );
   const selectedProvider = modelProviderForSelection(selectedModel, models);
   const selectedCredentialOptions = credentialOptionsForProvider(
     selectedProvider,
@@ -180,7 +172,7 @@ export function useAgentModelPolicy({
     setSelectedCredentialRef,
   ]);
 
-  const catalogOptions = filteredModels.map((model) => ({
+  const catalogOptions = models.map((model) => ({
     value: model.id,
     label: `${model.name} (${model.providerName ?? model.provider})`,
   }));

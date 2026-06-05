@@ -8,11 +8,13 @@ import type {
   PlanningDestination,
 } from "../../../../../contracts/agents";
 import type { DefaultAgentRole } from "../../../../../contracts/setup";
+import { DEFAULT_MODEL_ID } from "../../../../../contracts/model-catalog";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
 import { SegmentedControl } from "../ui/SegmentedControl";
+import { HostedModelSelect } from "./HostedModelSelect";
 import { AgentDetail } from "./AgentDetail";
 import { ClaudeCodeSmokePanel } from "./ClaudeCodeSmokePanel";
 import { ModelAgnosticSmokePanel } from "./ModelAgnosticSmokePanel";
@@ -52,7 +54,7 @@ export function AgentsSection() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<AgentType>("coding");
-  const [newModel, setNewModel] = useState("openai/gpt-5.2");
+  const [newModel, setNewModel] = useState(DEFAULT_MODEL_ID);
   const [planningDestination, setPlanningDestination] =
     useState<PlanningDestination>("database");
   const [customBackendType, setCustomBackendType] = useState("openclaw_ws");
@@ -137,7 +139,7 @@ export function AgentsSection() {
       });
       setNewName("");
       setNewType("coding");
-      setNewModel("openai/gpt-5.2");
+      setNewModel(DEFAULT_MODEL_ID);
       setPlanningDestination("database");
       setCustomBackendType("openclaw_ws");
       setCustomBaseUrl("ws://127.0.0.1:7788");
@@ -152,7 +154,7 @@ export function AgentsSection() {
   const resetCreateForm = () => {
     setNewName("");
     setNewType("coding");
-    setNewModel("openai/gpt-5.2");
+    setNewModel(DEFAULT_MODEL_ID);
     setPlanningDestination("database");
     setCustomBackendType("openclaw_ws");
     setCustomBaseUrl("ws://127.0.0.1:7788");
@@ -183,11 +185,11 @@ export function AgentsSection() {
             }
             autoFocus
           />
-          <Input
+          <HostedModelSelect
             label="Primary model"
             value={newModel}
-            onChange={(e) => setNewModel(e.target.value)}
-            placeholder="openai/gpt-5.2"
+            workspaceId={workspaceId}
+            onChange={setNewModel}
           />
         </div>
 
