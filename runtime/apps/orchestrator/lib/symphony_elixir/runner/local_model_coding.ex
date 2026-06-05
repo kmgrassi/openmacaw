@@ -81,6 +81,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
           tool_definitions: tool_definitions(config),
           provider_tool_definitions: provider_tool_definitions(config),
           provider_tool_name_map: provider_tool_name_map(config),
+          tool_executor: map_value(config, :tool_executor),
           max_iterations: positive_integer(map_value(config, :max_iterations), @default_max_iterations),
           on_message: map_value(config, :on_message),
           metadata: map_value(config, :metadata) || %{}
@@ -99,6 +100,8 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
 
   @impl true
   def run_turn(session, prompt, work_item) when is_map(session) and is_binary(prompt) do
+    session = put_work_item_runtime_context(session, work_item)
+
     emit_event(session, %{
       event: :turn_started,
       payload: %{"runner" => "local_model_coding", "model" => Map.get(session, :model)}
@@ -187,6 +190,31 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
   end
 
   defp work_item_metadata(_work_item), do: %{}
+
+  defp put_work_item_runtime_context(session, work_item) do
+    work_item_context = work_item_runtime_context(work_item)
+    metadata = Map.merge(work_item_context, Map.get(session, :metadata, %{}))
+
+    session
+    |> Map.put(:metadata, metadata)
+    |> put_new_present(:workspace_id, map_value(metadata, :workspace_id))
+    |> put_new_present(:agent_id, map_value(metadata, :agent_id))
+  end
+
+  defp work_item_runtime_context(%{metadata: metadata} = work_item) when is_map(metadata) do
+    %{
+      "agent_id" => map_value(metadata, :agent_id),
+      "workspace_id" => map_value(metadata, :workspace_id),
+      "work_item_id" => Map.get(work_item, :id),
+      "title" => Map.get(work_item, :title)
+    }
+    |> reject_nil_values()
+  end
+
+  defp work_item_runtime_context(_work_item), do: %{}
+
+  defp put_new_present(map, _key, value) when is_nil(value) or value == "", do: map
+  defp put_new_present(map, key, value), do: Map.put_new(map, key, value)
 
   defp emit_event(%{on_message: on_message}, event) when is_function(on_message, 1) do
     case Contract.normalize_event(event) do

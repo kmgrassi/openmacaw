@@ -93,10 +93,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   @spec runtime_context(map()) :: map()
   def runtime_context(session) do
     %{
-      "agent_id" => Map.get(session, :agent_id),
-      "workspace_id" => Map.get(session, :workspace_id),
-      "user_id" => Map.get(session, :user_id),
-      "session_id" => Map.get(session, :session_id) || get_in(session, [:dispatch_frame, "session_id"])
+      "agent_id" => session_context_value(session, :agent_id),
+      "workspace_id" => session_context_value(session, :workspace_id),
+      "user_id" => session_context_value(session, :user_id),
+      "session_id" => session_context_value(session, :session_id) || get_in(session, [:dispatch_frame, "session_id"])
     }
     |> reject_nil_values()
   end
@@ -224,12 +224,13 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
 
   defp direct_tool_context(session) do
     metadata = Map.get(session, :metadata, %{})
+    runtime = runtime_context(session)
 
     %{
       workspace_root: Map.fetch!(session, :workspace),
       metadata: metadata,
-      workspace_id: map_value(metadata, :workspace_id),
-      agent_id: map_value(metadata, :agent_id),
+      workspace_id: map_value(runtime, :workspace_id),
+      agent_id: map_value(runtime, :agent_id),
       on_event: fn event -> emit_event(session, event) end
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
@@ -367,6 +368,14 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
 
   defp monotonic_ms, do: System.monotonic_time(:millisecond)
   defp stringify_keys(map) when is_map(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
+
+  defp session_context_value(session, key) do
+    metadata = Map.get(session, :metadata) || %{}
+    profile = Map.get(session, :execution_profile) || Map.get(session, "execution_profile") || %{}
+
+    map_value(session, key) || map_value(metadata, key) || map_value(profile, key)
+  end
+
   defp map_value(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, to_string(key))
   defp map_value(_map, _key), do: nil
 
