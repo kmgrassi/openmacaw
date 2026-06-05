@@ -34,9 +34,9 @@ export function OnboardingModal() {
     setVisible(false);
   }, [dismissedKey]);
 
-  const goToSettings = useCallback(() => {
+  const goToOnboarding = useCallback(() => {
     dismiss();
-    navigate("/settings/agents");
+    navigate("/onboarding");
   }, [dismiss, navigate]);
 
   if (!visible) return null;
@@ -92,10 +92,10 @@ export function OnboardingModal() {
           </Button>
           <Button
             type="button"
-            onClick={goToSettings}
+            onClick={goToOnboarding}
             className="px-4 hover:bg-blue-500"
           >
-            Go to Settings
+            Finish setup
           </Button>
         </div>
       </div>

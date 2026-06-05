@@ -41,20 +41,9 @@ export function OnboardingCards() {
   const { currentCard, setPath, advanceCard, goBack, setSelectedAgentIds } =
     useOnboardingStore();
 
-  const hasConfiguredDefaultAgent =
-    defaultAgents.planning.configured || defaultAgents.coding.configured;
-
   if (
     currentCard !== "launch" &&
     !defaultAgentOnboarding.required &&
-    resolvedAgentId
-  ) {
-    return <Navigate to={`/dashboard/${resolvedAgentId}`} replace />;
-  }
-
-  if (
-    currentCard !== "launch" &&
-    hasConfiguredDefaultAgent &&
     resolvedAgentId
   ) {
     return <Navigate to={`/dashboard/${resolvedAgentId}`} replace />;

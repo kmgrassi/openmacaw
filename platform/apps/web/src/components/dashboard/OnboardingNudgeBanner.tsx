@@ -49,7 +49,7 @@ export function OnboardingNudgeBanner({ onboarding }: Props) {
             variant="secondary"
             size="sm"
             className="border-amber-400/30 bg-amber-400/10 text-amber-50 hover:bg-amber-400/20"
-            onClick={() => navigate("/settings/agents")}
+            onClick={() => navigate("/onboarding")}
           >
             Resume setup
           </Button>
