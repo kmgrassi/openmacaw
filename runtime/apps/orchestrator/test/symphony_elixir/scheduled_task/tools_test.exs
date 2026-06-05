@@ -215,6 +215,16 @@ defmodule SymphonyElixir.ScheduledTask.ToolsTest do
     refute "workspace_id" in list_required
   end
 
+  test "scheduled_task.list executes through the coding bundle with runtime context" do
+    assert {:ok, %{output: [%{"id" => "scheduled-task-1"}]}} =
+             ToolRegistry.execute(
+               "scheduled_task.list",
+               %{},
+               %{workspace_id: "workspace-1", repository: TestRepository},
+               ToolRegistry.bundle(:coding)
+             )
+  end
+
   test "update requires an existing scheduled task" do
     assert {:error, :scheduled_task_not_found} =
              Tools.execute(
