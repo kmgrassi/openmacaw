@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Launcher.Start do
 
   ## Usage
 
-      mix launcher.start [--port PORT] [--state-dir DIR] [--start-port PORT]
+      mix launcher.start [--port PORT] [--state-dir DIR] [--start-port PORT] [--workflow PATH]
 
   ## Options
 
@@ -16,19 +16,22 @@ defmodule Mix.Tasks.Launcher.Start do
     (default: ~/.symphony/launcher, env: LAUNCHER_STATE_DIR)
   - `--start-port` — First port for launched agent orchestrators
     (default: 4000, env: LAUNCHER_START_PORT)
+  - `--workflow` — Workflow file used by launcher-owned services
+    (default: WORKFLOW.md, env: WORKFLOW_PATH)
 
   ## Environment variables
 
   - `LAUNCHER_PORT` — Same as `--port`
   - `LAUNCHER_STATE_DIR` — Same as `--state-dir`
   - `LAUNCHER_START_PORT` — Same as `--start-port`
+  - `WORKFLOW_PATH` — Same as `--workflow`
   - `LAUNCHER_BIND_HOST` — Bind host for the Launcher HTTP API
     (default: 127.0.0.1; set to 0.0.0.0 only behind a private listener)
   """
 
   use Mix.Task
 
-  @switches [port: :integer, state_dir: :string, start_port: :integer]
+  @switches [port: :integer, state_dir: :string, start_port: :integer, workflow: :string]
 
   @impl true
   def run(args) do
@@ -47,6 +50,17 @@ defmodule Mix.Tasks.Launcher.Start do
       Keyword.get(opts, :start_port) ||
         parse_env_int("LAUNCHER_START_PORT")
 
+    workflow_path =
+      Keyword.get(opts, :workflow) ||
+        System.get_env("WORKFLOW_PATH") ||
+        "WORKFLOW.md"
+
+    expanded_workflow_path = Path.expand(workflow_path)
+
+    unless File.regular?(expanded_workflow_path) do
+      Mix.raise("Workflow file not found: #{expanded_workflow_path}")
+    end
+
     sup_opts =
       []
       |> maybe_put(:port, port)
@@ -58,6 +72,7 @@ defmodule Mix.Tasks.Launcher.Start do
     # hardcoded list here, so the two can't drift (a stale entry pointing at
     # a removed dependency would crash boot).
     Mix.Task.run("app.config")
+    :ok = SymphonyElixir.Workflow.set_workflow_file_path(expanded_workflow_path)
     :ok = SymphonyElixir.CLI.ensure_launcher_dependencies()
     ensure_tracker_api_started()
 

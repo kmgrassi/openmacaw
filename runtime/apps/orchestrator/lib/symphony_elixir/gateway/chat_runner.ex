@@ -404,8 +404,12 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       on_message: on_message,
       metadata: %{
         "trace_id" => Process.get(:symphony_trace_id),
-        "source" => "gateway_chat"
+        "source" => "gateway_chat",
+        "agent_id" => Map.get(profile, :agent_id),
+        "workspace_id" => Map.get(profile, :workspace_id)
       }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
     }
   end
 

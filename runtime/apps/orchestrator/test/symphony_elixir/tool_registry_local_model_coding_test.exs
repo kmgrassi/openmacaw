@@ -16,6 +16,7 @@ defmodule SymphonyElixir.ToolRegistryLocalModelCodingTest do
 
   test "coding bundle resolves repo and local execution tools" do
     assert ToolRegistry.bundle(:coding) == [
+             "scheduled_task.list",
              "repo.list",
              "repo.read_file",
              "repo.search",
