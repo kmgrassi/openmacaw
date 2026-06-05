@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
 import { useAuthStore } from "../../stores/auth";
@@ -38,23 +39,28 @@ export function OnboardingCards() {
     defaultAgentOnboarding,
     managerAgent,
   } = useAuthStore();
-  const { currentCard, setPath, advanceCard, goBack, setSelectedAgentIds } =
-    useOnboardingStore();
+  const {
+    currentCard,
+    setPath,
+    advanceCard,
+    goBack,
+    reset,
+    setSelectedAgentIds,
+  } = useOnboardingStore();
 
-  const hasConfiguredDefaultAgent =
-    defaultAgents.planning.configured || defaultAgents.coding.configured;
+  useEffect(() => {
+    if (currentCard === "launch" && defaultAgentOnboarding.required) {
+      reset();
+    }
+  }, [currentCard, defaultAgentOnboarding.required, reset]);
 
-  if (
-    currentCard !== "launch" &&
-    !defaultAgentOnboarding.required &&
-    resolvedAgentId
-  ) {
-    return <Navigate to={`/dashboard/${resolvedAgentId}`} replace />;
+  if (currentCard === "launch" && defaultAgentOnboarding.required) {
+    return null;
   }
 
   if (
     currentCard !== "launch" &&
-    hasConfiguredDefaultAgent &&
+    !defaultAgentOnboarding.required &&
     resolvedAgentId
   ) {
     return <Navigate to={`/dashboard/${resolvedAgentId}`} replace />;

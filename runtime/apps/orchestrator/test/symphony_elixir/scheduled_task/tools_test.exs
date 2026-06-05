@@ -28,7 +28,11 @@ defmodule SymphonyElixir.ScheduledTask.ToolsTest do
          }}
 
     def read_task(_id, _workspace_id, _opts), do: {:ok, nil}
-    def list_tasks("workspace-1", _opts), do: {:ok, [%{"id" => "scheduled-task-1"}]}
+
+    def list_tasks("workspace-1", _opts) do
+      send(self(), {:scheduled_task_list_workspace, "workspace-1"})
+      {:ok, [%{"id" => "scheduled-task-1"}]}
+    end
 
     def update_task(id, payload, _opts) do
       send(self(), {:scheduled_task_update, id, payload})
@@ -223,6 +227,18 @@ defmodule SymphonyElixir.ScheduledTask.ToolsTest do
                %{workspace_id: "workspace-1", repository: TestRepository},
                ToolRegistry.bundle(:coding)
              )
+  end
+
+  test "scheduled_task.list ignores caller workspace override when runtime context exists" do
+    assert {:ok, %{output: [%{"id" => "scheduled-task-1"}]}} =
+             ToolRegistry.execute(
+               "scheduled_task.list",
+               %{"workspace_id" => "workspace-2"},
+               %{workspace_id: "workspace-1", repository: TestRepository},
+               ToolRegistry.bundle(:coding)
+             )
+
+    assert_received {:scheduled_task_list_workspace, "workspace-1"}
   end
 
   test "update requires an existing scheduled task" do

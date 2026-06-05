@@ -191,7 +191,7 @@ start_detached() {
   mkdir -p "$LOG_DIR"
 
   start_screen_session "$LAUNCHER_SESSION" \
-    "cd '$ROOT_DIR' && exec env LAUNCHER_START_PORT='$LAUNCHER_START_PORT' pnpm run start:launcher --port '$LAUNCHER_PORT' > '$LOG_DIR/launcher-screen.log' 2>&1"
+    "cd '$ROOT_DIR' && exec env WORKFLOW_PATH='$WORKFLOW_PATH' LAUNCHER_START_PORT='$LAUNCHER_START_PORT' pnpm run start:launcher --port '$LAUNCHER_PORT' > '$LOG_DIR/launcher-screen.log' 2>&1"
 
   start_screen_session "$ORCHESTRATOR_SESSION" \
     "cd '$ROOT_DIR' && exec env WORKFLOW_PATH='$WORKFLOW_PATH' ORCHESTRATOR_PORT='$ORCHESTRATOR_PORT' pnpm run start:orchestrator --port '$ORCHESTRATOR_PORT' > '$LOG_DIR/orchestrator-screen.log' 2>&1"
@@ -227,7 +227,7 @@ start_launcher() {
   echo "[local-runtime] starting launcher on port ${LAUNCHER_PORT}"
   (
     cd "$ROOT_DIR"
-    LAUNCHER_PORT="$LAUNCHER_PORT" LAUNCHER_START_PORT="$LAUNCHER_START_PORT" pnpm run start:launcher --port "$LAUNCHER_PORT"
+    WORKFLOW_PATH="$WORKFLOW_PATH" LAUNCHER_PORT="$LAUNCHER_PORT" LAUNCHER_START_PORT="$LAUNCHER_START_PORT" pnpm run start:launcher --port "$LAUNCHER_PORT"
   ) >"$LOG_DIR/launcher.log" 2>&1 &
   LAUNCHER_PID=$!
 }
