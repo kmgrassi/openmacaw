@@ -17,7 +17,7 @@ import {
   saveOpenAICodexAccessTokenCredentialForAgent,
 } from "../services/saved-credentials.js";
 import { listWorkspaceCredentialReferenceState } from "../services/stored-agent-credential-state.js";
-import { listStoredAgentsFromSupabase } from "../services/stored-agent-management.js";
+import { requireStoredAgent } from "./stored-agent-credentials/authz.js";
 
 const MODEL_CREDENTIAL_PROVIDERS = new Set<string>(MODEL_PROVIDER_IDS);
 
@@ -52,7 +52,7 @@ export function registerCredentialRoutes(app: Express) {
       requireAuth: true,
       bodySchema: CreateCredentialRequestSchema,
       invalidBodyMessage: "Credential scope and key are required",
-      handler: async ({ body, req, res, userId }) => {
+      handler: async ({ body, req, res, userId, accessToken }) => {
         const { key, scope } = body;
         if (scope.kind === "user") {
           throw new ApiRouteError(
@@ -68,6 +68,15 @@ export function registerCredentialRoutes(app: Express) {
             "Credential format is not supported for this scope",
           );
         }
+
+        const agent =
+          scope.kind === "agent"
+            ? await requireStoredAgent({
+                accessToken,
+                agentId: scope.agentId,
+                workspaceId: scope.workspaceId,
+              })
+            : null;
 
         let saved;
         if (key.format === "oauth" && scope.kind === "agent") {
@@ -164,25 +173,19 @@ export function registerCredentialRoutes(app: Express) {
           });
         }
 
-        if (scope.kind === "agent" && saved.credentialRowId) {
-          const agents = await listStoredAgentsFromSupabase();
-          const agent = agents.find(
-            (candidate) => candidate.id === scope.agentId && candidate.workspaceId === scope.workspaceId,
-          );
-          if (agent?.workspaceId) {
-            await syncCredentialIntoRoutingRuleForAgent({
-              agent: {
-                id: agent.id,
-                workspaceId: agent.workspaceId,
-                agentType: agent.agentType,
-                model: agent.model,
-                provider: agent.provider,
-              },
-              credentialId: saved.credentialRowId,
-              provider: saved.provider ?? key.provider,
-              userId: req.userId,
-            });
-          }
+        if (scope.kind === "agent" && saved.credentialRowId && agent?.workspaceId) {
+          await syncCredentialIntoRoutingRuleForAgent({
+            agent: {
+              id: agent.id,
+              workspaceId: agent.workspaceId,
+              agentType: agent.agentType,
+              model: agent.model,
+              provider: agent.provider,
+            },
+            credentialId: saved.credentialRowId,
+            provider: saved.provider ?? key.provider,
+            userId: req.userId,
+          });
         }
 
         return res.status(200).json(

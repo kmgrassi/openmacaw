@@ -9,7 +9,7 @@ import {
   StartOpenAICodexOAuthRequestSchema,
   StartOpenAICodexOAuthResponseSchema,
 } from "../../../../contracts/credentials-oauth.js";
-import { errorPayload, handleApiRouteError } from "../http.js";
+import { errorPayload, handleApiRouteError, requestAccessToken } from "../http.js";
 import {
   exchangeOpenAICodexDeviceCode,
   OPENAI_CODEX_DEVICE_CODE_TIMEOUT_MS,
@@ -22,10 +22,11 @@ import {
   saveOpenAICodexOAuthCredentialForAgent,
   type ResolvedSavedCredential,
 } from "../services/saved-credentials.js";
-import { listStoredAgentsFromSupabase } from "../services/stored-agent-management.js";
 import { syncCredentialIntoRoutingRuleForAgent } from "../services/stored-agent-routing.js";
+import { requireStoredAgent } from "./stored-agent-credentials/authz.js";
 
 type PendingSession = {
+  ownerUserId: string;
   agentId: string;
   workspaceId: string;
   deviceAuthId: string;
@@ -59,11 +60,16 @@ export function registerCredentialOAuthRoutes(app: Express) {
     workspaceId: string;
     credential: ResolvedSavedCredential;
   }) {
-    const agents = await listStoredAgentsFromSupabase();
-    const agent = agents.find(
-      (candidate) => candidate.id === input.agentId && candidate.workspaceId === input.workspaceId,
-    );
-    if (agent && agent.workspaceId && input.credential.credentialRowId) {
+    const accessToken = requestAccessToken(input.req);
+    if (!accessToken) {
+      throw new Error("Supabase access token is required");
+    }
+    const agent = await requireStoredAgent({
+      accessToken,
+      agentId: input.agentId,
+      workspaceId: input.workspaceId,
+    });
+    if (agent.workspaceId && input.credential.credentialRowId) {
       await syncCredentialIntoRoutingRuleForAgent({
         agent: {
           id: agent.id,
@@ -85,9 +91,19 @@ export function registerCredentialOAuthRoutes(app: Express) {
       return res.status(400).json(errorPayload("invalid_request", "agentId and workspaceId are required"));
     }
     try {
+      const accessToken = requestAccessToken(req);
+      if (!accessToken || !req.userId) {
+        return res.status(401).json(errorPayload("auth_required", "Supabase access token is required"));
+      }
+      await requireStoredAgent({
+        accessToken,
+        agentId: parsed.data.agentId,
+        workspaceId: parsed.data.workspaceId,
+      });
       const deviceCode = await requestOpenAICodexDeviceCode();
       const sessionId = randomUUID();
       sessions.set(sessionId, {
+        ownerUserId: req.userId,
         agentId: parsed.data.agentId,
         workspaceId: parsed.data.workspaceId,
         deviceAuthId: deviceCode.deviceAuthId,
@@ -123,6 +139,9 @@ export function registerCredentialOAuthRoutes(app: Express) {
     if (!session) {
       return res.status(404).json(errorPayload("oauth_session_not_found", "OAuth session not found"));
     }
+    if (!req.userId || session.ownerUserId !== req.userId) {
+      return res.status(404).json(errorPayload("oauth_session_not_found", "OAuth session not found"));
+    }
     if (session.expiresAt <= Date.now()) {
       sessions.delete(parsed.data.sessionId);
       return res.status(200).json(PollOpenAICodexOAuthResponseSchema.parse({ status: "expired" }));
@@ -135,6 +154,15 @@ export function registerCredentialOAuthRoutes(app: Express) {
     session.lastPollAt = now;
 
     try {
+      const accessToken = requestAccessToken(req);
+      if (!accessToken) {
+        return res.status(401).json(errorPayload("auth_required", "Supabase access token is required"));
+      }
+      await requireStoredAgent({
+        accessToken,
+        agentId: session.agentId,
+        workspaceId: session.workspaceId,
+      });
       const pollResult = await pollOpenAICodexDeviceCode({
         deviceAuthId: session.deviceAuthId,
         userCode: session.userCode,
@@ -216,6 +244,15 @@ export function registerCredentialOAuthRoutes(app: Express) {
         .json(errorPayload("invalid_request", "agentId, workspaceId, and accessToken are required"));
     }
     try {
+      const accessToken = requestAccessToken(req);
+      if (!accessToken) {
+        return res.status(401).json(errorPayload("auth_required", "Supabase access token is required"));
+      }
+      await requireStoredAgent({
+        accessToken,
+        agentId: parsed.data.agentId,
+        workspaceId: parsed.data.workspaceId,
+      });
       const identity = resolveCodexAuthIdentity(parsed.data.accessToken);
       const credential = await saveOpenAICodexAccessTokenCredentialForAgent({
         agentId: parsed.data.agentId,

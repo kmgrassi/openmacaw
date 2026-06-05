@@ -181,6 +181,28 @@ describe("credential routes", () => {
     });
   });
 
+  it("rejects agent credential writes when the target agent is outside the caller scope", async () => {
+    vi.mocked(listStoredAgentsFromSupabase).mockResolvedValueOnce([]);
+
+    const response = await fetch(`${baseUrl}/api/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        scope: { kind: "agent", workspaceId: "workspace-1", agentId: "agent-1" },
+        key: { format: "api_key", provider: "openai", secret: "sk-test" },
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "agent_not_found" },
+    });
+    expect(saveInlineCredentialForAgentInSupabase).not.toHaveBeenCalled();
+  });
+
   it("lists workspace credentials through the unified endpoint", async () => {
     const response = await fetch(`${baseUrl}/api/credentials?workspaceId=workspace-1`, {
       headers: {
@@ -249,6 +271,26 @@ describe("credential routes", () => {
       workspaceId: "workspace-1",
       alias: "default-linear",
       credentialId: "credential-row-linear",
+    });
+  });
+
+  it("looks up agent scope with the caller access token before syncing agent credentials", async () => {
+    const response = await fetch(`${baseUrl}/api/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        scope: { kind: "agent", workspaceId: "workspace-1", agentId: "agent-1" },
+        key: { format: "api_key", provider: "openai", secret: "sk-test" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(listStoredAgentsFromSupabase).toHaveBeenCalledWith({
+      accessToken: "test-token",
+      userId: "",
     });
   });
 

@@ -31,10 +31,11 @@ export async function assertCredentialReferenceBelongsToWorkspace(input: {
 }
 
 export async function requireStoredAgent(input: {
+  accessToken: string;
   agentId: string;
   workspaceId?: string | null;
 }): Promise<StoredAgentRouteRecord> {
-  const agents = await listStoredAgentsFromSupabase();
+  const agents = await listStoredAgentsFromSupabase({ accessToken: input.accessToken, userId: "" });
   const agent = agents.find((candidate) => candidate.id === input.agentId);
   if (!agent || (input.workspaceId && agent.workspaceId !== input.workspaceId)) {
     throw new ApiRouteError(404, "agent_not_found", "Stored agent was not found");
