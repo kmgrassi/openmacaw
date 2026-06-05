@@ -12,10 +12,6 @@ function deterministicUuid(input: string) {
     .join("")}-${hex.slice(20, 32).join("")}`;
 }
 
-export function personalWorkspaceId(userId: string) {
-  return deterministicUuid(`default-personal-workspace:${userId}`);
-}
-
 export function personalDefaultAgentId(workspaceId: string, userId: string, role: DefaultAgentRole) {
   return deterministicUuid(`default-agent:${workspaceId}:${userId}:${role}`);
 }

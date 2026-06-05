@@ -154,7 +154,8 @@ describe("default-agent auth bootstrap", () => {
     expect(state.agents).toHaveLength(3);
     expect(state.assignments).toHaveLength(2);
     expect(state.assignments.map((row) => row.role)).toEqual(["planning", "coding"]);
-    expect(state.workspaces[0]?.id).toEqual(expect.any(String));
+    expect(state.workspaces[0]?.id).toBe("workspaces-1");
+    expect(state.workspaces[0]?.id).not.toBe(userId);
     expect(state.agents.map((row) => row.id)).toHaveLength(3);
   });
 
@@ -191,7 +192,7 @@ describe("default-agent auth bootstrap", () => {
     expect(authState.onboarding.blocking).toBe(false);
   });
 
-  it("uses deterministic upserts so concurrent bootstrap calls converge on one workspace and one agent per role", async () => {
+  it("uses the database-generated workspace id to bootstrap one agent per role", async () => {
     const state = setupSupabaseMock();
 
     const authState = await listSetupAuthState("access-token", userId);
