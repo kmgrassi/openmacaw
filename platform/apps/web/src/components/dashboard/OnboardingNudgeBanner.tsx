@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import type { DefaultAgentsOnboardingState } from "../../../../../contracts/setup";
 import { useAuthStore } from "../../stores/auth";
+import { useOnboardingStore } from "../../stores/onboarding";
 import { Button } from "../ui/Button";
 import { StatusBanner } from "../ui/StatusBanner";
 
@@ -16,6 +17,7 @@ export function OnboardingNudgeBanner({ onboarding }: Props) {
   const navigate = useNavigate();
   const userId = useAuthStore((state) => state.userId);
   const workspaceId = useAuthStore((state) => state.workspaceId);
+  const resetOnboarding = useOnboardingStore((state) => state.reset);
   const [dismissed, setDismissed] = useState(false);
 
   const dismissedKey = useMemo(() => {
@@ -34,6 +36,11 @@ export function OnboardingNudgeBanner({ onboarding }: Props) {
     setDismissed(true);
   }, [dismissedKey]);
 
+  const resumeSetup = useCallback(() => {
+    resetOnboarding();
+    navigate("/onboarding");
+  }, [navigate, resetOnboarding]);
+
   if (!onboarding.required || dismissed) {
     return null;
   }
@@ -49,7 +56,7 @@ export function OnboardingNudgeBanner({ onboarding }: Props) {
             variant="secondary"
             size="sm"
             className="border-amber-400/30 bg-amber-400/10 text-amber-50 hover:bg-amber-400/20"
-            onClick={() => navigate("/onboarding")}
+            onClick={resumeSetup}
           >
             Resume setup
           </Button>
