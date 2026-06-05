@@ -1,11 +1,15 @@
-import type { LocalRuntimeRegistrationRequest, LocalRuntimeRunnerInput } from "../../../../contracts/local-runtime.js";
+import type { LocalRuntimeRegistrationRequest } from "../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../http.js";
 import { parseNullableSupabaseRow, parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { buildLocalExecution } from "./local-runtime/config-snippet.js";
+import {
+  buildLocalRuntimeConfigResponse,
+  buildRegistrationConfig,
+  sharedWorkspaceRootFromRegistration,
+} from "./local-runtime/config-response.js";
 import { toLocalRuntimeRegistrationResponse, type RunnerRow } from "./local-runtime/mappers.js";
-import { toLocalRuntimeConfigResponse } from "./local-runtime/mappers.js";
 import { listRegisteredLocalRuntimesForWorkspace } from "./local-runtime/listing.js";
 import {
   deleteLocalRuntimeMachine,
@@ -18,12 +22,10 @@ import {
 import { getLocalRuntimeMachineDetails } from "./local-runtime/routing-metadata.js";
 import { LocalRuntimeMachineIdRowSchema, RoutingRuleIdRowSchema } from "./local-runtime/row-schemas.js";
 import {
-  buildRunnerSnippets,
   defaultMachineDisplayName,
   type InsertedRunner,
   insertedRunnerRows,
   insertRunnerRoutingRules,
-  runnerSnippetFromDetails,
 } from "./local-runtime/registration.js";
 import { createMachineToken, rotateMachineToken } from "./local-runtime/tokens.js";
 
@@ -76,28 +78,20 @@ export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, re
 
   await ensureLocalMachineMatchesForWorkspace({ supabase, workspaceId, machineId });
 
-  const runtimeEndpoint = process.env.LOCAL_RELAY_WS_URL ?? "ws://127.0.0.1:4000";
-  const sharedWorkspaceRoot =
-    request.runners
-      .find(
-        (runner): runner is Extract<LocalRuntimeRunnerInput, { kind: "openai_compatible" }> =>
-          runner.kind === "openai_compatible" && Boolean(runner.workspaceRoot?.trim()),
-      )
-      ?.workspaceRoot?.trim() ?? null;
+  const sharedWorkspaceRoot = sharedWorkspaceRootFromRegistration(request.runners);
 
   const runners: RunnerRow[] = insertedRunnerRows(inserted);
 
   return toLocalRuntimeRegistrationResponse({
     machine: { id: machineId, displayName: machineDisplayName },
     token: plaintextToken,
-    config: {
+    config: buildRegistrationConfig({
       displayName,
       workspaceRoot: sharedWorkspaceRoot,
-      runtimeEndpoint,
       workspaceId,
       token: plaintextToken,
-      runners: buildRunnerSnippets(request.runners),
-    },
+      runners: request.runners,
+    }),
     localExecution: buildLocalExecution({
       machine: {
         id: machineId,
@@ -114,19 +108,14 @@ export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, re
 
 export async function getLocalRuntimeConfigForWorkspace(workspaceId: string, machineId: string) {
   const details = await getLocalRuntimeMachineDetails(workspaceId, machineId);
-  const runtimeEndpoint = process.env.LOCAL_RELAY_WS_URL ?? "ws://127.0.0.1:4000";
-  return toLocalRuntimeConfigResponse({
-    id: details.machineId,
+  return buildLocalRuntimeConfigResponse({
+    workspaceId,
+    machineId: details.machineId,
+    machineDisplayName: details.machineDisplayName,
+    workspaceRoot: details.workspaceRoot,
     token: null,
     tokenAvailable: false,
-    config: {
-      displayName: details.machineDisplayName,
-      workspaceRoot: details.workspaceRoot,
-      runtimeEndpoint,
-      workspaceId,
-      token: "<rotate-token-to-generate-a-new-value>",
-      runners: details.runners.map((runner) => runnerSnippetFromDetails(runner)),
-    },
+    runners: details.runners,
   });
 }
 
@@ -135,19 +124,14 @@ export async function rotateLocalRuntimeTokenForWorkspace(workspaceId: string, m
   const supabase = getServiceRoleSupabase();
   const plaintextToken = await rotateMachineToken({ supabase, workspaceId, machineId: details.machineId });
 
-  const runtimeEndpoint = process.env.LOCAL_RELAY_WS_URL ?? "ws://127.0.0.1:4000";
-  return toLocalRuntimeConfigResponse({
-    id: details.machineId,
+  return buildLocalRuntimeConfigResponse({
+    workspaceId,
+    machineId: details.machineId,
+    machineDisplayName: details.machineDisplayName,
+    workspaceRoot: details.workspaceRoot,
     token: plaintextToken,
     tokenAvailable: true,
-    config: {
-      displayName: details.machineDisplayName,
-      workspaceRoot: details.workspaceRoot,
-      runtimeEndpoint,
-      workspaceId,
-      token: plaintextToken,
-      runners: details.runners.map((runner) => runnerSnippetFromDetails(runner)),
-    },
+    runners: details.runners,
   });
 }
 
