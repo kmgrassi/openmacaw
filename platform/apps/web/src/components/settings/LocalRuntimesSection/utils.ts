@@ -3,13 +3,18 @@ import type { LocalToolCallCapability } from "../../../api/local-runtime";
 type BadgeVariant = "default" | "success" | "warning" | "error";
 
 export const LOCAL_HELPER_INSTALL_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/kmgrassi/local-runtime-helper/main/install.sh | sh";
+  "cd local-runtime-helper && go install ./cmd/local-runtime-helper";
 
 export const PROVIDER_OPTIONS = [
   { value: "openai_compatible", label: "OpenAI Compatible" },
   { value: "ollama", label: "Ollama" },
   { value: "llama-cpp", label: "llama.cpp" },
   { value: "vllm", label: "vLLM" },
+];
+
+export const LOCAL_MODEL_OPTIONS = [
+  { value: "", label: "Select a model..." },
+  { value: "qwen3-coder:30b", label: "qwen3-coder:30b" },
 ];
 
 export const TOOL_CALL_CAPABILITY_OPTIONS: Array<{

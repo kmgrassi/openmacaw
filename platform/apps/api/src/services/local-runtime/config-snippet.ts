@@ -29,7 +29,7 @@ function tomlString(value: string) {
 }
 
 export function buildLaunchCommand() {
-  return "local-runtime-helper --config ./runtime.toml";
+  return "local-runtime-helper start --config ./runtime.toml";
 }
 
 export type RunnerSnippet =

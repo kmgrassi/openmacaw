@@ -5,7 +5,11 @@ import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { LocalRuntimeConfigPanel } from "./LocalRuntimeConfigPanel";
 import type { LocalRuntimeRegistrationState } from "./useLocalRuntimeRegistration";
-import { PROVIDER_OPTIONS, TOOL_CALL_CAPABILITY_OPTIONS } from "./utils";
+import {
+  LOCAL_MODEL_OPTIONS,
+  PROVIDER_OPTIONS,
+  TOOL_CALL_CAPABILITY_OPTIONS,
+} from "./utils";
 
 type Props = {
   registration: LocalRuntimeRegistrationState;
@@ -56,16 +60,16 @@ export function LocalRuntimeRegistrationCard({
               }
               placeholder="http://localhost:11434/v1"
             />
-            <Input
+            <Select
               label="Model name"
               value={registration.modelName}
               onChange={(e) =>
                 registration.handleModelNameChange(e.target.value)
               }
-              placeholder="qwen3-coder:30b"
               onKeyDown={(e) =>
                 e.key === "Enter" && void registration.handleRegister()
               }
+              options={LOCAL_MODEL_OPTIONS}
             />
             <Select
               label="Provider"
@@ -73,12 +77,35 @@ export function LocalRuntimeRegistrationCard({
               onChange={(e) => registration.setProvider(e.target.value)}
               options={PROVIDER_OPTIONS}
             />
-            <Input
-              label="Local repository path"
-              value={registration.repositoryPath}
-              onChange={(e) => registration.setRepositoryPath(e.target.value)}
-              placeholder="/Users/me/project"
-            />
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <Input
+                  label="Local repository path"
+                  value={registration.repositoryPath}
+                  onChange={(e) =>
+                    registration.setRepositoryPath(e.target.value)
+                  }
+                  placeholder="/Users/me/project"
+                  className="font-mono"
+                />
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={registration.pickingRepositoryPath}
+                    onClick={() =>
+                      void registration.handlePickRepositoryPath()
+                    }
+                  >
+                    Browse...
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                Paste an absolute path or choose a directory. The local agent
+                can read and write under this root.
+              </p>
+            </div>
             <Select
               label="Tool-call support"
               value={registration.toolCallCapability}

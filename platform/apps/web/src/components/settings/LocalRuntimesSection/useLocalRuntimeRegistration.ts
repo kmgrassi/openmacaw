@@ -5,6 +5,7 @@ import {
   type LocalToolCallCapability,
   type RegisterLocalRuntimeResponse,
 } from "../../../api/local-runtime";
+import { pickDirectory } from "../../../api/local-directory";
 import { useLocalRuntimeMutations } from "../../../hooks/useServerStateQueries";
 
 type Args = {
@@ -39,6 +40,7 @@ export function useLocalRuntimeRegistration({
   const [registrationResult, setRegistrationResult] =
     useState<RegisterLocalRuntimeResponse | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [pickingRepositoryPath, setPickingRepositoryPath] = useState(false);
   const [draftProbe, setDraftProbe] = useState<LocalModelProbeResponse | null>(
     null,
   );
@@ -76,6 +78,24 @@ export function useLocalRuntimeRegistration({
       );
     } catch (err) {
       setRegisterError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handlePickRepositoryPath = async () => {
+    setRegisterError(null);
+    setPickingRepositoryPath(true);
+    try {
+      const result = await pickDirectory({
+        defaultLocation: repositoryPath.trim() || undefined,
+        prompt: "Choose the local repository directory for this runtime",
+      });
+      if (!result.cancelled) {
+        setRepositoryPath(result.path);
+      }
+    } catch (err) {
+      setRegisterError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPickingRepositoryPath(false);
     }
   };
 
@@ -140,6 +160,7 @@ export function useLocalRuntimeRegistration({
     registrationResult,
     registering: mutations.register.isPending,
     registerError,
+    pickingRepositoryPath,
     probingDraft: mutations.probeDraft.isPending,
     draftProbe,
     canSubmit,
@@ -154,6 +175,7 @@ export function useLocalRuntimeRegistration({
     handleOpenClawEnabledChange,
     handleModelEndpointChange,
     handleModelNameChange,
+    handlePickRepositoryPath,
     handleProbeDraft,
     handleRegister,
   };
