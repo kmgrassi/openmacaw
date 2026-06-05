@@ -9,7 +9,7 @@ import {
 } from "../../../../../contracts/credentials.js";
 import { ModelProviderSchema } from "../../../../../contracts/model-catalog.js";
 import type { DefaultAgentRole } from "../../../../../contracts/setup.js";
-import { ApiRouteError, errorPayload, handleApiRouteError, requireRouteParam } from "../../http.js";
+import { ApiRouteError, errorPayload, handleApiRouteError, requestAccessToken, requireRouteParam } from "../../http.js";
 import {
   getAgentCredentialReferenceRule,
   getRoutingRuleLocalEndpointUrl,
@@ -25,7 +25,6 @@ import {
 } from "../../services/saved-credentials.js";
 import { buildRequirementStatusFromResolution } from "../../services/setup/builders.js";
 import { listWorkspaceCredentialReferenceState } from "../../services/stored-agent-credential-state.js";
-import { listStoredAgentsFromSupabase } from "../../services/stored-agent-management.js";
 import {
   ensureStoredAgentDefaultRouting,
   resolveLocalModelRoutingRule,
@@ -88,7 +87,9 @@ export async function getStoredAgentCredentialReference(req: Request, res: Respo
   try {
     const workspaceId = requireWorkspaceIdFromRequest(req);
     const agentId = requireRouteParam(req, "id");
-    const agent = await requireStoredAgent({ agentId, workspaceId });
+    const accessToken = requestAccessToken(req);
+    if (!accessToken) throw new ApiRouteError(401, "auth_required", "Supabase access token is required");
+    const agent = await requireStoredAgent({ accessToken, agentId, workspaceId });
     const state = await listWorkspaceCredentialReferenceState(workspaceId, req.userId);
     const rule = await getAgentCredentialReferenceRule({
       agentId: agent.id,
@@ -133,7 +134,10 @@ export async function getStoredAgentCredentialReference(req: Request, res: Respo
 
 async function upsertCredentialReference(req: Request, request: UpsertAgentCredentialReferenceRequest) {
   const agentId = requireRouteParam(req, "id");
+  const accessToken = requestAccessToken(req);
+  if (!accessToken) throw new ApiRouteError(401, "auth_required", "Supabase access token is required");
   const agent = await requireStoredAgent({
+    accessToken,
     agentId,
     workspaceId: request.workspaceId,
   });
@@ -206,18 +210,21 @@ export async function saveStoredAgentCredentialReference(req: Request, res: Resp
 
 async function syncSavedCredentialIntoRouting(
   input: SaveCredentialRequest & {
+    accessToken: string;
     agentId: string;
     credentialRowId?: string | null;
     userId?: string | null;
   },
 ) {
-  const agents = await listStoredAgentsFromSupabase();
-  const agent = agents.find(
-    (candidate) => candidate.id === input.agentId && candidate.workspaceId === input.workspaceId,
-  );
-  if (!agent || !agent.workspaceId || !input.credentialRowId) {
+  if (!input.credentialRowId) {
     return;
   }
+  const agent = await requireStoredAgent({
+    accessToken: input.accessToken,
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+  });
+  if (!agent.workspaceId) return;
 
   await syncCredentialIntoRoutingRuleForAgent({
     agent: {
@@ -259,6 +266,10 @@ export async function saveStoredAgentCredential(req: Request, res: Response) {
   try {
     const request = parseSaveCredentialRequest(req);
     const agentId = requireRouteParam(req, "id");
+    const accessToken = requestAccessToken(req);
+    if (!accessToken) {
+      return res.status(401).json(errorPayload("auth_required", "Supabase access token is required"));
+    }
     if (!ModelProviderSchema.safeParse(request.provider).success) {
       return res
         .status(400)
@@ -290,6 +301,7 @@ export async function saveStoredAgentCredential(req: Request, res: Response) {
     });
 
     await syncSavedCredentialIntoRouting({
+      accessToken,
       ...request,
       agentId,
       credentialRowId: saved.credentialRowId,

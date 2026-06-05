@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 
 import { StoredCredentialActivationResponseSchema } from "../../../../../contracts/credentials.js";
-import { ApiRouteError, errorPayload, requireRouteParam } from "../../http.js";
+import { ApiRouteError, errorPayload, requestAccessToken, requireRouteParam } from "../../http.js";
 import { assertCodingHandoffReviewable, parseCodingHandoff } from "../../services/planning-handoff.js";
 import { requireCodexProfile } from "../../services/stored-agent-runtime.js";
 import {
@@ -22,7 +22,10 @@ export async function launchStoredCredential(req: Request, res: Response, launch
   }
 
   const agentId = requireRouteParam(req, "agentId");
+  const accessToken = requestAccessToken(req);
+  if (!accessToken) throw new ApiRouteError(401, "auth_required", "Supabase access token is required");
   const credentialId = requireRouteParam(req, "credentialId");
+  await requireStoredAgent({ accessToken, agentId, workspaceId });
   const handoff = parseCodingHandoff(req.body ?? {}, false);
   if (handoff) {
     await assertCodingHandoffReviewable({ workspaceId, handoff });
@@ -83,7 +86,9 @@ export async function activateStoredAgent(req: Request, res: Response, launcherC
   const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : "";
   const workspaceId = requireWorkspaceIdFromRequest(req);
   const agentId = requireRouteParam(req, "agentId");
-  await requireStoredAgent({ agentId });
+  const accessToken = requestAccessToken(req);
+  if (!accessToken) throw new ApiRouteError(401, "auth_required", "Supabase access token is required");
+  await requireStoredAgent({ accessToken, agentId, workspaceId });
   const handoff = parseCodingHandoff(req.body ?? {}, false);
   if (handoff) {
     await assertCodingHandoffReviewable({ workspaceId, handoff });
