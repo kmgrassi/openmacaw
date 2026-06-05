@@ -78,7 +78,9 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
                     ], tools}
 
     assert workspace_system =~ "operating in workspace directory: " <> workspace
+
     assert Enum.map(tools, & &1["name"]) == [
+             "scheduled_task_list",
              "repo_list",
              "repo_read_file",
              "repo_search",
@@ -86,6 +88,7 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
              "apply_patch",
              "git_run"
            ]
+
     assert_receive {:provider_turn, _profile, messages_after_shell, _tools}
 
     assert Enum.any?(messages_after_shell, fn message ->
@@ -242,6 +245,7 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
 
     assert_receive {:provider_turn, _profile, _messages,
                     [
+                      %{"name" => "scheduled_task_list"},
                       %{"name" => "repo_list"},
                       %{"name" => "repo_read_file"},
                       %{"name" => "repo_search"},
@@ -249,6 +253,48 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
                       %{"name" => "apply_patch"},
                       %{"name" => "git_run"}
                     ]}
+  end
+
+  test "preserves work item runtime IDs for direct scheduled task tools" do
+    workspace = workspace_fixture()
+
+    Application.put_env(:symphony_elixir, :local_model_coding_turns, [
+      provider_turn("", [
+        %{id: "call-list", name: "scheduled_task_list", arguments: %{}}
+      ]),
+      provider_turn("Listed schedules.", [])
+    ])
+
+    runner_config =
+      config()
+      |> Map.put("tool_definitions", ToolRegistry.definitions(["scheduled_task.list"]))
+      |> Map.put("tool_executor", fn "scheduled_task.list", %{}, executed_session ->
+        send(self(), {:scheduled_task_context, executed_session})
+        {:ok, %{"output" => "[]"}}
+      end)
+
+    work_item = %WorkItem{
+      id: "work-item-1",
+      title: "Scheduled work",
+      metadata: %{"workspace_id" => "workspace-1", "agent_id" => "agent-1"}
+    }
+
+    assert {:ok, session} = LocalModelCoding.start_session(runner_config, workspace)
+    assert {:ok, result} = LocalModelCoding.run_turn(session, "List schedules", work_item)
+
+    assert result["output_text"] == "Listed schedules."
+
+    assert_receive {:scheduled_task_context,
+                    %{
+                      workspace_id: "workspace-1",
+                      agent_id: "agent-1",
+                      metadata: %{
+                        "workspace_id" => "workspace-1",
+                        "agent_id" => "agent-1",
+                        "work_item_id" => "work-item-1",
+                        "title" => "Scheduled work"
+                      }
+                    }}
   end
 
   test "maps provider-safe repository tool names back to canonical runtime slugs" do
