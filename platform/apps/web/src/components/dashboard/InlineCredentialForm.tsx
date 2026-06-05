@@ -1,10 +1,6 @@
 import { useMemo, useState } from "react";
 
 import { type CredentialProvider } from "../../../../../contracts/credentials";
-import {
-  DEFAULT_MODEL_ID,
-  MODEL_CATALOG_FALLBACK,
-} from "../../../../../contracts/model-catalog";
 import type { SetupResponse } from "../../../../../contracts/setup";
 import {
   activateManagerAgentCredentials,
@@ -13,9 +9,8 @@ import {
 } from "../../api/setup";
 import { invalidateAgentData, queryClient } from "../../api/query-client";
 import { queryKeys } from "../../api/query-keys";
-import { Input } from "../ui/Input";
-import { Select } from "../ui/Select";
 import { CredentialEditor } from "../settings/CredentialEditor";
+import { HostedModelSelect } from "../settings/HostedModelSelect";
 
 type InlineCredentialFormProps = {
   setup: SetupResponse;
@@ -34,13 +29,6 @@ const PROVIDER_ORDER: CredentialProvider[] = [
   "perplexity",
   "azure",
 ];
-
-function providerModel(provider: CredentialProvider) {
-  return (
-    MODEL_CATALOG_FALLBACK.find((model) => model.provider === provider)?.id ??
-    `${provider}/`
-  );
-}
 
 function primaryModel(setup: SetupResponse) {
   if (
@@ -64,21 +52,11 @@ export function InlineCredentialForm({
   }, [existingModel]);
 
   const [provider, setProvider] = useState<CredentialProvider>(initialProvider);
-  const [model, setModel] = useState(
-    existingModel || providerModel(initialProvider) || DEFAULT_MODEL_ID,
-  );
+  const [model, setModel] = useState(existingModel);
 
-  const catalogModelOptions = MODEL_CATALOG_FALLBACK.filter(
-    (entry) => entry.provider === provider,
-  ).map((entry) => ({ value: entry.id, label: `${entry.name} (${entry.id})` }));
-  const modelOptions =
-    model.trim() &&
-    !catalogModelOptions.some((option) => option.value === model.trim())
-      ? [{ value: model.trim(), label: model.trim() }, ...catalogModelOptions]
-      : catalogModelOptions;
   function handleProviderChange(nextProvider: CredentialProvider) {
     setProvider(nextProvider);
-    setModel(providerModel(nextProvider) || DEFAULT_MODEL_ID);
+    setModel("");
   }
 
   return (
@@ -92,21 +70,15 @@ export function InlineCredentialForm({
         submitLabel="Save Credentials"
         disabledReason={!model.trim() ? "Model is required." : null}
         apiKeyExtraFields={
-          modelOptions.length > 0 ? (
-            <Select
-              label="Model"
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              options={modelOptions}
-            />
-          ) : (
-            <Input
-              label="Model"
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              placeholder={`${provider}/model-name`}
-            />
-          )
+          <HostedModelSelect
+            label="Model"
+            value={model}
+            workspaceId={setup.agent.workspaceId}
+            provider={provider}
+            allowCustomWhenEmpty
+            customPlaceholder={`${provider}/model-name`}
+            onChange={setModel}
+          />
         }
         onApiKeyCredential={async (credential) => {
           const trimmedModel = model.trim();
