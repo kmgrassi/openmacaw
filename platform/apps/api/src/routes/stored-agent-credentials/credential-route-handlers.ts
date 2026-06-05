@@ -270,6 +270,11 @@ export async function saveStoredAgentCredential(req: Request, res: Response) {
     if (!accessToken) {
       return res.status(401).json(errorPayload("auth_required", "Supabase access token is required"));
     }
+    await requireStoredAgent({
+      accessToken,
+      agentId,
+      workspaceId: request.workspaceId,
+    });
     if (!ModelProviderSchema.safeParse(request.provider).success) {
       return res
         .status(400)
