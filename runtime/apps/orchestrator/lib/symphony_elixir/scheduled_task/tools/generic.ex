@@ -20,6 +20,7 @@ defmodule SymphonyElixir.ScheduledTask.Tools.Generic do
 
       @impl true
       def bundle, do: [:scheduled_task, :planner, :manager]
+      defoverridable bundle: 0
 
       @impl true
       def execution_kind, do: :runtime

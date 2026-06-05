@@ -223,11 +223,17 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   end
 
   defp direct_tool_context(session) do
+    metadata = Map.get(session, :metadata, %{})
+
     %{
       workspace_root: Map.fetch!(session, :workspace),
-      metadata: Map.get(session, :metadata, %{}),
+      metadata: metadata,
+      workspace_id: map_value(metadata, :workspace_id),
+      agent_id: map_value(metadata, :agent_id),
       on_event: fn event -> emit_event(session, event) end
     }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
   end
 
   defp workspace_status(session) do
@@ -361,6 +367,8 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
 
   defp monotonic_ms, do: System.monotonic_time(:millisecond)
   defp stringify_keys(map) when is_map(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
+  defp map_value(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, to_string(key))
+  defp map_value(_map, _key), do: nil
 
   defp reject_nil_values(map) do
     map
