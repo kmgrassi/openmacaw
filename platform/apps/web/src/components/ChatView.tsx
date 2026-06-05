@@ -117,6 +117,9 @@ export function ChatView({
     scrollTop: number;
   } | null>(null);
   const navigate = useNavigate();
+  const hasChatScope = Boolean(
+    scope || (!readOnly && sessionKey && workspaceId),
+  );
   const composerDisabled =
     readOnly || !scope || !connected || status !== "connected";
 
@@ -184,7 +187,7 @@ export function ChatView({
     setComposerFocusToken((token) => token + 1);
   };
 
-  if (!readOnly && status === "resolving_scope") {
+  if (!readOnly && status === "resolving_scope" && !hasChatScope) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-500">
         Resolving runtime scope...
@@ -192,7 +195,7 @@ export function ChatView({
     );
   }
 
-  if ((!readOnly && !scope) || !workspaceId) {
+  if ((!readOnly && !hasChatScope) || !workspaceId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-500">
         No agent configured. Complete setup to start chatting.
