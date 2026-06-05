@@ -228,6 +228,34 @@ export function createMockSupabaseClient(tables: TableMap) {
   return {
     from: vi.fn((table: string) => new MockSupabaseQueryBuilder(tables, table)),
     rpc: vi.fn((functionName: string, args: Record<string, unknown>) => {
+      if (functionName === "ensure_default_workspace_for_user") {
+        const userId = args.p_user_id;
+        const workspaceName = typeof args.p_workspace_name === "string" ? args.p_workspace_name.trim() : "";
+        const memberships = (tables.workspace_members ??= []);
+        const existingMembership = memberships.find((row) => row.user_id === userId);
+        if (existingMembership?.workspace_id) {
+          return Promise.resolve({ data: existingMembership.workspace_id, error: null });
+        }
+
+        const workspaces = (tables.workspaces ??= []);
+        const workspace = {
+          id: `workspaces-${workspaces.length + 1}`,
+          name: workspaceName || "Personal Workspace",
+          owner_user_id: userId,
+          created_at: "2026-04-25T00:00:00.000Z",
+          updated_at: "2026-04-25T00:00:00.000Z",
+        };
+        workspaces.push(workspace);
+        memberships.push({
+          workspace_id: workspace.id,
+          user_id: userId,
+          role: "owner",
+          created_at: "2026-04-25T00:00:00.000Z",
+          updated_at: "2026-04-25T00:00:00.000Z",
+        });
+        return Promise.resolve({ data: workspace.id, error: null });
+      }
+
       if (functionName !== "memory_hybrid_search") {
         return Promise.resolve({ data: [], error: null });
       }

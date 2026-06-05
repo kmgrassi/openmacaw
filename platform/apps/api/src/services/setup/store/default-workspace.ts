@@ -1,7 +1,6 @@
 import { ApiRouteError } from "../../../http.js";
 import { getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
 import { getSetupDefaults } from "../defaults.js";
-import { personalWorkspaceId } from "../identity.js";
 import type { WorkspaceMemberRow, WorkspaceRow } from "../types.js";
 import { WORKSPACE_MEMBER_SELECT, WORKSPACE_SELECT } from "./selects.js";
 
@@ -38,35 +37,30 @@ export async function ensureDefaultWorkspace(accessToken: string, userId: string
   const existing = await listUserWorkspaces(accessToken, userId);
   if (existing[0]) return { workspace: existing[0], workspaces: existing };
 
-  const { data: workspaceRows, error: workspaceError } = await getUserScopedSupabase(accessToken)
-    .from("workspaces")
-    .upsert(
-      {
-        id: personalWorkspaceId(userId),
-        name: setupDefaults.workspaceName,
-        owner_user_id: userId,
-      },
-      { onConflict: "id" },
-    )
-    .select(WORKSPACE_SELECT);
-  if (workspaceError) throw normalizeSupabaseError("workspaces upsert", workspaceError);
-  const workspace = workspaceRows[0] as WorkspaceRow | undefined;
-  if (!workspace) {
-    throw new ApiRouteError(502, "workspace_upsert_failed", "Workspace upsert returned no row");
+  const supabase = getUserScopedSupabase(accessToken);
+  const { data: workspaceIdResult, error: workspaceCreateError } = await supabase.rpc(
+    "ensure_default_workspace_for_user" as never,
+    {
+      p_user_id: userId,
+      p_workspace_name: setupDefaults.workspaceName,
+    } as never,
+  );
+  if (workspaceCreateError) throw normalizeSupabaseError("default workspace bootstrap", workspaceCreateError);
+  const workspaceId: unknown = workspaceIdResult;
+  if (typeof workspaceId !== "string" || !workspaceId.trim()) {
+    throw new ApiRouteError(502, "workspace_bootstrap_failed", "Default workspace bootstrap returned no workspace ID");
   }
 
-  const { error: membershipError } = await getUserScopedSupabase(accessToken)
-    .from("workspace_members")
-    .upsert(
-      {
-        workspace_id: workspace.id,
-        user_id: userId,
-        role: setupDefaults.workspaceMemberRole,
-      },
-      { onConflict: "workspace_id,user_id" },
-    )
-    .select(WORKSPACE_MEMBER_SELECT);
-  if (membershipError) throw normalizeSupabaseError("workspace_members upsert", membershipError);
+  const { data: workspaceRows, error: workspaceQueryError } = await supabase
+    .from("workspaces")
+    .select(WORKSPACE_SELECT)
+    .eq("id", workspaceId)
+    .limit(1);
+  if (workspaceQueryError) throw normalizeSupabaseError("workspaces query", workspaceQueryError);
+  const workspace = workspaceRows[0] as WorkspaceRow | undefined;
+  if (!workspace) {
+    throw new ApiRouteError(502, "workspace_bootstrap_failed", "Default workspace bootstrap returned no visible row");
+  }
 
   return {
     workspace,
