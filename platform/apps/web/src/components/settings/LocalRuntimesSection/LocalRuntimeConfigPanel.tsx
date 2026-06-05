@@ -56,9 +56,15 @@ export function LocalRuntimeConfigPanel({ config, onClear }: Props) {
         </div>
       </div>
       <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-white/5 bg-slate-950/80 px-3 py-2">
-        <code className="min-w-0 truncate text-xs text-slate-300">
-          {LOCAL_HELPER_INSTALL_COMMAND}
-        </code>
+        <div className="min-w-0">
+          <div className="mb-1 text-xs text-green-300/80">
+            From your OpenMacaw checkout root, run this install command in a
+            terminal.
+          </div>
+          <code className="block min-w-0 truncate text-xs text-slate-300">
+            {LOCAL_HELPER_INSTALL_COMMAND}
+          </code>
+        </div>
         <Button
           size="sm"
           variant="ghost"
@@ -79,7 +85,7 @@ export function LocalRuntimeConfigPanel({ config, onClear }: Props) {
           </code>
           <p className="mt-1 text-xs text-green-300/70">
             Save the snippet as <code>{filename}</code>, then run this command
-            from the <code>local-runtime-helper</code> repo root.
+            from the directory containing that file.
           </p>
         </div>
         <Button
