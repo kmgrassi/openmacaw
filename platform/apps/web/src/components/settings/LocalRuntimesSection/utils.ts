@@ -13,7 +13,6 @@ export const PROVIDER_OPTIONS = [
 ];
 
 export const LOCAL_MODEL_OPTIONS = [
-  { value: "", label: "Select a model..." },
   { value: "qwen3-coder:30b", label: "qwen3-coder:30b" },
 ];
 

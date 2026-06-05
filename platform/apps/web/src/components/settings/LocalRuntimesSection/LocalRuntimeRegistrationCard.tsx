@@ -60,17 +60,25 @@ export function LocalRuntimeRegistrationCard({
               }
               placeholder="http://localhost:11434/v1"
             />
-            <Select
+            <Input
               label="Model name"
               value={registration.modelName}
               onChange={(e) =>
                 registration.handleModelNameChange(e.target.value)
               }
+              placeholder="qwen3-coder:30b"
+              list="local-runtime-model-options"
               onKeyDown={(e) =>
                 e.key === "Enter" && void registration.handleRegister()
               }
-              options={LOCAL_MODEL_OPTIONS}
             />
+            <datalist id="local-runtime-model-options">
+              {LOCAL_MODEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </datalist>
             <Select
               label="Provider"
               value={registration.provider}
