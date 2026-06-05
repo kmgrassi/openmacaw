@@ -276,7 +276,7 @@ defmodule SymphonyElixir.ScheduledTask.Tools do
   end
 
   defp workspace_id(args, opts) do
-    case Map.get(args, "workspace_id") || Keyword.get(opts, :workspace_id) do
+    case Keyword.get(opts, :workspace_id) || Map.get(args, "workspace_id") do
       value when is_binary(value) and value != "" -> {:ok, value}
       _ -> {:error, {:missing_argument, "workspace_id"}}
     end

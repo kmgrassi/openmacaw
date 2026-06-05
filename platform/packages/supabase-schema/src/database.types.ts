@@ -5071,18 +5071,27 @@ export type Database = {
       workspace_settings: {
         Row: {
           learning_enabled: boolean;
+          max_concurrent_agents: number;
+          tracker_credential_id: string | null;
+          tracker_kind: string;
           updated_at: string;
           updated_by_user_id: string | null;
           workspace_id: string;
         };
         Insert: {
           learning_enabled?: boolean;
+          max_concurrent_agents?: number;
+          tracker_credential_id?: string | null;
+          tracker_kind?: string;
           updated_at?: string;
           updated_by_user_id?: string | null;
           workspace_id: string;
         };
         Update: {
           learning_enabled?: boolean;
+          max_concurrent_agents?: number;
+          tracker_credential_id?: string | null;
+          tracker_kind?: string;
           updated_at?: string;
           updated_by_user_id?: string | null;
           workspace_id?: string;
