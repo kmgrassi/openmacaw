@@ -73,6 +73,7 @@ async function buildRuleResolution(input: {
   agent: AgentProfileRow;
   role: AgentRole;
   rule: RoutingRuleRow;
+  matches: RoutingRuleMatchRow[];
   accessToken?: string;
 }) {
   const credentialId =
@@ -81,6 +82,7 @@ async function buildRuleResolution(input: {
       ? await resolveCredentialAlias(input.agent.workspace_id, input.rule.credential_alias, input.accessToken)
       : null);
   const model = input.rule.model?.trim() || extractPrimaryModel(ModelSettingsSchema.parse(input.agent.model_settings));
+  const metadata = routingMetadata(input.matches);
   return buildResolution({
     agent: input.agent,
     role: input.role,
@@ -93,7 +95,33 @@ async function buildRuleResolution(input: {
     credentialAlias: input.rule.credential_alias,
     fallbackUsed: false,
     legacyGatewayConfigUsed: false,
+    adapterConfig: metadata.adapterConfig,
+    sourceMetadata: metadata.sourceMetadata,
   });
+}
+
+function routingMetadata(matches: RoutingRuleMatchRow[]) {
+  const adapterConfig: Record<string, unknown> = {};
+  const sourceMetadata: Record<string, unknown> = {};
+
+  for (const match of matches) {
+    const kind = match.kind.trim().toLowerCase();
+    const value = match.value.trim();
+    if (!isRoutingMetadataMatch(match) || !value) continue;
+
+    sourceMetadata[kind] = value;
+    if (kind === "local_endpoint") {
+      adapterConfig.base_url = value;
+    }
+    if (kind === "local_workspace_root") {
+      adapterConfig.workspace_root = value;
+    }
+    if (kind === "local_machine") {
+      adapterConfig.local_machine = value;
+    }
+  }
+
+  return { adapterConfig, sourceMetadata };
 }
 
 export async function resolveRoutingRuleChain(input: {
@@ -101,6 +129,7 @@ export async function resolveRoutingRuleChain(input: {
   role: AgentRole;
   rule: RoutingRuleRow;
   rulesById: Map<string, RoutingRuleRow>;
+  matches: RoutingRuleMatchRow[];
   accessToken?: string;
 }) {
   const visited = new Set<string>();
@@ -113,6 +142,7 @@ export async function resolveRoutingRuleChain(input: {
       agent: input.agent,
       role: input.role,
       rule: current,
+      matches: input.matches.filter((match) => match.rule_id === current.id),
       accessToken: input.accessToken,
     });
     if (lastResolution.missing.length === 0 || !current.next_fallback_rule_id) return lastResolution;

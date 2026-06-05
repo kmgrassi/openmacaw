@@ -34,7 +34,7 @@ async function main() {
   loadEnvFile(path.join(platformRoot, "apps/web/.env"));
   loadEnvFile(path.join(platformRoot, "apps/web/.env.local"));
 
-  const battery = await readJson(args.batteryPath);
+  const battery = args.suiteSlug ? await loadEvalCatalogBattery(args.suiteSlug) : normalizeBattery(await readJson(args.batteryPath));
   const agentId = args.agentId ?? battery.agentId;
   const workspaceId = args.workspaceId ?? battery.workspaceId;
   const apiBaseUrl = normalizeUrl(args.apiBaseUrl ?? battery.apiBaseUrl ?? "http://127.0.0.1:3100");
@@ -60,6 +60,13 @@ async function main() {
         id: testCase.id,
         enabled: testCase.enabled !== false,
         expectedToolSlugs: testCase.expectedToolSlugs,
+        prohibitedToolSlugs: testCase.prohibitedToolSlugs,
+        assertions: testCase.assertions.map((assertion) => ({
+          type: assertion.type,
+          toolSlug: assertion.toolSlug,
+          minCalls: assertion.minCalls,
+          maxCalls: assertion.maxCalls,
+        })),
       })),
       note: "Pass --run to send prompts. Disabled cases require --include-disabled or --case <id>.",
     };
@@ -75,6 +82,16 @@ async function main() {
     new Date().toISOString().replace(/[:.]/g, "-"),
   );
   await mkdir(artifactDir, { recursive: true });
+  const evalRun = battery.databaseSuiteId
+    ? await createEvalRun({
+        suiteId: battery.databaseSuiteId,
+        workspaceId,
+        agentId,
+        selectedCaseIds: selectedCases.map((testCase) => testCase.databaseId).filter(Boolean),
+        sideEffectLimit: args.includeDisabled ? "safe_write" : "read_only",
+        artifactsPath: artifactDir,
+      })
+    : null;
 
   const results = [];
   for (const testCase of selectedCases) {
@@ -88,6 +105,7 @@ async function main() {
         artifactDir,
         defaultWaitMs: battery.defaultWaitMs ?? 30_000,
         defaultTimeoutMs: battery.defaultTimeoutMs ?? 90_000,
+        evalRunId: evalRun?.id ?? null,
       }),
     );
   }
@@ -102,6 +120,21 @@ async function main() {
     results,
   };
   await writeJson(path.join(artifactDir, "result.json"), output);
+  if (evalRun) {
+    const passedCases = results.filter((result) => result.status === "passed").length;
+    const failedCases = results.filter((result) => result.status === "failed").length;
+    await updateEvalRun(evalRun.id, {
+      status: passed ? "passed" : "failed",
+      score: passed ? 1 : 0,
+      total_cases: results.length,
+      passed_cases: passedCases,
+      failed_cases: failedCases,
+      skipped_cases: 0,
+      error_cases: 0,
+      summary_text: `Local tool-calling eval ${passed ? "passed" : "failed"}: ${passedCases}/${results.length} cases passed.`,
+      completed_at: new Date().toISOString(),
+    });
+  }
   printResult(output);
   process.exitCode = passed ? 0 : 1;
 }
@@ -109,6 +142,7 @@ async function main() {
 function parseArgs(argv) {
   const parsed = {
     batteryPath: defaultBatteryPath,
+    suiteSlug: null,
     agentId: process.env.MANAGER_AGENT_ID ?? process.env.OPENMACAW_MANAGER_AGENT_ID ?? process.env.OPENMACAW_AGENT_ID ?? null,
     workspaceId:
       process.env.MANAGER_WORKSPACE_ID ?? process.env.OPENMACAW_MANAGER_WORKSPACE_ID ?? process.env.OPENMACAW_WORKSPACE_ID ?? null,
@@ -124,6 +158,8 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--") continue;
+    else if (arg === "--suite-slug") parsed.suiteSlug = requireArgValue(arg, argv[++index]);
+    else if (arg.startsWith("--suite-slug=")) parsed.suiteSlug = arg.slice("--suite-slug=".length);
     else if (arg === "--battery") parsed.batteryPath = requireArgValue(arg, argv[++index]);
     else if (arg.startsWith("--battery=")) parsed.batteryPath = arg.slice("--battery=".length);
     else if (arg === "--agent-id") parsed.agentId = requireArgValue(arg, argv[++index]);
@@ -149,16 +185,19 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage:
   pnpm run smoke:manager-tool-battery
+  pnpm run eval:local-tool-calling
+  pnpm run eval:local-tool-calling -- --run --case repo-read-file-readme
   pnpm run smoke:manager-tool-battery -- --run --case git-run-gh-repo-view
   pnpm run smoke:manager-tool-battery -- --run --include-disabled --case scheduled-task-create
 
 Options:
   --run                 Actually send prompts. Omit for dry-run discovery.
+  --suite-slug <slug>   Load cases from agent_eval_* tables instead of a JSON battery.
   --case <id>           Run/list one case. May be repeated.
   --include-disabled    Include disabled cases when --case is not provided.
   --agent-id <id>       Agent to message. Defaults to MANAGER_AGENT_ID or OPENMACAW_AGENT_ID.
   --workspace-id <id>   Workspace context. Defaults to MANAGER_WORKSPACE_ID or OPENMACAW_WORKSPACE_ID.
-  --api-base-url <url>  Platform API URL. Default comes from the battery file.
+  --api-base-url <url>  Platform API URL. Default comes from the suite metadata or battery file.
   --api-token <token>   Bearer token. Otherwise the script signs in using local env login values.
   --json                Print JSON only.
 `);
@@ -281,7 +320,7 @@ async function runCase(input) {
           errorMessage: gateway.errorMessage ?? null,
         }
       : null;
-  const evidence =
+  const dbEvidence =
     runtimeFailure == null
       ? await waitForToolEvidence({
           agentId: input.agentId,
@@ -295,21 +334,350 @@ async function runCase(input) {
           workspaceId: input.workspaceId,
           startedAt,
         });
+  const evidence = mergeToolEvidence(dbEvidence, toolEvidenceFromGatewayEvents(gateway.events));
   await writeJson(path.join(caseDir, "evidence.json"), evidence);
 
-  const missing = input.testCase.expectedToolSlugs.filter((slug) => !evidence.observedToolSlugs.includes(slug));
-  return {
+  const assertionResults = evaluateAssertions(input.testCase.assertions, evidence);
+  const missing = assertionResults
+    .filter((result) => result.status === "failed" && result.type !== "no_tool_call")
+    .flatMap((result) => (result.toolSlug ? [result.toolSlug] : []));
+  const unexpected = assertionResults
+    .filter((result) => result.status === "failed" && result.type === "no_tool_call")
+    .flatMap((result) => result.observedToolSlugs);
+  const passed = assertionResults.every((result) => result.status === "passed");
+  const result = {
     id: input.testCase.id,
-    status: missing.length === 0 && runtimeFailure == null ? "passed" : "failed",
+    status: passed && runtimeFailure == null ? "passed" : "failed",
     expectedToolSlugs: input.testCase.expectedToolSlugs,
+    prohibitedToolSlugs: input.testCase.prohibitedToolSlugs,
     observedToolSlugs: evidence.observedToolSlugs,
     missingToolSlugs: missing,
+    unexpectedToolSlugs: Array.from(new Set(unexpected)).sort(),
+    assertions: assertionResults,
     messageId: null,
     runId: gateway.runId ?? null,
     requestId: gateway.requestId ?? null,
     runtimeFailure,
     artifactDir: caseDir,
   };
+  if (input.evalRunId && input.testCase.databaseId) {
+    result.evalRunCaseId = await persistEvalRunCase({
+      runId: input.evalRunId,
+      caseId: input.testCase.databaseId,
+      workspaceId: input.workspaceId,
+      agentId: input.agentId,
+      status: result.status,
+      prompt: message,
+      startedAt: startedAt.toISOString(),
+      completedAt: new Date().toISOString(),
+      observedToolCallCount: evidence.toolCalls.length,
+      assertionResults,
+      toolCalls: evidence.toolCalls,
+    });
+  }
+  return result;
+}
+
+function normalizeBattery(rawBattery) {
+  const rawCases = Array.isArray(rawBattery.cases) ? rawBattery.cases : [];
+  const cases = rawCases.map((rawCase, index) => normalizeCase(rawCase, index));
+  return {
+    ...rawBattery,
+    cases,
+  };
+}
+
+function normalizeCase(rawCase, index) {
+  const assertions = normalizeAssertions(rawCase);
+  const expectedToolSlugs = Array.from(
+    new Set(
+      assertions
+        .filter((assertion) => assertion.type !== "no_tool_call" && assertion.toolSlug)
+        .map((assertion) => assertion.toolSlug),
+    ),
+  ).sort();
+  const prohibitedToolSlugs = Array.from(
+    new Set(
+      assertions
+        .filter((assertion) => assertion.type === "no_tool_call" && assertion.toolSlug)
+        .map((assertion) => assertion.toolSlug),
+    ),
+  ).sort();
+  const enabled =
+    typeof rawCase.enabled === "boolean"
+      ? rawCase.enabled
+      : typeof rawCase.enabledByDefault === "boolean"
+        ? rawCase.enabledByDefault
+        : rawCase.enabled_by_default;
+
+  return {
+    ...rawCase,
+    id: rawCase.id ?? rawCase.slug ?? `case-${index + 1}`,
+    enabled,
+    expectedToolSlugs,
+    prohibitedToolSlugs,
+    assertions,
+  };
+}
+
+function normalizeAssertions(rawCase) {
+  if (Array.isArray(rawCase.assertions) && rawCase.assertions.length > 0) {
+    return rawCase.assertions.map((rawAssertion, index) => normalizeAssertion(rawAssertion, index));
+  }
+
+  const legacyExpected = Array.isArray(rawCase.expectedToolSlugs) ? rawCase.expectedToolSlugs : [];
+  const legacyProhibited = Array.isArray(rawCase.prohibitedToolSlugs) ? rawCase.prohibitedToolSlugs : [];
+  return [
+    ...legacyExpected.map((slug, index) =>
+      normalizeAssertion({ type: "tool_call_observed", toolSlug: slug, minCalls: 1 }, index),
+    ),
+    ...legacyProhibited.map((slug, index) =>
+      normalizeAssertion({ type: "no_tool_call", toolSlug: slug, maxCalls: 0 }, legacyExpected.length + index),
+    ),
+  ];
+}
+
+function normalizeAssertion(rawAssertion, index) {
+  const type = rawAssertion.type ?? rawAssertion.assertion_type ?? "tool_call_observed";
+  const toolSlug = rawAssertion.toolSlug ?? rawAssertion.tool_slug ?? rawAssertion.tool ?? rawAssertion.tool_name ?? null;
+  const minCalls =
+    numberOrNull(rawAssertion.minCalls ?? rawAssertion.min_calls) ?? (type === "no_tool_call" ? null : 1);
+  const maxCalls = numberOrNull(rawAssertion.maxCalls ?? rawAssertion.max_calls) ?? (type === "no_tool_call" ? 0 : null);
+  const argumentHints =
+    rawAssertion.argumentHints ??
+    rawAssertion.argument_hints ??
+    rawAssertion.expectedArgumentHints ??
+    rawAssertion.expected_argument_hints ??
+    rawAssertion.expected_json?.argumentHints ??
+    rawAssertion.expected_json?.argument_hints ??
+    [];
+  return {
+    id: rawAssertion.id ?? `assertion-${index + 1}`,
+    type,
+    toolSlug,
+    minCalls,
+    maxCalls,
+    argumentHints: Array.isArray(argumentHints) ? argumentHints.map(String) : [],
+    required: rawAssertion.required !== false,
+  };
+}
+
+async function loadEvalCatalogBattery(suiteSlug) {
+  const suites = await postgrestGet("agent_eval_suite", {
+    select: "id,workspace_id,slug,name,description,suite_type,enabled,tags,metadata",
+    slug: `eq.${suiteSlug}`,
+    workspace_id: "is.null",
+    limit: "1",
+  });
+  const suite = suites[0];
+  if (!suite) throw new Error(`agent eval suite not found: ${suiteSlug}`);
+
+  const cases = await postgrestGet("agent_eval_case", {
+    select:
+      "id,suite_id,workspace_id,slug,name,prompt,difficulty,side_effect_level,enabled_by_default,timeout_ms,tags,metadata",
+    suite_id: `eq.${suite.id}`,
+    order: "slug.asc",
+  });
+  const caseIds = cases.map((testCase) => testCase.id).filter(Boolean);
+  const assertions =
+    caseIds.length === 0
+      ? []
+      : await postgrestGet("agent_eval_case_assertion", {
+          select:
+            "id,case_id,assertion_type,subject_kind,tool_name,tool_slug,tool_call_occurrence,json_path,comparator_mode,expected_text,expected_number,expected_boolean,expected_json,regex,tolerance,min_calls,max_calls,sequence_index,weight,hard_fail,required,ordinal,metadata",
+          case_id: `in.(${caseIds.join(",")})`,
+          order: "ordinal.asc",
+        });
+  const assertionsByCaseId = new Map();
+  for (const assertion of assertions) {
+    const existing = assertionsByCaseId.get(assertion.case_id) ?? [];
+    existing.push(assertion);
+    assertionsByCaseId.set(assertion.case_id, existing);
+  }
+
+  return normalizeBattery({
+    id: suite.id,
+    databaseSuiteId: suite.id,
+    slug: suite.slug,
+    name: suite.name,
+    description: suite.description,
+    suiteType: suite.suite_type,
+    enabled: suite.enabled,
+    tags: suite.tags ?? [],
+    apiBaseUrl: suite.metadata?.apiBaseUrl ?? "http://127.0.0.1:3100",
+    defaultTimeoutMs: suite.metadata?.defaultTimeoutMs ?? 90_000,
+    defaultWaitMs: suite.metadata?.defaultWaitMs ?? 30_000,
+    cases: cases.map((testCase) => ({
+      id: testCase.slug,
+      databaseId: testCase.id,
+      slug: testCase.slug,
+      name: testCase.name,
+      prompt: testCase.prompt,
+      difficulty: testCase.difficulty,
+      sideEffectLevel: testCase.side_effect_level,
+      enabledByDefault: testCase.enabled_by_default,
+      timeoutMs: testCase.timeout_ms,
+      tags: testCase.tags ?? [],
+      metadata: testCase.metadata ?? {},
+      assertions: assertionsByCaseId.get(testCase.id) ?? [],
+    })),
+  });
+}
+
+async function createEvalRun(input) {
+  const rows = await postgrestInsert("agent_eval_run", {
+    suite_id: input.suiteId,
+    workspace_id: input.workspaceId,
+    agent_id: input.agentId,
+    status: "running",
+    trigger_source: "manual",
+    selected_case_ids: input.selectedCaseIds,
+    side_effect_limit: input.sideEffectLimit,
+    artifacts_path: input.artifactsPath,
+    started_at: new Date().toISOString(),
+  });
+  return rows[0] ?? null;
+}
+
+async function updateEvalRun(runId, patch) {
+  await postgrestPatch("agent_eval_run", { id: `eq.${runId}` }, patch);
+}
+
+async function persistEvalRunCase(input) {
+  const passedAssertions = input.assertionResults.filter((assertion) => assertion.status === "passed").length;
+  const failedAssertions = input.assertionResults.filter((assertion) => assertion.status === "failed").length;
+  const runCaseRows = await postgrestInsert("agent_eval_run_case", {
+    run_id: input.runId,
+    case_id: input.caseId,
+    workspace_id: input.workspaceId,
+    agent_id: input.agentId,
+    status: input.status,
+    prompt: input.prompt,
+    score: input.status === "passed" ? 1 : 0,
+    passed_assertions: passedAssertions,
+    failed_assertions: failedAssertions,
+    skipped_assertions: 0,
+    observed_tool_call_count: input.observedToolCallCount,
+    first_tool_call_id: input.toolCalls[0]?.id ?? null,
+    started_at: input.startedAt,
+    completed_at: input.completedAt,
+    duration_ms: Math.max(0, Date.parse(input.completedAt) - Date.parse(input.startedAt)),
+  });
+  const runCase = runCaseRows[0];
+  if (!runCase?.id) return null;
+
+  if (input.assertionResults.length > 0) {
+    await postgrestInsert(
+      "agent_eval_assertion_result",
+      input.assertionResults.map((assertion) => ({
+        run_id: input.runId,
+        run_case_id: runCase.id,
+        assertion_id: isUuid(assertion.id) ? assertion.id : null,
+        workspace_id: input.workspaceId,
+        assertion_type: assertion.type,
+        status: assertion.status,
+        score: assertion.status === "passed" ? 1 : 0,
+        weight: 1,
+        hard_fail: true,
+        explanation:
+          assertion.status === "passed"
+            ? "Expected tool-call assertion was satisfied."
+            : "Expected tool-call assertion was not satisfied.",
+        expected_text: assertion.toolSlug,
+        expected_number: assertion.minCalls ?? assertion.maxCalls,
+        actual_number: assertion.observedCallCount,
+        expected_json: {
+          toolSlug: assertion.toolSlug,
+          minCalls: assertion.minCalls,
+          maxCalls: assertion.maxCalls,
+          argumentHints: assertion.argumentHints,
+        },
+        actual_json: {
+          observedToolSlugs: assertion.observedToolSlugs,
+          observedCallCount: assertion.observedCallCount,
+        },
+      })),
+    );
+  }
+
+  if (input.toolCalls.length > 0) {
+    await postgrestInsert(
+      "agent_eval_observation",
+      input.toolCalls.map((toolCall, index) => ({
+        run_id: input.runId,
+        run_case_id: runCase.id,
+        workspace_id: input.workspaceId,
+        agent_id: input.agentId,
+        observation_type: "tool_call_observed",
+        evidence_kind: "tool_call",
+        evidence_table: "tool_call",
+        evidence_id: isUuid(toolCall.id) ? toolCall.id : null,
+        call_id: toolCall.id ?? null,
+        tool_slug: toolCall.toolSlug,
+        sequence: index,
+        arguments: toolCall.input,
+        result: toolCall.output,
+        passed: true,
+        message_id: isUuid(toolCall.messageId) ? toolCall.messageId : null,
+        tool_call_id: isUuid(toolCall.id) ? toolCall.id : null,
+      })),
+    );
+  }
+
+  return runCase.id;
+}
+
+function evaluateAssertions(assertions, evidence) {
+  return assertions.map((assertion) => {
+    const matchingCalls = assertion.toolSlug
+      ? evidence.toolCalls.filter((call) => call.toolSlug === assertion.toolSlug)
+      : evidence.toolCalls;
+    const callCount = matchingCalls.length;
+    const observedToolSlugs = Array.from(new Set(matchingCalls.map((call) => call.toolSlug).filter(Boolean))).sort();
+    const minPassed = assertion.minCalls == null || callCount >= assertion.minCalls;
+    const maxPassed = assertion.maxCalls == null || callCount <= assertion.maxCalls;
+    const hintsPassed =
+      assertion.argumentHints.length === 0 ||
+      matchingCalls.some((call) => {
+        const haystack = evidenceText({ input: call.input, output: call.output });
+        return assertion.argumentHints.every((hint) => haystack.includes(hint));
+      });
+    const status = minPassed && maxPassed && hintsPassed ? "passed" : "failed";
+    return {
+      id: assertion.id,
+      type: assertion.type,
+      toolSlug: assertion.toolSlug,
+      status,
+      observedCallCount: callCount,
+      observedToolSlugs,
+      minCalls: assertion.minCalls,
+      maxCalls: assertion.maxCalls,
+      argumentHints: assertion.argumentHints,
+      required: assertion.required,
+    };
+  });
+}
+
+function evidenceText(value) {
+  return flattenEvidenceText(value).join(" ");
+}
+
+function flattenEvidenceText(value) {
+  if (value == null) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [String(value)];
+  }
+  if (Array.isArray(value)) return value.flatMap(flattenEvidenceText);
+  if (typeof value === "object") {
+    return [JSON.stringify(value), ...Object.values(value).flatMap(flattenEvidenceText)];
+  }
+  return [];
+}
+
+function numberOrNull(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return null;
 }
 
 async function resolveAccessToken() {
@@ -345,22 +713,6 @@ async function resolveAccessToken() {
     throw new Error(`Supabase sign-in failed (${response.status})`);
   }
   return body.access_token;
-}
-
-async function postApi(url, token, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const parsed = await parseResponse(response);
-  if (!response.ok) {
-    throw new Error(`API request failed (${response.status}): ${JSON.stringify(parsed)}`);
-  }
-  return parsed;
 }
 
 async function sendBrowserGatewayMessage(input) {
@@ -622,6 +974,10 @@ function rememberGatewayFrame(events, frame) {
       frame.payload && typeof frame.payload === "object" && !Array.isArray(frame.payload)
         ? Object.keys(frame.payload).sort()
         : [],
+    payload:
+      frame.payload && typeof frame.payload === "object" && !Array.isArray(frame.payload)
+        ? sanitizeForArtifact(frame.payload)
+        : null,
     error: frame.error ?? null,
   });
 }
@@ -643,6 +999,11 @@ function isSensitiveKey(key) {
 }
 
 async function waitForToolEvidence(input) {
+  if (input.expectedToolSlugs.length === 0) {
+    await sleep(Math.min(input.timeoutMs, 5_000));
+    return loadToolEvidence(input);
+  }
+
   const deadline = Date.now() + input.timeoutMs;
   let latest = { messages: [], observedToolSlugs: [] };
 
@@ -658,8 +1019,8 @@ async function waitForToolEvidence(input) {
 }
 
 async function loadToolEvidence({ agentId, workspaceId, startedAt }) {
-  const rows = await postgrestGet("message", {
-    select: "id,role,created_at,run_id,content,tool_call(id,tool_id,input,output,created_at)",
+  const messages = await postgrestGet("message", {
+    select: "id,role,created_at,run_id,content",
     agent_id: `eq.${agentId}`,
     workspace_id: `eq.${workspaceId}`,
     deleted_at: "is.null",
@@ -667,31 +1028,89 @@ async function loadToolEvidence({ agentId, workspaceId, startedAt }) {
     order: "created_at.desc",
     limit: "30",
   });
+  const messageIds = messages.map((message) => message.id).filter(Boolean);
+  const toolCallRows =
+    messageIds.length === 0
+      ? []
+      : await postgrestGet("tool_call", {
+          select: "id,message_id,tool_id,input,output,created_at",
+          message_id: `in.(${messageIds.join(",")})`,
+          order: "created_at.desc",
+          limit: "100",
+        });
+  const messageById = new Map(messages.map((message) => [message.id, message]));
 
-  const toolCalls = rows.flatMap((message) =>
-    Array.isArray(message.tool_call)
-      ? message.tool_call.map((toolCall) => ({
-          messageId: message.id,
-          runId: message.run_id,
-          createdAt: toolCall.created_at,
-          toolSlug: toolSlugFromCall(toolCall),
-          input: safeJson(toolCall.input),
-          output: safeJson(toolCall.output),
-        }))
-      : [],
-  );
+  const toolCalls = toolCallRows.map((toolCall) => {
+    const message = messageById.get(toolCall.message_id) ?? {};
+    return {
+      id: toolCall.id,
+      messageId: toolCall.message_id,
+      runId: message.run_id,
+      createdAt: toolCall.created_at,
+      toolSlug: toolSlugFromCall(toolCall),
+      input: safeJson(toolCall.input),
+      output: safeJson(toolCall.output),
+    };
+  });
   const observedToolSlugs = Array.from(new Set(toolCalls.map((call) => call.toolSlug).filter(Boolean))).sort();
 
   return {
     observedToolSlugs,
     toolCalls,
-    messages: rows.map((message) => ({
+    messages: messages.map((message) => ({
       id: message.id,
       role: message.role,
       createdAt: message.created_at,
       runId: message.run_id,
       contentPreview: typeof message.content === "string" ? message.content.slice(0, 500) : "",
     })),
+  };
+}
+
+function toolEvidenceFromGatewayEvents(events) {
+  const toolCallsByKey = new Map();
+  for (const event of events) {
+    const payload = event?.payload && typeof event.payload === "object" ? event.payload : null;
+    if (!payload) continue;
+    const toolSlug = payload.tool_slug || payload.toolSlug || payload.tool_name || payload.toolName;
+    if (typeof toolSlug !== "string" || toolSlug.trim() === "") continue;
+    const id = typeof payload.tool_call_id === "string" ? payload.tool_call_id : null;
+    const key = `${toolSlug.trim()}:${id ?? toolCallsByKey.size}`;
+    const existing = toolCallsByKey.get(key) ?? {};
+    toolCallsByKey.set(key, {
+      ...existing,
+      id,
+      messageId: null,
+      runId: typeof payload.runId === "string" ? payload.runId : null,
+      createdAt: null,
+      toolSlug: toolSlug.trim(),
+      input: existing.input ?? safeJson(payload.arguments) ?? {},
+      output: {
+        success: payload.success ?? existing.output?.success ?? null,
+        resultSizeBytes: payload.result_size_bytes ?? existing.output?.resultSizeBytes ?? null,
+      },
+      evidenceKind: "gateway_event",
+    });
+  }
+
+  const toolCalls = Array.from(toolCallsByKey.values());
+  return {
+    observedToolSlugs: Array.from(new Set(toolCalls.map((call) => call.toolSlug))).sort(),
+    toolCalls,
+    messages: [],
+  };
+}
+
+function mergeToolEvidence(left, right) {
+  const toolCalls = [...(left.toolCalls ?? []), ...(right.toolCalls ?? [])];
+  const observedToolSlugs = Array.from(
+    new Set([...(left.observedToolSlugs ?? []), ...(right.observedToolSlugs ?? [])].filter(Boolean)),
+  ).sort();
+
+  return {
+    observedToolSlugs,
+    toolCalls,
+    messages: left.messages ?? [],
   };
 }
 
@@ -726,6 +1145,45 @@ async function postgrestGet(table, params) {
   return body;
 }
 
+async function postgrestInsert(table, value) {
+  const supabaseUrl = requireValue(process.env.SUPABASE_URL, "SUPABASE_URL");
+  const serviceRoleKey = requireValue(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY");
+  const response = await fetch(`${normalizeUrl(supabaseUrl)}/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+      prefer: "return=representation",
+    },
+    body: JSON.stringify(value),
+  });
+  const body = await parseResponse(response);
+  if (!response.ok) throw new Error(`PostGREST ${table} insert failed (${response.status}): ${JSON.stringify(body)}`);
+  return Array.isArray(body) ? body : [];
+}
+
+async function postgrestPatch(table, params, value) {
+  const supabaseUrl = requireValue(process.env.SUPABASE_URL, "SUPABASE_URL");
+  const serviceRoleKey = requireValue(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY");
+  const url = new URL(`${normalizeUrl(supabaseUrl)}/rest/v1/${table}`);
+  for (const [key, paramValue] of Object.entries(params)) {
+    url.searchParams.set(key, paramValue);
+  }
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(value),
+  });
+  const body = await parseResponse(response);
+  if (!response.ok) throw new Error(`PostGREST ${table} patch failed (${response.status}): ${JSON.stringify(body)}`);
+  return body;
+}
+
 async function parseResponse(response) {
   const text = await response.text();
   if (!text) return null;
@@ -756,6 +1214,13 @@ function normalizeUrl(url) {
 function requireValue(value, name) {
   if (typeof value === "string" && value.trim()) return value.trim();
   throw new Error(`${name} is required`);
+}
+
+function isUuid(value) {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  );
 }
 
 function requireArgValue(flag, value) {

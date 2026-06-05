@@ -17,6 +17,8 @@ export type ResolvedExecutionProfileBlock = {
   tool_profile: string;
   credential_id?: string;
   credential_alias?: string;
+  adapter_config?: Record<string, unknown>;
+  source_metadata?: Record<string, unknown>;
 };
 
 /**
@@ -45,6 +47,12 @@ export function buildExecutionProfileBlock(
     block.credential_id = profile.credentialRef.value;
   } else if (profile.credentialRef?.type === "alias") {
     block.credential_alias = profile.credentialRef.value;
+  }
+  if (profile.adapterConfig && Object.keys(profile.adapterConfig).length > 0) {
+    block.adapter_config = profile.adapterConfig;
+  }
+  if (profile.sourceMetadata && Object.keys(profile.sourceMetadata).length > 0) {
+    block.source_metadata = profile.sourceMetadata;
   }
 
   return block;

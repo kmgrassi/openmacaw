@@ -277,11 +277,15 @@ After the tool-calling slice works, add broader agent behavior cases such as:
 
 ## First Implementation Slice
 
-1. Add a file-backed manual runner that sends dashboard-equivalent messages.
-2. Seed read-only manager cases for `git.run` and `scheduled_task.list`.
-3. Persist sanitized artifacts outside git.
-4. Report observed tool calls from Supabase persistence.
-5. Leave disabled placeholders for side-effecting manager tools.
-6. Shape the file format around `assertions`, not `expected_tool`, so it maps to
-   future `agent_eval_case_assertion` rows.
-7. Revisit the database catalog after the file-backed runner has real use.
+1. Seed the built-in `local-tool-calling` suite through a Supabase migration
+   into `agent_eval_suite`, `agent_eval_case`, and
+   `agent_eval_case_assertion`.
+2. Keep read-only and harmless cases enabled by default, including repository,
+   git, shell, scheduled-task list, and negative no-tool-call prompts.
+3. Leave mutation cases present but disabled until each case has a safe fixture
+   or cleanup path.
+4. Load selected cases from the `agent_eval_*` catalog and send
+   dashboard-equivalent messages.
+5. Persist sanitized local artifacts outside git for debugging.
+6. Record run, case, assertion result, and observation rows in the
+   `agent_eval_*` run tables.

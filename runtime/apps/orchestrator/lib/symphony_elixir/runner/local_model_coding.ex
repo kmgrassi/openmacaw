@@ -45,6 +45,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
     bearer_token
     credential
     credential_ref
+    endpoint
     frequency_penalty
     max_completion_tokens
     max_tokens
@@ -209,12 +210,40 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
       |> Map.take(@provider_profile_keys)
       |> Enum.reject(fn {_key, value} -> blank?(value) end)
       |> Map.new()
+      |> normalize_provider_endpoint()
 
     profile
     |> stringify_keys()
+    |> normalize_provider_endpoint()
     |> Map.merge(runtime_profile, fn _key, profile_value, runtime_value ->
       if redacted?(profile_value) or blank?(profile_value), do: runtime_value, else: profile_value
     end)
+    |> put_local_provider_defaults()
+  end
+
+  defp normalize_provider_endpoint(profile) when is_map(profile) do
+    case Map.get(profile, "base_url") || Map.get(profile, "endpoint") do
+      value when is_binary(value) and value != "" -> Map.put(profile, "base_url", value)
+      _ -> profile
+    end
+  end
+
+  defp put_local_provider_defaults(profile) when is_map(profile) do
+    profile
+    |> Map.put_new("base_url", local_openai_compatible_base_url())
+    |> Map.put_new("api_key", local_openai_compatible_api_key())
+  end
+
+  defp local_openai_compatible_base_url do
+    System.get_env("LOCAL_MODEL_BASE_URL") ||
+      System.get_env("OPENAI_COMPATIBLE_BASE_URL") ||
+      "http://127.0.0.1:11434/v1"
+  end
+
+  defp local_openai_compatible_api_key do
+    System.get_env("LOCAL_MODEL_API_KEY") ||
+      System.get_env("OPENAI_COMPATIBLE_API_KEY") ||
+      "ollama"
   end
 
   defp resolved_profile_value(profile, config, key) do
