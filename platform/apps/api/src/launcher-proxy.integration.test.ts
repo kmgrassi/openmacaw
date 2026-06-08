@@ -16,7 +16,9 @@ type EngineRow = {
 
 const defaultAgentId = "33333333-3333-4333-8333-333333333333";
 const agentId = "11111111-1111-4111-8111-111111111111";
+const unauthorizedAgentId = "66666666-6666-4666-8666-666666666666";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
+const unauthorizedWorkspaceId = "77777777-7777-4777-8777-777777777777";
 const sessionKey = `agent:${agentId}:main`;
 const userId = "44444444-4444-4444-8444-444444444444";
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -222,7 +224,7 @@ describe("launcher runtime proxy integration", () => {
       }
 
       if (req.method === "GET" && url.pathname === "/rest/v1/agent") {
-        return json(res, 200, [
+        const rows = [
           {
             id: defaultAgentId,
             name: "Default Agent",
@@ -245,7 +247,21 @@ describe("launcher runtime proxy integration", () => {
             created_by_user_id: userId,
             updated_at: "2026-04-22T12:00:00.000Z",
           },
-        ]);
+          {
+            id: unauthorizedAgentId,
+            name: "Other Workspace Agent",
+            status: "active",
+            type: "coding",
+            workspace_id: unauthorizedWorkspaceId,
+            model_settings: { primary: "openai/gpt-5.2" },
+            tool_policy: {},
+            created_by_user_id: userId,
+            updated_at: "2026-04-22T12:00:00.000Z",
+          },
+        ];
+        const idFilter = url.searchParams.get("id")?.replace(/^eq\./, "") || "";
+        const filtered = idFilter ? rows.filter((row) => row.id === idFilter) : rows;
+        return json(res, 200, filtered);
       }
 
       if (req.method === "GET" && url.pathname === "/rest/v1/user") {
@@ -274,6 +290,19 @@ describe("launcher runtime proxy integration", () => {
       }
 
       if (req.method === "GET" && url.pathname === "/rest/v1/session_thread") {
+        return json(res, 200, []);
+      }
+
+      if (req.method === "GET" && url.pathname === "/rest/v1/workspace_members") {
+        const requestedWorkspaceId = url.searchParams.get("workspace_id")?.replace(/^eq\./, "") || "";
+        const requestedUserId = url.searchParams.get("user_id")?.replace(/^eq\./, "") || "";
+        if (requestedWorkspaceId === workspaceId && requestedUserId === userId) {
+          return json(res, 200, [{ workspace_id: workspaceId }]);
+        }
+        return json(res, 200, []);
+      }
+
+      if (req.method === "GET" && url.pathname === "/rest/v1/workspaces") {
         return json(res, 200, []);
       }
 
@@ -565,6 +594,36 @@ describe("launcher runtime proxy integration", () => {
       ws.close(1000, "done");
       await closed;
     }
+  });
+
+  it("rejects websocket upgrades for agents outside the caller workspace", async () => {
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${apiPort}/ws?agent_id=${unauthorizedAgentId}&workspace_id=${unauthorizedWorkspaceId}&session_key=agent:${unauthorizedAgentId}:main`,
+      ["platform.v1", `bearer.${accessToken}`],
+    );
+
+    const failure = await new Promise<{ statusCode: number | undefined; body: string }>((resolve, reject) => {
+      ws.once("open", () => reject(new Error("websocket unexpectedly opened")));
+      ws.once("error", reject);
+      ws.once("unexpected-response", (_request, response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          resolve({ statusCode: response.statusCode, body });
+        });
+      });
+    });
+
+    expect(failure.statusCode).toBe(403);
+    expect(JSON.parse(failure.body)).toMatchObject({
+      error: {
+        code: "workspace_forbidden",
+        message: "User is not authorized for the target workspace",
+      },
+    });
   });
 
   it("refreshes launcher state when the stored runtime port is stale", async () => {
