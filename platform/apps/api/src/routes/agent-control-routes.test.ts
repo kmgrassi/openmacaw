@@ -39,6 +39,14 @@ vi.mock("../services/runtime-prepare.js", () => ({
   assertRuntimePrepareSupported: vi.fn(),
 }));
 
+vi.mock("../services/agent-tools/access.js", () => ({
+  assertAgentAccess: vi.fn(),
+}));
+
+vi.mock("./stored-agent-credentials/authz.js", () => ({
+  assertCredentialReferenceBelongsToWorkspace: vi.fn(),
+}));
+
 const {
   assertAgentControlAccess,
   createAgentControlMessage,
@@ -47,6 +55,10 @@ const {
   updateAgentControlMessageDispatchStatus,
 } = vi.mocked(await import("../services/agent-control.js"));
 const { assertRuntimePrepareSupported } = vi.mocked(await import("../services/runtime-prepare.js"));
+const { assertAgentAccess } = vi.mocked(await import("../services/agent-tools/access.js"));
+const { assertCredentialReferenceBelongsToWorkspace } = vi.mocked(
+  await import("./stored-agent-credentials/authz.js"),
+);
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const targetAgentId = "33333333-3333-4333-8333-333333333333";
@@ -133,6 +145,8 @@ describe("agent control routes", () => {
       workspaceId,
       localRuntime: false,
     });
+    assertAgentAccess.mockResolvedValue({ agent: { id: targetAgentId }, workspaceId } as never);
+    assertCredentialReferenceBelongsToWorkspace.mockResolvedValue("credential-1");
 
     const app = express();
     app.use(express.json());
@@ -255,7 +269,9 @@ describe("agent control routes", () => {
       data: [workerBridgeSessionRow()],
     });
 
-    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`);
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`, {
+      headers: { authorization: "Bearer test-token" },
+    });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -272,6 +288,98 @@ describe("agent control routes", () => {
           credentialId: "credential-1",
         },
       ],
+    });
+  });
+
+  it("requires auth before listing worker bridge sessions", async () => {
+    launcherClient.listWorkerBridgeSessions = vi.fn().mockResolvedValue({
+      data: [],
+    });
+
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "auth_required" },
+    });
+  });
+
+  it("filters worker bridge sessions the caller is not authorized to access", async () => {
+    launcherClient.listWorkerBridgeSessions = vi.fn().mockResolvedValue({
+      data: [
+        workerBridgeSessionRow({ id: "visible-session" }),
+        workerBridgeSessionRow({
+          id: "hidden-session",
+          agent_id: null,
+          workspace_id: null,
+        }),
+      ],
+    });
+
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: "visible-session" }],
+    });
+  });
+
+  it("rejects worker bridge launches without an authorized identity scope", async () => {
+    launcherClient.createWorkerBridgeSession = vi.fn();
+
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        kind: "codex",
+        cwd: "/tmp/work",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "worker_bridge_identity_required" },
+    });
+    expect(launcherClient.createWorkerBridgeSession).not.toHaveBeenCalled();
+  });
+
+  it("authorizes worker bridge launches against the requested agent workspace and credential", async () => {
+    launcherClient.createWorkerBridgeSession = vi.fn().mockResolvedValue({
+      status: 201,
+      data: {
+        data: workerBridgeSessionRow(),
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        kind: "codex",
+        agent_id: targetAgentId,
+        workspace_id: workspaceId,
+        credential_id: "credential-1",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(assertAgentAccess).toHaveBeenCalledWith({
+      accessToken: "test-token",
+      userId,
+      agentId: targetAgentId,
+      workspaceId,
+    });
+    expect(assertCredentialReferenceBelongsToWorkspace).toHaveBeenCalledWith({
+      workspaceId,
+      credentialRef: { type: "credential_id", value: "credential-1" },
     });
   });
 });
