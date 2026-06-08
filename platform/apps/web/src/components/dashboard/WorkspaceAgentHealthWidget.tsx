@@ -1,6 +1,10 @@
+import { Link } from "react-router-dom";
+
 import type { WorkspaceAgentDiagnosticResponse } from "../../../../../contracts/agent-health";
 import { useWorkspaceAgentDiagnosticsQuery } from "../../api/queries/runtime-diagnostics";
+import { runtimeErrorFix } from "../../lib/runtime-error-fix";
 import { Badge } from "../ui/Badge";
+import { buttonClassName } from "../ui/Button";
 import { LoadingState } from "../ui/LoadingState";
 
 type WorkspaceAgentDiagnostic = Extract<
@@ -63,6 +67,7 @@ export function WorkspaceAgentHealthWidget({
   const diagnostics = diagnosticsQuery.data;
 
   if (diagnostics?.ok === false) {
+    const fix = runtimeErrorFix(diagnostics.reason);
     return (
       <section className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -70,8 +75,20 @@ export function WorkspaceAgentHealthWidget({
             <h2 className="text-sm font-semibold">Orchestrator unreachable</h2>
             <p className="mt-1 text-amber-800">{diagnostics.details}</p>
           </div>
-          <Badge variant="warning">runtime_unreachable</Badge>
+          <Badge variant="warning">{diagnostics.reason}</Badge>
         </div>
+        {fix && (
+          <Link
+            to={fix.to}
+            className={buttonClassName({
+              variant: "secondary",
+              size: "sm",
+              className: "mt-3",
+            })}
+          >
+            {fix.label}
+          </Link>
+        )}
       </section>
     );
   }
