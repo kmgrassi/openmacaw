@@ -102,6 +102,7 @@ describe("stored agent credential activation", () => {
     });
 
     const result = await createStoredCredentialLaunch({
+      agentId: "agent-1",
       credential: oauthCredential,
       workspaceId: "workspace-1",
       secretValue: "fresh-oauth-access-token",
@@ -120,6 +121,9 @@ describe("stored agent credential activation", () => {
           value: "fresh-oauth-access-token",
         },
       },
+      agent_id: "agent-1",
+      workspace_id: "workspace-1",
+      credential_id: "cred-oauth",
     });
     expect(result.launch).toMatchObject({
       attempted: true,

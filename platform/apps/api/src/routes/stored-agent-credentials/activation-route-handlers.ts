@@ -63,6 +63,7 @@ export async function launchStoredCredential(req: Request, res: Response, launch
   }
 
   const launchResult = await createStoredCredentialLaunch({
+    agentId,
     credential: selected,
     workspaceId,
     secretValue: validatedCredential.secretValue,
@@ -139,6 +140,7 @@ export async function activateStoredAgent(req: Request, res: Response, launcherC
   }
 
   const launchResult = await createStoredCredentialLaunch({
+    agentId,
     credential: selected,
     workspaceId,
     secretValue: validatedCredential.secretValue,
