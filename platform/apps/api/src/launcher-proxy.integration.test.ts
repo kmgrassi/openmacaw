@@ -80,6 +80,7 @@ describe("launcher runtime proxy integration", () => {
   let engineRows: EngineRow[] = [];
   let accessToken = "";
   let launcherWsHeaders: IncomingMessage["headers"] | null = null;
+  let failAgentLookup = false;
 
   beforeAll(async () => {
     runtimeServer = createServer(async (req, res) => {
@@ -224,6 +225,14 @@ describe("launcher runtime proxy integration", () => {
       }
 
       if (req.method === "GET" && url.pathname === "/rest/v1/agent") {
+        if (failAgentLookup) {
+          return json(res, 400, {
+            code: "PGRST000",
+            message: "agent table unavailable",
+            details: null,
+            hint: null,
+          });
+        }
         const rows = [
           {
             id: defaultAgentId,
@@ -624,6 +633,41 @@ describe("launcher runtime proxy integration", () => {
         message: "User is not authorized for the target workspace",
       },
     });
+  });
+
+  it("maps websocket agent lookup failures to upgrade errors", async () => {
+    failAgentLookup = true;
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${apiPort}/ws?agent_id=${agentId}&workspace_id=${workspaceId}&session_key=${sessionKey}`,
+      ["platform.v1", `bearer.${accessToken}`],
+    );
+
+    try {
+      const failure = await new Promise<{ statusCode: number | undefined; body: string }>((resolve, reject) => {
+        ws.once("open", () => reject(new Error("websocket unexpectedly opened")));
+        ws.once("error", reject);
+        ws.once("unexpected-response", (_request, response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => {
+            resolve({ statusCode: response.statusCode, body });
+          });
+        });
+      });
+
+      expect(failure.statusCode).toBe(503);
+      expect(JSON.parse(failure.body)).toMatchObject({
+        error: {
+          code: "agent_lookup_failed",
+          message: "Could not resolve authorized agent",
+        },
+      });
+    } finally {
+      failAgentLookup = false;
+    }
   });
 
   it("refreshes launcher state when the stored runtime port is stale", async () => {

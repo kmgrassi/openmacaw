@@ -137,7 +137,19 @@ export async function prepareAuthenticatedWebSocketSession(request: IncomingMess
         message: error.message,
       });
     }
-    throw error;
+    logEvent({
+      event: "agent_lookup_failed",
+      level: "error",
+      auth_user_id: auth.userId,
+      app_user_id: appUser.id,
+      agent_id: agentId,
+      error: errorMessage(error),
+    });
+    throw new WebSocketUpgradeError({
+      statusCode: 503,
+      code: "agent_lookup_failed",
+      message: "Could not resolve authorized agent",
+    });
   }
 
   requestUrl.searchParams.set("user_id", appUser.id);
