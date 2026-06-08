@@ -172,7 +172,14 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
       {:error, reason} when reason in [:missing_token, :invalid_token, :local_runtime_token_revoked] ->
         Logger.warning("local_relay_register_rejected reason=#{reason}")
         reply = error_frame(Map.get(frame, "correlation_id"), reason, safe_message(reason))
-        {:stop, {:shutdown, reason}, [reply], state}
+        # WebSock's `{:stop, reason, close_detail, messages, state}` 5-tuple is
+        # the only shape that both pushes a frame AND closes. The previous
+        # 4-tuple `{:stop, reason, [reply], state}` put the message list where
+        # WebSock expects `close_detail :: integer() | {integer(), iodata()}`,
+        # so Bandit raised FunctionClauseError on close — masking this typed
+        # auth error as a generic StatusInternalError on the helper. 1008 is the
+        # WebSocket "policy violation" close code, which fits a rejected token.
+        {:stop, {:shutdown, reason}, {1008, safe_message(reason)}, [reply], state}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         message = LocalRelayRegister.error_message(changeset)
