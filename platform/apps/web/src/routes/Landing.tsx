@@ -294,9 +294,9 @@ export function Landing({ appUrl }: LandingProps) {
                 }}
               >
                 <img
-                  src="/favicon.svg"
+                  src="/openmacaw-logo.png"
                   alt=""
-                  className="h-7 w-7"
+                  className="h-8 w-8 object-contain"
                   aria-hidden="true"
                 />
               </span>
