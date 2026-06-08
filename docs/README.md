@@ -10,6 +10,10 @@ the combined platform, runtime, and local helper repository.
 - [Open source readiness scope](open-source-readiness-scope.md) defines the
   remaining work to make OpenMacaw understandable, runnable, auditable, and
   maintainable for external developers and self-hosters.
+- [OpenMacaw vs. OpenClaw vs. Hermes](openmacaw-vs-openclaw-hermes.md) explains
+  how OpenMacaw relates to those two adjacent agent projects — always-on cloud
+  orchestration with local-model routing, OpenClaw integrated as a runner kind,
+  and Hermes's learning ideas adapted into an optional workspace sidecar.
 
 ## Subsystem docs
 
