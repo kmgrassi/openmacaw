@@ -1,9 +1,11 @@
 import type { IncomingMessage } from "node:http";
 
+import { ApiRouteError } from "../http.js";
 import { errorMessage, logEvent } from "../logger.js";
 import { verifyBearerToken } from "../middleware/authJwt.js";
 import { contextHeaders } from "../middleware/request-context.js";
 import { getAppUserByAuthId, type AppUserRow } from "../services/auth/app-user.js";
+import { assertAgentAccess } from "../services/agent-tools/access.js";
 
 import { WebSocketUpgradeError } from "./orchestrator-proxy-upgrade.js";
 
@@ -29,6 +31,11 @@ function subprotocols(header: string | string[] | undefined) {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function requestWorkspaceId(requestUrl: URL): string | null {
+  const value = requestUrl.searchParams.get("workspace_id")?.trim() || "";
+  return value || null;
 }
 
 export async function prepareAuthenticatedWebSocketSession(request: IncomingMessage, agentId: string) {
@@ -113,6 +120,37 @@ export async function prepareAuthenticatedWebSocketSession(request: IncomingMess
     auth_result: "valid",
     role: auth.role,
   });
+
+  try {
+    const authorized = await assertAgentAccess({
+      accessToken,
+      userId: appUser.id,
+      agentId,
+      workspaceId: requestWorkspaceId(requestUrl),
+    });
+    requestUrl.searchParams.set("workspace_id", authorized.workspaceId);
+  } catch (error) {
+    if (error instanceof ApiRouteError) {
+      throw new WebSocketUpgradeError({
+        statusCode: error.status,
+        code: error.code,
+        message: error.message,
+      });
+    }
+    logEvent({
+      event: "agent_lookup_failed",
+      level: "error",
+      auth_user_id: auth.userId,
+      app_user_id: appUser.id,
+      agent_id: agentId,
+      error: errorMessage(error),
+    });
+    throw new WebSocketUpgradeError({
+      statusCode: 503,
+      code: "agent_lookup_failed",
+      message: "Could not resolve authorized agent",
+    });
+  }
 
   requestUrl.searchParams.set("user_id", appUser.id);
   request.url = `${requestUrl.pathname}${requestUrl.search}`;
