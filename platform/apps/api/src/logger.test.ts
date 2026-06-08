@@ -91,7 +91,7 @@ describe("logEvent", () => {
     logEvent({
       event: "auth_token_rejected",
       jwt_alg: "ES256",
-      jwt_kid: "c534efe4-a223-4145-8e0c-f2d100c47f15",
+      jwt_kid: "test-signing-key-id",
       jwt_iss: "https://example.supabase.co/auth/v1",
       jwt_aud: "authenticated",
     });
@@ -100,7 +100,7 @@ describe("logEvent", () => {
     expect(JSON.parse(line)).toEqual(
       expect.objectContaining({
         jwt_alg: "ES256",
-        jwt_kid: "c534efe4-a223-4145-8e0c-f2d100c47f15",
+        jwt_kid: "test-signing-key-id",
         jwt_iss: "https://example.supabase.co/auth/v1",
         jwt_aud: "authenticated",
       }),
