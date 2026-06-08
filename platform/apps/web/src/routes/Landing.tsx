@@ -42,8 +42,7 @@ const themes: ThemePreset[] = [
     primaryText: "#ffffff",
     inverse: "#1c1917",
     inverseMuted: "#fdba74",
-    hero:
-      "radial-gradient(circle at 18% 20%, rgba(249,115,22,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(244,63,94,0.12), transparent 28%), linear-gradient(135deg, #fffaf5 0%, #fff1e7 48%, #fff7ed 100%)",
+    hero: "radial-gradient(circle at 18% 20%, rgba(249,115,22,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(244,63,94,0.12), transparent 28%), linear-gradient(135deg, #fffaf5 0%, #fff1e7 48%, #fff7ed 100%)",
   },
   {
     name: "Evergreen",
@@ -62,8 +61,7 @@ const themes: ThemePreset[] = [
     primaryText: "#ffffff",
     inverse: "#020617",
     inverseMuted: "#94a3b8",
-    hero:
-      "radial-gradient(circle at 20% 18%, rgba(20,184,166,0.18), transparent 30%), radial-gradient(circle at 92% 8%, rgba(225,83,61,0.14), transparent 28%), linear-gradient(135deg, #f8faf5 0%, #eaf5f1 45%, #fbf0e9 100%)",
+    hero: "radial-gradient(circle at 20% 18%, rgba(20,184,166,0.18), transparent 30%), radial-gradient(circle at 92% 8%, rgba(225,83,61,0.14), transparent 28%), linear-gradient(135deg, #f8faf5 0%, #eaf5f1 45%, #fbf0e9 100%)",
   },
   {
     name: "Signal",
@@ -82,8 +80,7 @@ const themes: ThemePreset[] = [
     primaryText: "#ffffff",
     inverse: "#0b1220",
     inverseMuted: "#93c5fd",
-    hero:
-      "radial-gradient(circle at 20% 18%, rgba(37,99,235,0.16), transparent 30%), radial-gradient(circle at 88% 12%, rgba(14,165,233,0.16), transparent 28%), linear-gradient(135deg, #f8fbff 0%, #eaf4ff 48%, #f6f8ff 100%)",
+    hero: "radial-gradient(circle at 20% 18%, rgba(37,99,235,0.16), transparent 30%), radial-gradient(circle at 88% 12%, rgba(14,165,233,0.16), transparent 28%), linear-gradient(135deg, #f8fbff 0%, #eaf4ff 48%, #f6f8ff 100%)",
   },
   {
     name: "Orchid",
@@ -102,8 +99,7 @@ const themes: ThemePreset[] = [
     primaryText: "#ffffff",
     inverse: "#171022",
     inverseMuted: "#c4b5fd",
-    hero:
-      "radial-gradient(circle at 20% 18%, rgba(124,58,237,0.16), transparent 30%), radial-gradient(circle at 92% 8%, rgba(236,72,153,0.12), transparent 28%), linear-gradient(135deg, #fbf8ff 0%, #f3ecff 46%, #fff7fb 100%)",
+    hero: "radial-gradient(circle at 20% 18%, rgba(124,58,237,0.16), transparent 30%), radial-gradient(circle at 92% 8%, rgba(236,72,153,0.12), transparent 28%), linear-gradient(135deg, #fbf8ff 0%, #f3ecff 46%, #fff7fb 100%)",
   },
   {
     name: "Graphite",
@@ -122,8 +118,7 @@ const themes: ThemePreset[] = [
     primaryText: "#ffffff",
     inverse: "#18181b",
     inverseMuted: "#d4d4d8",
-    hero:
-      "radial-gradient(circle at 18% 18%, rgba(63,63,70,0.12), transparent 30%), radial-gradient(circle at 88% 10%, rgba(120,113,108,0.14), transparent 28%), linear-gradient(135deg, #f7f7f5 0%, #eeeeeb 48%, #fafafa 100%)",
+    hero: "radial-gradient(circle at 18% 18%, rgba(63,63,70,0.12), transparent 30%), radial-gradient(circle at 88% 10%, rgba(120,113,108,0.14), transparent 28%), linear-gradient(135deg, #f7f7f5 0%, #eeeeeb 48%, #fafafa 100%)",
   },
   {
     name: "Mint",
@@ -142,8 +137,7 @@ const themes: ThemePreset[] = [
     primaryText: "#ffffff",
     inverse: "#052e16",
     inverseMuted: "#86efac",
-    hero:
-      "radial-gradient(circle at 20% 18%, rgba(34,197,94,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(20,184,166,0.14), transparent 28%), linear-gradient(135deg, #f6fff8 0%, #e9fcef 48%, #f4fff9 100%)",
+    hero: "radial-gradient(circle at 20% 18%, rgba(34,197,94,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(20,184,166,0.14), transparent 28%), linear-gradient(135deg, #f6fff8 0%, #e9fcef 48%, #f4fff9 100%)",
   },
 ];
 
@@ -197,35 +191,47 @@ const stats = [
   ["Helper", "Local runner bridge"],
 ];
 
-const projectComparisons = [
+type ComparisonRow = {
+  project: string;
+  logoSrc: string;
+  logoFit: "cover" | "contain";
+  highlight?: boolean;
+  role: string;
+  runs: string;
+  fit: string;
+};
+
+const projectComparisons: ComparisonRow[] = [
   {
     project: "OpenMacaw",
-    role: "Product control plane for agent operations, including the web app, API, runtime orchestrator, and local helper.",
-    runs: "Browser, API service, database, runtime services, and developer machines connected through the local helper.",
-    fit: "Coordinating teams, workspaces, credentials, health, traces, and mixed hosted/local execution without opening inbound access.",
+    logoSrc: "/openmacaw-logo.png",
+    logoFit: "contain",
+    highlight: true,
+    role: "Multi-tenant control plane that schedules, routes, and multiplexes many agent runtimes for a whole team.",
+    runs: "Cloud-hosted and always on, with optional outbound-only local execution.",
+    fit: "Coordinating workspaces, credentials, routing, and mixed hosted/local execution at team scale.",
   },
   {
     project: "OpenClaw",
-    role: "Execution backend and runner target with WebSocket and HTTP/SSE adapter paths.",
-    runs: "Local or cloud runner infrastructure.",
-    fit: "Rich runtime control, live event streams, interrupt support, and agent/session operations.",
+    logoSrc: "/openclaw-logo.png",
+    logoFit: "cover",
+    role: "Self-hosted personal AI assistant with a single Gateway daemon that owns its own tool-calling loop.",
+    runs: "Local Gateway on your own machine, wired to your chat apps.",
+    fit: "A one-person assistant — and inside OpenMacaw, one pluggable runner kind.",
   },
   {
     project: "Hermes Agent",
-    role: "Learning-layer blueprint for self-improving personal agents and skill evolution.",
-    runs: "Conceptual agent runtime pattern rather than a bundled OpenMacaw runner.",
-    fit: "User memory, skill growth, and personal-agent learning ideas that inform future sidecar work.",
+    logoSrc: "/hermes-logo.png",
+    logoFit: "cover",
+    role: "Self-improving personal agent with a built-in learning loop and autonomous skill creation.",
+    runs: "Single-user runtime across local, Docker, SSH, or serverless backends.",
+    fit: "Personal memory and skill growth; inspires OpenMacaw's optional workspace learning sidecar.",
   },
 ];
 
 function ArrowIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      viewBox="0 0 20 20"
-      fill="none"
-    >
+    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="none">
       <path
         d="M4 10h10m0 0-4-4m4 4-4 4"
         stroke="currentColor"
@@ -368,9 +374,10 @@ export function Landing({ appUrl }: LandingProps) {
                 className="mt-6 max-w-2xl text-lg font-normal leading-8 sm:text-xl sm:leading-9"
                 style={{ color: theme.muted }}
               >
-                OpenMacaw combines a web/API platform, runtime orchestrator, and
-                installable local helper so teams can coordinate agent work
-                across cloud and local execution without losing visibility.
+                OpenMacaw lets your team put AI agents to work around the clock
+                — running them in the cloud, or on your own computer when you'd
+                rather keep things local — all from one place where you can see
+                exactly what they're doing.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a
@@ -430,92 +437,92 @@ export function Landing({ appUrl }: LandingProps) {
               <div className="absolute inset-x-0 top-0 mx-auto max-w-[720px] rounded-[28px] border border-white/10 bg-[#07111f] p-3 shadow-[0_34px_100px_rgba(28,25,23,0.32),0_2px_0_rgba(255,255,255,0.08)_inset]">
                 <div className="rounded-[22px] border border-white/10 bg-gradient-to-b from-white/[0.08] to-white/[0.02]">
                   <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-teal-300" />
-                  </div>
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
-                    app.openmacaw.ai
-                  </span>
-                </div>
-                <div className="grid gap-4 p-4 md:grid-cols-[200px_1fr]">
-                  <aside className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
-                    <div className="mb-5 h-2.5 w-24 rounded-full bg-white/25" />
-                    {[
-                      "Agent dashboard",
-                      "Runtime health",
-                      "Local runners",
-                      "Credentials",
-                    ].map((route) => (
-                      <div
-                        key={route}
-                        className="mb-2 rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2.5 text-[13px] text-slate-300"
-                      >
-                        {route}
-                      </div>
-                    ))}
-                  </aside>
-                  <div className="rounded-2xl border border-white/10 bg-[#0b1626] p-5 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
-                    <div className="mb-6 flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-base font-semibold text-white">
-                          Runtime dashboard
-                        </div>
-                        <div className="mt-2 text-sm text-slate-400">
-                          Hosted, local, and custom execution targets
-                        </div>
-                      </div>
-                      <div
-                        className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                        style={{
-                          backgroundColor: theme.accentSoft,
-                          color: theme.accentText,
-                        }}
-                      >
-                        Healthy
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-teal-300" />
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                      app.openmacaw.ai
+                    </span>
+                  </div>
+                  <div className="grid gap-4 p-4 md:grid-cols-[200px_1fr]">
+                    <aside className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
+                      <div className="mb-5 h-2.5 w-24 rounded-full bg-white/25" />
                       {[
-                        ["Route", "Hosted, local, or custom runner."],
-                        ["Run", "Live status, traces, and chat."],
-                        ["Review", "Outputs, credentials, and history."],
-                      ].map(([label, value]) => (
+                        "Agent dashboard",
+                        "Runtime health",
+                        "Local runners",
+                        "Credentials",
+                      ].map((route) => (
                         <div
-                          key={label}
-                          className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.075] to-white/[0.035] p-4"
+                          key={route}
+                          className="mb-2 rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2.5 text-[13px] text-slate-300"
                         >
-                          <div className="text-sm font-semibold text-white">
-                            {label}
-                          </div>
-                          <p className="mt-2 text-[13px] leading-5 text-slate-400">
-                            {value}
-                          </p>
+                          {route}
                         </div>
                       ))}
-                    </div>
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-[#07111f] p-4 shadow-[0_1px_0_rgba(255,255,255,0.07)_inset]">
-                      <div className="mb-4 flex items-center justify-between text-xs font-medium text-slate-400">
-                        <span>Runtime activity</span>
-                        <span className="rounded-full bg-white/[0.06] px-2 py-1 text-slate-300">
-                          Live
-                        </span>
-                      </div>
-                      <div className="space-y-3">
+                    </aside>
+                    <div className="rounded-2xl border border-white/10 bg-[#0b1626] p-5 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
+                      <div className="mb-6 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-white">
+                            Runtime dashboard
+                          </div>
+                          <div className="mt-2 text-sm text-slate-400">
+                            Hosted, local, and custom execution targets
+                          </div>
+                        </div>
                         <div
-                          className="h-2.5 rounded-full"
+                          className="rounded-full px-3 py-1.5 text-xs font-semibold"
                           style={{
-                            background:
-                              "linear-gradient(90deg, #fb923c 0%, #c2410c 100%)",
+                            backgroundColor: theme.accentSoft,
+                            color: theme.accentText,
                           }}
-                        />
-                        <div className="h-2.5 w-4/5 rounded-full bg-orange-300/60" />
-                        <div className="h-2.5 w-3/5 rounded-full bg-amber-200/60" />
+                        >
+                          Healthy
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {[
+                          ["Route", "Hosted, local, or custom runner."],
+                          ["Run", "Live status, traces, and chat."],
+                          ["Review", "Outputs, credentials, and history."],
+                        ].map(([label, value]) => (
+                          <div
+                            key={label}
+                            className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.075] to-white/[0.035] p-4"
+                          >
+                            <div className="text-sm font-semibold text-white">
+                              {label}
+                            </div>
+                            <p className="mt-2 text-[13px] leading-5 text-slate-400">
+                              {value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-[#07111f] p-4 shadow-[0_1px_0_rgba(255,255,255,0.07)_inset]">
+                        <div className="mb-4 flex items-center justify-between text-xs font-medium text-slate-400">
+                          <span>Runtime activity</span>
+                          <span className="rounded-full bg-white/[0.06] px-2 py-1 text-slate-300">
+                            Live
+                          </span>
+                        </div>
+                        <div className="space-y-3">
+                          <div
+                            className="h-2.5 rounded-full"
+                            style={{
+                              background:
+                                "linear-gradient(90deg, #fb923c 0%, #c2410c 100%)",
+                            }}
+                          />
+                          <div className="h-2.5 w-4/5 rounded-full bg-orange-300/60" />
+                          <div className="h-2.5 w-3/5 rounded-full bg-amber-200/60" />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
                 </div>
               </div>
             </div>
@@ -549,7 +556,10 @@ export function Landing({ appUrl }: LandingProps) {
               >
                 {label}
               </div>
-              <div className="mt-2 text-sm leading-6" style={{ color: theme.muted }}>
+              <div
+                className="mt-2 text-sm leading-6"
+                style={{ color: theme.muted }}
+              >
                 {value}
               </div>
             </div>
@@ -656,10 +666,10 @@ export function Landing({ appUrl }: LandingProps) {
           </div>
           <div className="text-sm leading-7" style={{ color: theme.muted }}>
             <p>
-              The local runtime helper runs as a daemon on a user machine,
-              opens an outbound relay connection, advertises configured local
-              runners, and can execute supported workflows without requiring
-              inbound network access.
+              The local runtime helper runs as a daemon on a user machine, opens
+              an outbound relay connection, advertises configured local runners,
+              and can execute supported workflows without requiring inbound
+              network access.
             </p>
             <p className="mt-5">
               Full end-to-end behavior can include the platform, runtime,
@@ -690,9 +700,9 @@ export function Landing({ appUrl }: LandingProps) {
               className="mt-4 text-sm leading-7"
               style={{ color: theme.muted }}
             >
-              The local docs frame OpenClaw as an execution backend, Hermes as
-              a learning-layer blueprint, and OpenMacaw as the product surface
-              that brings agent operations together.
+              OpenClaw and Hermes are self-hosted personal assistants for one
+              user. OpenMacaw is the multi-tenant platform that runs many agent
+              runtimes for a team — including OpenClaw as a pluggable runner.
             </p>
           </div>
 
@@ -716,7 +726,12 @@ export function Landing({ appUrl }: LandingProps) {
               <article
                 key={item.project}
                 className="grid gap-4 border-b px-5 py-5 last:border-b-0 lg:grid-cols-[0.9fr_1.35fr_1fr_1.25fr]"
-                style={{ borderColor: theme.border }}
+                style={{
+                  borderColor: theme.border,
+                  backgroundColor: item.highlight
+                    ? theme.accentSoft
+                    : undefined,
+                }}
               >
                 <div>
                   <div
@@ -725,9 +740,27 @@ export function Landing({ appUrl }: LandingProps) {
                   >
                     Project
                   </div>
-                  <h3 className="mt-1 text-base font-semibold lg:mt-0">
-                    {item.project}
-                  </h3>
+                  <div className="mt-1 flex items-center gap-3 lg:mt-0">
+                    <span
+                      className="flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-xl border"
+                      style={{
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      }}
+                    >
+                      <img
+                        src={item.logoSrc}
+                        alt={`${item.project} logo`}
+                        className={
+                          item.logoFit === "cover"
+                            ? "h-full w-full object-cover"
+                            : "h-7 w-7 object-contain"
+                        }
+                        loading="lazy"
+                      />
+                    </span>
+                    <h3 className="text-base font-semibold">{item.project}</h3>
+                  </div>
                 </div>
                 <div>
                   <div
@@ -779,7 +812,10 @@ export function Landing({ appUrl }: LandingProps) {
 
       <section
         className="border-t"
-        style={{ backgroundColor: theme.surfaceSoft, borderColor: theme.border }}
+        style={{
+          backgroundColor: theme.surfaceSoft,
+          borderColor: theme.border,
+        }}
       >
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-14 sm:px-8 lg:grid-cols-[1fr_410px] lg:items-start lg:px-10">
           <div>
