@@ -18,6 +18,40 @@ PR-level deliverables. The PR-level work lives in each repo's
 > Edit all three together — if you change one, change the others in
 > the same PR.
 
+## The bet — open, swappable models
+
+OpenMacaw is built on two bets about how large language models get used:
+
+1. **Open-source models become a first-class part of the picture — run on
+   your own machine or in your own cloud.** The frontier is no longer only
+   closed, hosted APIs. A growing share of real work will run on open-weight
+   models a user hosts themselves — on a laptop or workstation for privacy,
+   cost, and control, or on their own cloud hardware for scale. OpenMacaw
+   treats a locally- or self-hosted open model as a peer of any hosted API,
+   dispatched through the same cloud orchestration — not a second-class
+   fallback.
+2. **Several competitive hosted providers — and switching between them is
+   table stakes.** Just as teams move workloads between cloud providers today,
+   they will move agent turns between Anthropic, OpenAI, Google, and the next
+   entrant based on price, capability, availability, and policy. Being locked
+   to one model vendor should feel as avoidable as being locked to one cloud.
+
+The two capabilities that make this real are therefore **core, not
+peripheral**:
+
+- **Model routing / provider-switching** — choose and *re-choose* the model
+  and provider per workspace, agent, or task without code changes, with
+  intelligent fallback across providers (Pillars **2 — LLM-agnostic** and
+  **3 — Intelligent routing**).
+- **Locally-running models on cloud infrastructure** — register a local or
+  self-hosted open model and have cloud orchestration dispatch to it
+  transparently (Pillar **5 — Local-runtime-friendly**).
+
+The orchestration, routing, and human-by-exception loop are provider-agnostic
+by design, so *where* a turn runs — a local open model or a hosted frontier
+API — is a configuration choice, not an architectural one. That is the
+position OpenMacaw is built to own.
+
 ## How to use this
 
 - **Adding a feature?** Find which pillar (and gap area) it serves. If
