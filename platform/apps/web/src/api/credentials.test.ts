@@ -104,7 +104,21 @@ describe("credentials api helpers", () => {
   });
 
   it("saves agent credential references with the normalized request body", async () => {
-    mockApiFetch.mockResolvedValueOnce({ credentialRef: { kind: "stored", credentialId: "cred-1" } });
+    mockApiFetch.mockResolvedValueOnce({
+      reference: {
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+        runnerKind: "codex",
+        provider: "openai",
+        model: "gpt-5",
+        credentialRef: { type: "credential_id", value: "cred-1" },
+        localEndpointUrl: null,
+        credential: null,
+        updatedAt: null,
+      },
+      credentials: [],
+      aliases: [],
+    });
 
     await saveAgentCredentialReference({
       agentId: "agent-1",
@@ -114,7 +128,7 @@ describe("credentials api helpers", () => {
       model: "gpt-5",
       localModelId: null,
       localEndpointUrl: null,
-      credentialRef: { kind: "stored", credentialId: "cred-1" },
+      credentialRef: { type: "credential_id", value: "cred-1" },
     });
 
     expect(mockApiFetch).toHaveBeenCalledWith(
@@ -128,7 +142,7 @@ describe("credentials api helpers", () => {
           model: "gpt-5",
           localModelId: null,
           localEndpointUrl: null,
-          credentialRef: { kind: "stored", credentialId: "cred-1" },
+          credentialRef: { type: "credential_id", value: "cred-1" },
         },
       }),
     );
@@ -138,7 +152,7 @@ describe("credentials api helpers", () => {
     mockApiFetch.mockResolvedValueOnce({ credential: { id: "cred-1" } });
 
     await saveStoredCredential({
-      scope: "workspace",
+      scope: { kind: "workspace", workspaceId: "workspace-1" },
       provider: "openai",
       apiKey: "secret",
       endpoint: "https://example.test",
@@ -151,7 +165,7 @@ describe("credentials api helpers", () => {
       expect.objectContaining({
         method: "POST",
         body: {
-          scope: "workspace",
+          scope: { kind: "workspace", workspaceId: "workspace-1" },
           key: {
             format: "api_key",
             provider: "openai",
