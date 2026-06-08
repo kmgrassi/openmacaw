@@ -26,6 +26,26 @@ type ThemePreset = {
 
 const themes: ThemePreset[] = [
   {
+    name: "Ember",
+    label: "Warm",
+    page: "#fffaf5",
+    surface: "#ffffff",
+    surfaceSoft: "#ffedd5",
+    text: "#18181b",
+    muted: "#57534e",
+    border: "#fed7aa",
+    accent: "#c2410c",
+    accentSoft: "#fed7aa",
+    accentText: "#7c2d12",
+    primary: "#9a3412",
+    primaryHover: "#7c2d12",
+    primaryText: "#ffffff",
+    inverse: "#1c1917",
+    inverseMuted: "#fdba74",
+    hero:
+      "radial-gradient(circle at 18% 20%, rgba(249,115,22,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(244,63,94,0.12), transparent 28%), linear-gradient(135deg, #fffaf5 0%, #fff1e7 48%, #fff7ed 100%)",
+  },
+  {
     name: "Evergreen",
     label: "Default",
     page: "#fafaf9",
@@ -64,26 +84,6 @@ const themes: ThemePreset[] = [
     inverseMuted: "#93c5fd",
     hero:
       "radial-gradient(circle at 20% 18%, rgba(37,99,235,0.16), transparent 30%), radial-gradient(circle at 88% 12%, rgba(14,165,233,0.16), transparent 28%), linear-gradient(135deg, #f8fbff 0%, #eaf4ff 48%, #f6f8ff 100%)",
-  },
-  {
-    name: "Ember",
-    label: "Warm",
-    page: "#fffaf5",
-    surface: "#ffffff",
-    surfaceSoft: "#ffedd5",
-    text: "#18181b",
-    muted: "#57534e",
-    border: "#fed7aa",
-    accent: "#c2410c",
-    accentSoft: "#fed7aa",
-    accentText: "#7c2d12",
-    primary: "#9a3412",
-    primaryHover: "#7c2d12",
-    primaryText: "#ffffff",
-    inverse: "#1c1917",
-    inverseMuted: "#fdba74",
-    hero:
-      "radial-gradient(circle at 18% 20%, rgba(249,115,22,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(244,63,94,0.12), transparent 28%), linear-gradient(135deg, #fffaf5 0%, #fff1e7 48%, #fff7ed 100%)",
   },
   {
     name: "Orchid",
@@ -200,9 +200,9 @@ const stats = [
 const projectComparisons = [
   {
     project: "OpenMacaw",
-    role: "Product control plane for agent operations across web, API, runtime, and local helper surfaces.",
-    runs: "Browser, API service, database, runtime services, and local helper.",
-    fit: "Coordinating teams, workspaces, credentials, health, traces, and mixed hosted/local execution.",
+    role: "Product control plane for agent operations, including the web app, API, runtime orchestrator, and local helper.",
+    runs: "Browser, API service, database, runtime services, and developer machines connected through the local helper.",
+    fit: "Coordinating teams, workspaces, credentials, health, traces, and mixed hosted/local execution without opening inbound access.",
   },
   {
     project: "OpenClaw",
@@ -215,18 +215,6 @@ const projectComparisons = [
     role: "Learning-layer blueprint for self-improving personal agents and skill evolution.",
     runs: "Conceptual agent runtime pattern rather than a bundled OpenMacaw runner.",
     fit: "User memory, skill growth, and personal-agent learning ideas that inform future sidecar work.",
-  },
-  {
-    project: "Local Runtime Helper",
-    role: "Installable daemon that connects a developer machine to OpenMacaw through outbound relay connections.",
-    runs: "User workstation or server.",
-    fit: "Advertising local runners and executing workflows without opening inbound access.",
-  },
-  {
-    project: "Runtime Orchestrator",
-    role: "Launcher and orchestration layer that supervises execution and normalizes runner events.",
-    runs: "Runtime service environment.",
-    fit: "Routing work, tracking lifecycle state, and presenting consistent activity back to the platform.",
   },
 ];
 
@@ -627,15 +615,16 @@ export function Landing({ appUrl }: LandingProps) {
               Project comparison
             </p>
             <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
-              How OpenMacaw relates to OpenClaw, Hermes, and the runtime stack.
+              How OpenMacaw relates to OpenClaw and Hermes.
             </h2>
             <p
               className="mt-4 text-sm leading-7"
               style={{ color: theme.muted }}
             >
               The local docs frame Hermes as a learning-layer blueprint,
-              OpenClaw as an execution backend, and OpenMacaw as the operating
-              surface that brings the pieces together.
+              OpenClaw as an execution backend, Hermes as a learning-layer
+              blueprint, and OpenMacaw as the product surface that brings agent
+              operations together.
             </p>
           </div>
 
