@@ -113,6 +113,7 @@ describe("buildLocalRuntimeConfigResponse", () => {
         {
           ruleId: "runner-1",
           kind: "openai_compatible",
+          runnerKind: "local_runtime",
           endpoint: "http://127.0.0.1:11434/v1",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",

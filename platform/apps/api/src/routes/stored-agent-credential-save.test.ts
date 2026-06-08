@@ -52,8 +52,12 @@ describe("stored agent credential save route", () => {
   beforeEach(async () => {
     vi.mocked(validateCredentialRecord).mockResolvedValue({
       ok: true,
-      message: "ok",
+      provider: "openai",
+      model: null,
       checkedAt: "2026-06-05T00:00:00.000Z",
+      status: null,
+      code: null,
+      message: "ok",
     });
     vi.mocked(saveInlineCredentialForAgentInSupabase).mockResolvedValue({
       id: "credential-row-1:OPENAI_API_KEY",

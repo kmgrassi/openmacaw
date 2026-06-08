@@ -184,6 +184,37 @@ export async function verifyBearerToken(token: string): Promise<VerifiedAuth> {
   }
 }
 
+/**
+ * Reads the non-sensitive claims from an *unverified* token purely for
+ * diagnostics. Only the header `alg`/`kid` and the `iss`/`aud` claims are
+ * extracted — never the signature or any user PII — so a rejected token can be
+ * understood from logs alone (e.g. an `alg` the server does not accept, or an
+ * `iss` that does not match the configured Supabase project). Returns `{}` on
+ * any decode failure so logging never throws.
+ */
+function tokenDiagnostics(token: string): {
+  alg?: string;
+  kid?: string;
+  iss?: string;
+  aud?: string;
+} {
+  try {
+    const decoded = jwt.decode(token, { complete: true });
+    if (!decoded || typeof decoded === "string") return {};
+    const header = decoded.header;
+    const payload = (typeof decoded.payload === "object" ? decoded.payload : {}) as jwt.JwtPayload;
+    const aud = Array.isArray(payload.aud) ? payload.aud.join(",") : payload.aud;
+    return {
+      alg: typeof header?.alg === "string" ? header.alg : undefined,
+      kid: typeof header?.kid === "string" ? header.kid : undefined,
+      iss: typeof payload.iss === "string" ? payload.iss : undefined,
+      aud: typeof aud === "string" ? aud : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const accessToken = requestAccessToken(req);
   if (!accessToken) {
@@ -196,10 +227,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   } catch (error) {
     const code = error instanceof AuthJwtError ? error.code : "invalid_token";
     const message = code === "auth_unconfigured" ? "Authentication is not configured" : "Invalid Supabase access token";
+    const diagnostics = tokenDiagnostics(accessToken);
     logEvent({
       event: "auth_token_rejected",
       level: "warn",
       error_code: code,
+      reason: errorMessage(error),
+      // Keys are deliberately `jwt_*`, not `token_*`: logEvent redacts any key
+      // matching /token/ (see SECRET_KEY_PATTERN in logger.ts), which would
+      // blank out these non-sensitive claims and defeat the diagnostic.
+      jwt_alg: diagnostics.alg,
+      jwt_kid: diagnostics.kid,
+      jwt_iss: diagnostics.iss,
+      jwt_aud: diagnostics.aud,
     });
     return res.status(401).json(errorPayload(code, message));
   }

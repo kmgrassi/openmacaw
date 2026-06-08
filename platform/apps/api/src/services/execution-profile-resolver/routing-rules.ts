@@ -137,16 +137,17 @@ export async function resolveRoutingRuleChain(input: {
   let lastResolution: ExecutionProfileResolution | null = null;
 
   while (current && !visited.has(current.id)) {
-    visited.add(current.id);
+    const rule = current;
+    visited.add(rule.id);
     lastResolution = await buildRuleResolution({
       agent: input.agent,
       role: input.role,
-      rule: current,
-      matches: input.matches.filter((match) => match.rule_id === current.id),
+      rule,
+      matches: input.matches.filter((match) => match.rule_id === rule.id),
       accessToken: input.accessToken,
     });
-    if (lastResolution.missing.length === 0 || !current.next_fallback_rule_id) return lastResolution;
-    current = input.rulesById.get(current.next_fallback_rule_id);
+    if (lastResolution.missing.length === 0 || !rule.next_fallback_rule_id) return lastResolution;
+    current = input.rulesById.get(rule.next_fallback_rule_id);
   }
 
   return lastResolution;
