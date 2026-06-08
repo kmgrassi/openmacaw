@@ -117,6 +117,11 @@ export function ChatView({
     scrollTop: number;
   } | null>(null);
   const navigate = useNavigate();
+  const hasChatScope = Boolean(
+    scope || (!readOnly && sessionKey && workspaceId),
+  );
+  const waitingForHistory =
+    !readOnly && hasChatScope && !connected && status !== "error";
   const composerDisabled =
     readOnly || !scope || !connected || status !== "connected";
 
@@ -184,7 +189,7 @@ export function ChatView({
     setComposerFocusToken((token) => token + 1);
   };
 
-  if (!readOnly && status === "resolving_scope") {
+  if (!readOnly && status === "resolving_scope" && !hasChatScope) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-500">
         Resolving runtime scope...
@@ -192,7 +197,7 @@ export function ChatView({
     );
   }
 
-  if ((!readOnly && !scope) || !workspaceId) {
+  if ((!readOnly && !hasChatScope) || !workspaceId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-500">
         No agent configured. Complete setup to start chatting.
@@ -219,14 +224,14 @@ export function ChatView({
         className="chat-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 sm:px-4"
         style={{ paddingBottom: bottomOverlayHeight + 16 }}
       >
-        {loading && messages.length === 0 && (
+        {(loading || waitingForHistory) && messages.length === 0 && (
           <LoadingState
             label="Loading history..."
             className="flex items-center justify-center py-4"
           />
         )}
 
-        {!loading && messages.length === 0 && (
+        {!loading && !waitingForHistory && messages.length === 0 && (
           <div className="mx-auto flex max-w-3xl flex-col gap-3 py-6">
             <div className="text-sm font-medium text-slate-300">
               {readOnly
