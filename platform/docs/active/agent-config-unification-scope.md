@@ -103,24 +103,26 @@ the API surface.
 
 The three phases are deliberately decoupled. **Phase 1 (UI) and Phase 3
 (backend de-dup) can proceed concurrently** because Phase 1 builds on the
-*existing* `runtime-profile` write, which already fans out to all three stores;
-Phase 3 changes how those stores are derived without changing that write's
-contract. Phase 2 slots into the Phase 1 card.
+`runtime-profile` write — which already fans out to all three stores — extended
+with one additive field (`runnerKind`, see below); Phase 3 changes how those
+stores are *derived* without changing that write's external shape. Phase 2 slots
+into the Phase 1 card.
 
 ```
 Phase 1 (web UI) ─────────────┐
                               ├─ integrate
 Phase 2 (inline credential) ──┘
-Phase 3 (backend de-dup) ───── independent, ships under the same write contract
+Phase 3 (backend de-dup) ───── independent; derives, doesn't reshape the write
 ```
 
 ---
 
-## Phase 1 — Unified card (UI consolidation, no schema change)
+## Phase 1 — Unified card (UI consolidation, one additive write field)
 
 **Outcome:** one "Model & Runtime" card replaces Runtime + Model Policy +
 Execution Credential Reference; Identity loses its model field; everything writes
-through the single existing `PUT /api/stored-agents/:id/runtime-profile`.
+through a single `PUT /api/stored-agents/:id/runtime-profile`, extended to carry
+an explicit `runnerKind`.
 
 ### API
 - **New read:** `GET /api/stored-agents/:id/model-config` → resolved
@@ -132,8 +134,21 @@ through the single existing `PUT /api/stored-agents/:id/runtime-profile`.
   (today behind `HostedModelSelect`) with detected local models (today a
   separate listing inside `AgentRuntimeEditor`), each tagged
   `{ provider, location, running }`.
-- **Reuse write:** `PUT /api/stored-agents/:id/runtime-profile`
-  (`updateAgentRuntimeProfile`, `agent-runtime-profile.ts`) unchanged.
+- **Extend the write (prerequisite to retiring Model Policy):**
+  `AgentRuntimeProfileUpdateRequest` today carries only
+  `workspace/provider/model/credentialRef/localEndpointUrl`, and
+  `updateAgentRuntimeProfile` *derives* `runner_kind` from agent type + provider
+  (`runnerKindForRuntimeProfile`: `coding+local → local_model_coding`, otherwise
+  the agent-type default — so a cloud coding agent always becomes `codex`). It
+  therefore **cannot express the coding-runner choice** the unified picker
+  promises (Codex vs **Claude Code** vs **local relay**) — that distinction
+  currently only flows through the Model Policy / credential-reference path
+  (`upsertAgentCredentialReferenceRule`, which takes an explicit `runnerKind`).
+  **Add an optional `runnerKind` to the request**; when present
+  `updateAgentRuntimeProfile` uses it verbatim, when omitted it falls back to
+  today's derivation (so non-coding callers are unchanged). Without this,
+  retiring Model Policy silently coerces Claude Code / local relay selections to
+  `codex`. This must land **before** PLAT-2 removes the old card.
 
 ### Web
 - New `AgentDetail/AgentModelRuntimeCard.tsx` (model picker + requirements +
@@ -145,14 +160,19 @@ through the single existing `PUT /api/stored-agents/:id/runtime-profile`.
 - Recompose `AgentDetail.tsx` / `AgentCredentialsPanel.tsx`.
 
 ### Out of scope for Phase 1
-- No DB/schema changes. No change to the write contract. Workspace-level
-  credential management stays where it is (only the *per-agent* credential UI
-  moves inline in Phase 2).
+- No DB/schema changes (the `runnerKind` write extension is additive and
+  request-only — the rule already has the column). Workspace-level credential
+  management stays where it is (only the *per-agent* credential UI moves inline
+  in Phase 2).
 
 ### Verification
 - Set a cloud model, attach a credential, save; reload and confirm persistence.
 - Switch the same agent to a local model and back; confirm runner kind /
   credential clear and re-populate correctly and the agent starts.
+- For a coding agent, pick **Claude Code** and **local relay** in turn; confirm
+  the saved `runner_kind` is `claude_code` / `local_relay` (not coerced to
+  `codex`) and survives reload — the regression the `runnerKind` extension
+  guards against.
 - Confirm no remaining UI path can set the model except the new card.
 
 ---
@@ -217,10 +237,13 @@ the three copies can no longer diverge.
 
 ## PR sequence
 
-- **PLAT-1 (Phase 1):** `model-config` read + `models` catalog endpoints
-  (can be its own PR or bundled with the card).
+- **PLAT-1 (Phase 1):** `model-config` read + `models` catalog endpoints, **and
+  the `runnerKind` write extension** (additive, backward-compatible). This is a
+  hard prerequisite for PLAT-2.
 - **PLAT-2 (Phase 1):** unified `AgentModelRuntimeCard`; retire Runtime /
-  Model Policy / Execution Credential Reference; slim Identity.
+  Model Policy / Execution Credential Reference; slim Identity. Must not land
+  before PLAT-1's `runnerKind` extension, or coding-runner choices regress to
+  `codex`.
 - **PLAT-3 (Phase 2):** inline credential create on the write endpoint + card
   form; remove per-agent Saved Credentials card.
 - **PLAT-4 (Phase 3):** derive duplicated fields from the rule; stop writing
