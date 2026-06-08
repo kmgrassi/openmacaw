@@ -147,9 +147,12 @@ a generic relay transport"
   `openclaw_http_sse` kinds with their transports
   ([`platform/contracts/runner-kinds.ts`](../platform/contracts/runner-kinds.ts)),
   and the DB check constraints already permit them.
-- Because OpenClaw "manages its own tool loop internally," OpenMacaw marks it
-  `tool_calls: never` and lets it own the loop — OpenMacaw orchestrates *to*
-  it, not *inside* it.
+- OpenClaw "manages its own tool loop internally," so OpenMacaw orchestrates
+  *to* it, not *inside* it. (Note: the registry currently classifies the
+  `openclaw`, `openclaw_ws`, and `openclaw_http_sse` kinds as
+  `toolCalls: "always"` in `runner-kinds.ts`; the scope doc raises switching
+  OpenClaw to `tool_calls: never` as an open question, but that is not yet the
+  implemented state.)
 
 **Difference in role:** OpenClaw answers "how does *my* assistant run on my
 box and reach my chat apps?" OpenMacaw answers "how does a team schedule,
