@@ -1,0 +1,59 @@
+name: Trigger KG Production Deploy
+
+# Event-driven replacement for the every-15-minutes polling schedule that
+# used to live in the private infra repo's deploy-kg-production.yml.
+#
+# This fires only on real merges to `main` that touch deploy-relevant paths,
+# then dispatches the production deploy in kmgrassi/OpenMacaw-kgprod for the
+# exact merged commit. No polling, so no idle runner minutes.
+#
+# Setup (one time): create a token that can dispatch the infra repo's
+# workflow and store it as the repo secret `KGPROD_DEPLOY_DISPATCH_TOKEN`:
+#   - Fine-grained PAT — Resource owner: kmgrassi; Repository access: only
+#     `OpenMacaw-kgprod`; Repository permissions: Actions = Read and write.
+#     (Or a GitHub App installed on OpenMacaw-kgprod with actions:write for a
+#     non-expiring credential.)
+#   - gh secret set KGPROD_DEPLOY_DISPATCH_TOKEN --repo kmgrassi/OpenMacaw \
+#       --body '<token>'
+#
+# Safety: `push` to this repo's `main` only happens on merges here; fork pull
+# requests cannot read this secret. The token is scoped to a single private
+# repo's Actions, nothing else.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "platform/**"
+      - "runtime/**"
+      - "docs/supabase/openmacaw-schema.sql"
+      - "infra/terraform/stacks/platform-api/**"
+      - "infra/terraform/stacks/runtime-orchestrator/**"
+      - ".github/workflows/deploy-platform-api.yml"
+      - ".github/workflows/deploy-runtime-orchestrator.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Coalesce rapid merges; the latest commit wins.
+  group: trigger-kg-production-deploy
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deploy-kg-production for the merged commit
+        env:
+          GH_TOKEN: ${{ secrets.KGPROD_DEPLOY_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::KGPROD_DEPLOY_DISPATCH_TOKEN is not set. See the setup notes at the top of this workflow."
+            exit 1
+          fi
+          echo "Dispatching production deploy for ${GITHUB_SHA}"
+          gh workflow run deploy-kg-production.yml \
+            --repo kmgrassi/OpenMacaw-kgprod \
+            --ref main \
+            -f openmacaw_ref="${GITHUB_SHA}"
