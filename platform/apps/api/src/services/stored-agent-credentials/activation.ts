@@ -67,6 +67,7 @@ export async function validateLaunchableStoredCredential(input: {
 }
 
 export async function createStoredCredentialLaunch(input: {
+  agentId: string;
   credential: ResolvedSavedCredential;
   workspaceId: string;
   secretValue: string;
@@ -83,6 +84,15 @@ export async function createStoredCredentialLaunch(input: {
     cwd: string | null;
   };
 }> {
+  const credentialRowId = input.credential.credentialRowId?.trim() ?? "";
+  if (!credentialRowId) {
+    throw new ApiRouteError(
+      409,
+      "credential_launch_identity_missing",
+      "Stored credential launch requires a persisted credential row id",
+    );
+  }
+
   let result;
   try {
     result = await input.launcherClient.createWorkerBridgeSession({
@@ -95,6 +105,9 @@ export async function createStoredCredentialLaunch(input: {
           value: input.secretValue,
         },
       },
+      agent_id: input.agentId,
+      workspace_id: input.workspaceId,
+      credential_id: credentialRowId,
     });
   } catch (error) {
     if (isLauncherAuthFailure(error) && input.credential.credentialRowId) {
