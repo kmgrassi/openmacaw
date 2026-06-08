@@ -214,7 +214,7 @@ const projectComparisons: ComparisonRow[] = [
   {
     project: "OpenClaw",
     logoSrc: "/openclaw-logo.png",
-    logoFit: "cover",
+    logoFit: "contain",
     role: "Self-hosted personal AI assistant with a single Gateway daemon that owns its own tool-calling loop.",
     runs: "Local Gateway on your own machine, wired to your chat apps.",
     fit: "A one-person assistant — and inside OpenMacaw, one pluggable runner kind.",
@@ -754,7 +754,7 @@ export function Landing({ appUrl }: LandingProps) {
                         className={
                           item.logoFit === "cover"
                             ? "h-full w-full object-cover"
-                            : "h-7 w-7 object-contain"
+                            : "h-7 w-7 rounded-md object-contain"
                         }
                         loading="lazy"
                       />
