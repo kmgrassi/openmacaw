@@ -4,8 +4,21 @@ import type { TablesInsert, TablesUpdate } from "@kmgrassi/supabase-schema";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
 import type { getServiceRoleSupabase } from "../../supabase-client.js";
 
-/** Generate a random local-runtime-helper token prefixed with lrh_. */
+/**
+ * Generate the local-runtime-helper token to hand the helper, prefixed with
+ * `lrh_`.
+ *
+ * Local-dev escape hatch: the dev orchestrator validates tokens against a
+ * static allowlist (runtime `apps/orchestrator/config/dev.exs`) instead of the
+ * DB, so a freshly-generated random token is rejected — which is the
+ * cloud-token-against-the-local-endpoint failure. When `LOCAL_RELAY_DEV_TOKEN`
+ * is set, registration hands back that fixed token instead so it matches the
+ * dev allowlist. Ignored when `NODE_ENV === "production"` so it can never
+ * weaken real token issuance, even if the variable leaks into a prod env.
+ */
 export function generateMachineToken(): string {
+  const devToken = process.env.LOCAL_RELAY_DEV_TOKEN?.trim();
+  if (devToken && process.env.NODE_ENV !== "production") return devToken;
   return `lrh_${crypto.randomBytes(32).toString("base64url")}`;
 }
 
