@@ -29,6 +29,66 @@
   NODE_VERSION = "20"
 
 [[redirects]]
+  from = "https://www.openmacaw.ai/*"
+  to = "https://openmacaw.ai/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/app"
+  to = "https://app.openmacaw.ai/"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/login"
+  to = "https://app.openmacaw.ai/login"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/signup"
+  to = "https://app.openmacaw.ai/signup"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/dashboard/*"
+  to = "https://app.openmacaw.ai/dashboard/:splat"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/onboarding"
+  to = "https://app.openmacaw.ai/onboarding"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/settings/*"
+  to = "https://app.openmacaw.ai/settings/:splat"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/settings"
+  to = "https://app.openmacaw.ai/settings"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/work"
+  to = "https://app.openmacaw.ai/work"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "https://openmacaw.ai/plans/*"
+  to = "https://app.openmacaw.ai/plans/:splat"
+  status = 302
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
