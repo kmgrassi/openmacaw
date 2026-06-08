@@ -5,7 +5,8 @@ name: Trigger KG Production Deploy
 #
 # This fires only on real merges to `main` that touch deploy-relevant paths,
 # then dispatches the production deploy in kmgrassi/OpenMacaw-kgprod for the
-# exact merged commit. No polling, so no idle runner minutes.
+# latest `main` (the infra workflow re-resolves main's HEAD at deploy time).
+# No polling, so no idle runner minutes.
 #
 # Setup (one time): create a token that can dispatch the infra repo's
 # workflow and store it as the repo secret `KGPROD_DEPLOY_DISPATCH_TOKEN`:
@@ -44,7 +45,7 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch deploy-kg-production for the merged commit
+      - name: Dispatch deploy-kg-production for latest main
         env:
           GH_TOKEN: ${{ secrets.KGPROD_DEPLOY_DISPATCH_TOKEN }}
         run: |
@@ -52,8 +53,14 @@ jobs:
             echo "::error::KGPROD_DEPLOY_DISPATCH_TOKEN is not set. See the setup notes at the top of this workflow."
             exit 1
           fi
-          echo "Dispatching production deploy for ${GITHUB_SHA}"
+          # Dispatch a deploy of `main`, not this exact ${GITHUB_SHA}. The infra
+          # workflow re-resolves main's HEAD at deploy time, so when several
+          # deploy-relevant merges land close together every dispatched deploy
+          # converges on the newest commit — a slower deploy can't finish last
+          # and roll production back to an older SHA. (Matches the prior polling
+          # model, which always deployed current main.)
+          echo "Triggered by ${GITHUB_SHA}; dispatching deploy of latest main"
           gh workflow run deploy-kg-production.yml \
             --repo kmgrassi/OpenMacaw-kgprod \
             --ref main \
-            -f openmacaw_ref="${GITHUB_SHA}"
+            -f openmacaw_ref=main
