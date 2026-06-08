@@ -194,7 +194,6 @@ const stats = [
 type ComparisonRow = {
   project: string;
   logoSrc: string;
-  logoFit: "cover" | "contain";
   highlight?: boolean;
   role: string;
   runs: string;
@@ -205,7 +204,6 @@ const projectComparisons: ComparisonRow[] = [
   {
     project: "OpenMacaw",
     logoSrc: "/openmacaw-logo.png",
-    logoFit: "contain",
     highlight: true,
     role: "Multi-tenant control plane that schedules, routes, and multiplexes many agent runtimes for a whole team.",
     runs: "Cloud-hosted and always on, with optional outbound-only local execution.",
@@ -214,7 +212,6 @@ const projectComparisons: ComparisonRow[] = [
   {
     project: "OpenClaw",
     logoSrc: "/openclaw-logo.png",
-    logoFit: "contain",
     role: "Self-hosted personal AI assistant with a single Gateway daemon that owns its own tool-calling loop.",
     runs: "Local Gateway on your own machine, wired to your chat apps.",
     fit: "A one-person assistant — and inside OpenMacaw, one pluggable runner kind.",
@@ -222,7 +219,6 @@ const projectComparisons: ComparisonRow[] = [
   {
     project: "Hermes Agent",
     logoSrc: "/hermes-logo.png",
-    logoFit: "cover",
     role: "Self-improving personal agent with a built-in learning loop and autonomous skill creation.",
     runs: "Single-user runtime across local, Docker, SSH, or serverless backends.",
     fit: "Personal memory and skill growth; inspires OpenMacaw's optional workspace learning sidecar.",
@@ -751,11 +747,7 @@ export function Landing({ appUrl }: LandingProps) {
                       <img
                         src={item.logoSrc}
                         alt={`${item.project} logo`}
-                        className={
-                          item.logoFit === "cover"
-                            ? "h-full w-full object-cover"
-                            : "h-7 w-7 rounded-md object-contain"
-                        }
+                        className="h-7 w-7 rounded-md object-contain"
                         loading="lazy"
                       />
                     </span>
