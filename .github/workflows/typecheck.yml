@@ -1,0 +1,66 @@
+name: Typecheck
+
+# Gate that runs the platform typecheck on every PR (and on pushes to main).
+# This is the check that was previously only run inside the deploy workflow,
+# which let non-compiling code reach main and silently block production
+# deploys. Running it here stops broken TypeScript before it merges.
+
+on:
+  pull_request:
+    paths:
+      - "platform/**"
+      - ".github/workflows/typecheck.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "platform/**"
+      - ".github/workflows/typecheck.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: typecheck-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck platform (API + web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.2
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+
+      - name: Install platform dependencies
+        working-directory: platform
+        run: pnpm install --frozen-lockfile
+
+      - name: Build platform workspace packages
+        working-directory: platform
+        run: |
+          pnpm -C packages/plan-schema run build
+          pnpm -C packages/supabase-schema run build
+
+      - name: Typecheck platform API
+        working-directory: platform
+        run: pnpm -C apps/api run typecheck
+
+      - name: Typecheck platform web
+        working-directory: platform
+        run: pnpm exec tsc --noEmit -p apps/web/tsconfig.app.json
