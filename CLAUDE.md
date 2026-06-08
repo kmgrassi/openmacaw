@@ -19,60 +19,63 @@ From the repo root: `./openmacaw run` starts the platform API (3100), web
 (5173), runtime orchestrator (4000), and launcher (4100). Also
 `./openmacaw doctor | status | stop`. See `README.md`.
 
-## Production deployment — read this before deploying
+## Production deployment (a reusable two-repo pattern)
 
-OpenMacaw uses a **two-repo** production setup. Getting this wrong wastes
-time (and triggers confusing AWS-credential failures), so:
+OpenMacaw separates **application code** from **deployment infrastructure** so
+the code repo can stay public while credentials and environment-specific
+config stay private. The pattern is generic — fork it for your own project by
+substituting your own repos, IAM role, and resource names.
 
-- **`kmgrassi/OpenMacaw` (this repo, public)** — the source of truth for
-  application code. PRs merge to `main` here.
-- **`kmgrassi/OpenMacaw-kgprod` (private infra repo)** — owns the production
-  deploy. Its `deploy-kg-production.yml` workflow is what actually ships to
-  AWS.
+- **Application repo (this one)** — the code; contributors merge to `main`. It
+  also ships reusable deploy workflows under `.github/workflows/deploy-*.yml`
+  as building blocks.
+- **Private infrastructure repo** — owns the actual deploy. It holds the IaC
+  (Terraform), the GitHub Environments + secrets, and a production deploy
+  workflow that drives the application repo's code.
 
-### How prod deploys
+### How the deploy works
 
-1. `deploy-kg-production.yml` (in the infra repo) runs on a **`*/15 * * * *`
-   schedule**, plus manual `workflow_dispatch` with an `openmacaw_ref` input
-   (default `main`).
-2. It resolves the target commit from `OpenMacaw@main` and **only deploys
-   when `main` changed** under `platform/**`, `runtime/**`, the Supabase
-   schema, the Terraform stacks, or the deploy workflows.
+1. The infra repo's production deploy workflow runs on a **schedule (e.g.
+   every 15 minutes)**, plus manual dispatch with a `ref` input (default
+   `main`).
+2. It resolves the target commit from the application repo's `main` and **only
+   deploys when relevant paths changed** (`platform/**`, `runtime/**`, the
+   Supabase schema, the Terraform stacks, the deploy workflows).
 3. It builds and pushes the platform-api and runtime-orchestrator images
-   **tagged with the OpenMacaw commit SHA**, runs Supabase migrations, and
-   updates the ECS services (cluster `openmacaw-kgprod-cluster`; services
-   `symphony-prod-server` for platform-api and `symphony-orchestrator-prod`
-   for the runtime).
-4. It authenticates to AWS via **GitHub OIDC**, assuming `OpenMacawDeployRole`
-   under the infra repo's `production` GitHub Environment.
+   **tagged with the application commit SHA**, runs Supabase migrations, and
+   updates the ECS services.
+4. It authenticates to AWS via **GitHub OIDC**, assuming a deploy IAM role
+   whose trust policy is scoped to the **infra repo's** `production`
+   environment (`repo:<your-org>/<infra-repo>:environment:production`).
 
-### What this means for you
+### What this means for contributors
 
-- **Merging to `main` here is enough to ship to prod.** The 15-minute cron
-  picks it up automatically — typically live within ~15 minutes of merge. No
-  manual deploy step is required.
-- **Do NOT run `deploy-platform-api.yml` or `deploy-runtime-orchestrator.yml`
-  directly from this repo.** `OpenMacawDeployRole`'s OIDC trust only allows
-  `repo:kmgrassi/OpenMacaw-kgprod:environment:production`. A `workflow_dispatch`
-  of those workflows from `kmgrassi/OpenMacaw` fails at the AWS-credentials step
-  ("Could not load credentials from any providers") — `AWS_DEPLOY_ROLE_ARN`
-  isn't set here, and the role wouldn't trust this repo anyway. Those workflows
-  are reusable building blocks the infra repo drives; the real entry point is
-  `deploy-kg-production.yml` in `OpenMacaw-kgprod`.
+- **Merging to `main` is enough to ship to prod.** The scheduled deploy picks
+  it up automatically — typically live within one cron interval. No manual
+  deploy step.
+- **Don't run this repo's `deploy-*.yml` workflows directly.** They assume an
+  OIDC role that trusts the *infra* repo, not this one — a direct
+  `workflow_dispatch` from here fails at the AWS-credentials step ("Could not
+  load credentials from any providers"). They're reusable building blocks the
+  infra repo drives; the real entry point is the production deploy workflow in
+  the infra repo.
 - **To check what's live**, compare the deployed image SHA to
-  `git rev-parse origin/main`. The running ECS task's image tag — and the SSM
-  `image-uri` pointers the infra repo reads — is the deployed OpenMacaw commit
-  SHA.
-- **To force a deploy** (e.g. to redeploy without a new commit), run it from
-  the infra repo:
-  `gh workflow run deploy-kg-production.yml --repo kmgrassi/OpenMacaw-kgprod -f openmacaw_ref=main`
-  (requires access to the private repo).
+  `git rev-parse origin/main` — the running ECS task's image tag is the
+  deployed application commit SHA.
 
-> These files are in the **public** repo. Per
-> [`docs/open-source-readiness-scope.md`](docs/open-source-readiness-scope.md),
-> do not add raw AWS account IDs, secret/role ARNs, internal hostnames, or SSM
-> parameter paths here — keep those in the private `OpenMacaw-kgprod` repo,
-> which holds the exact ARNs, parameter paths, and health-check URLs.
+### Setting up your own deployment
+
+1. Create a private infra repo with your IaC and a production deploy workflow
+   (start from this repo's `deploy-*.yml` as reusable workflows).
+2. Create a GitHub OIDC provider + deploy IAM role in your AWS account; scope
+   the role's trust to `repo:<your-org>/<your-infra-repo>:environment:production`.
+3. Set `AWS_DEPLOY_ROLE_ARN` (and your other deploy secrets) on the infra
+   repo's `production` GitHub Environment.
+4. Point the deploy workflow at your application repo's `main`.
+
+> Keep account IDs, role/secret ARNs, internal hostnames, and SSM parameter
+> paths in your **private** infra repo — never in the public code repo (see
+> [`docs/open-source-readiness-scope.md`](docs/open-source-readiness-scope.md)).
 
 ## Subsystem guides
 
