@@ -26,6 +26,31 @@ import { ModelSettingsSchema, ToolPolicySchema, normalizeAgentType } from "../..
 
 const HOSTED_PROVIDERS = new Set<KnownExecutionProvider>(["openai", "openai_compatible", "anthropic"]);
 
+/**
+ * The local helper advertises the runner kinds it can serve into
+ * `local_runtime_machine.runner_kinds` (see
+ * `local-runtime/machines.ts` — an `openai_compatible` registration
+ * advertises `openai_compatible`, `local_model_coding`, `planner`). It
+ * never advertises `llm_tool_runner`: a manager agent on a local model
+ * does not run *on* the helper, it dispatches over the relay to the
+ * helper's `openai_compatible` runner (the relay's default target — see
+ * `runtime/.../manager/model_client/local_relay.ex`
+ * `@default_target_runner_kind`).
+ *
+ * So when checking whether a workspace has a local helper for an agent,
+ * map the agent's runner kind to the runner kind the helper would
+ * actually advertise. Coding (`local_model_coding`) and planning
+ * (`planner`) already match an advertised kind directly, so only the
+ * manager's `llm_tool_runner` needs remapping.
+ */
+const LOCAL_HELPER_RUNNER_KIND_BY_AGENT_RUNNER_KIND: Record<string, string> = {
+  llm_tool_runner: "openai_compatible",
+};
+
+export function localHelperRunnerKindForAgentRunnerKind(runnerKind: string): string {
+  return LOCAL_HELPER_RUNNER_KIND_BY_AGENT_RUNNER_KIND[runnerKind] ?? runnerKind;
+}
+
 function runnerKindForRuntimeProfile(agentType: string | null | undefined, provider: KnownExecutionProvider) {
   // Coding agents pointed at a local provider use the local-coding
   // runtime instead of the cloud-hosted codex runner — different
@@ -234,7 +259,12 @@ export async function getAgentRuntimeProfile(input: {
     credentialRef: credentialRefFromRoutingRule(rule) ?? profile?.credentialRef ?? null,
     localEndpointUrl,
     localHelperRegistered:
-      provider === "local" ? await hasLocalHelper({ workspaceId: agent.workspace_id, runnerKind }) : false,
+      provider === "local"
+        ? await hasLocalHelper({
+            workspaceId: agent.workspace_id,
+            runnerKind: localHelperRunnerKindForAgentRunnerKind(runnerKind),
+          })
+        : false,
     updatedAt: rule?.updated_at ?? null,
   });
 }
