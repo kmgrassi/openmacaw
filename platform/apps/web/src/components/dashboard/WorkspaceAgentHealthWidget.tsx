@@ -70,7 +70,7 @@ export function WorkspaceAgentHealthWidget({
             <h2 className="text-sm font-semibold">Orchestrator unreachable</h2>
             <p className="mt-1 text-amber-800">{diagnostics.details}</p>
           </div>
-          <Badge variant="warning">runtime_unreachable</Badge>
+          <Badge variant="warning">{diagnostics.reason}</Badge>
         </div>
       </section>
     );
