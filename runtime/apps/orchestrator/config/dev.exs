@@ -11,8 +11,13 @@ import Config
 config :symphony_elixir,
   local_relay_token_hashes: %{
     "6e0a70c5748fda51459787bd207e332b651f060edf0c6258f933aa230f4d6ef3" => %{
-      workspace_id: "dev-workspace",
-      machine_id: "dev-machine",
+      # workspace_id / machine_id are left nil so this single dev token validates
+      # for whatever workspace the local platform registers (a real UUID, not the
+      # literal "dev-workspace"). The validator skips the match when the bound
+      # value is nil, and the socket falls back to the frame's real ids for
+      # presence/registry — so identity is still correct.
+      workspace_id: nil,
+      machine_id: nil,
       token_id: "dev-token",
       runner_kinds: ["openai_compatible"],
       revoked?: false
