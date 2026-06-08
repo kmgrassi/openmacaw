@@ -30,6 +30,11 @@ In-flight work. Each entry should map to one or more open PRs.
 
 - [active/agent-config-error-ux-plan.md](active/agent-config-error-ux-plan.md)
   — Error UX for agent configuration; per-PR slices.
+- [active/agent-config-unification-scope.md](active/agent-config-unification-scope.md)
+  — Collapse the five agent-settings cards into one model-first "Model &
+  Runtime" card; phased UI consolidation, inline credential creation, and a
+  backend de-dup so model/provider/runner have a single source of truth.
+  Phases 1 & 3 parallelizable.
 - [active/agent-manual-testing-scope.md](active/agent-manual-testing-scope.md)
   — Ten ways to improve manual and end-to-end agent testing from the CLI.
 - [active/agent-operability-tooling-scope.md](active/agent-operability-tooling-scope.md)
