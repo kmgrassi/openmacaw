@@ -233,10 +233,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       level: "warn",
       error_code: code,
       reason: errorMessage(error),
-      token_alg: diagnostics.alg,
-      token_kid: diagnostics.kid,
-      token_iss: diagnostics.iss,
-      token_aud: diagnostics.aud,
+      // Keys are deliberately `jwt_*`, not `token_*`: logEvent redacts any key
+      // matching /token/ (see SECRET_KEY_PATTERN in logger.ts), which would
+      // blank out these non-sensitive claims and defeat the diagnostic.
+      jwt_alg: diagnostics.alg,
+      jwt_kid: diagnostics.kid,
+      jwt_iss: diagnostics.iss,
+      jwt_aud: diagnostics.aud,
     });
     return res.status(401).json(errorPayload(code, message));
   }

@@ -81,4 +81,29 @@ describe("logEvent", () => {
       }),
     );
   });
+
+  it("keeps non-sensitive JWT diagnostic claims visible (jwt_* keys are not redacted)", () => {
+    delete process.env.API_LOG_FORMAT;
+    stdoutWrite = mockStdoutWrite();
+
+    // authJwt logs these on auth_token_rejected. They must survive redaction —
+    // they were originally named token_* and got blanked by SECRET_KEY_PATTERN.
+    logEvent({
+      event: "auth_token_rejected",
+      jwt_alg: "ES256",
+      jwt_kid: "c534efe4-a223-4145-8e0c-f2d100c47f15",
+      jwt_iss: "https://example.supabase.co/auth/v1",
+      jwt_aud: "authenticated",
+    });
+
+    const line = String(stdoutWrite.mock.calls[0]?.[0] ?? "");
+    expect(JSON.parse(line)).toEqual(
+      expect.objectContaining({
+        jwt_alg: "ES256",
+        jwt_kid: "c534efe4-a223-4145-8e0c-f2d100c47f15",
+        jwt_iss: "https://example.supabase.co/auth/v1",
+        jwt_aud: "authenticated",
+      }),
+    );
+  });
 });
