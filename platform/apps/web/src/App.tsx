@@ -19,6 +19,11 @@ const Home = lazy(async () => {
   return { default: module.Home };
 });
 
+const Landing = lazy(async () => {
+  const module = await import("./routes/Landing");
+  return { default: module.Landing };
+});
+
 const Onboarding = lazy(async () => {
   const module = await import("./routes/Onboarding");
   return { default: module.Onboarding };
@@ -113,6 +118,57 @@ function RouteLoading() {
   return <LoadingState label="Loading..." variant="route" />;
 }
 
+function appBaseUrl() {
+  return (
+    import.meta.env.VITE_OPENMACAW_APP_BASE_URL?.trim() ||
+    "https://app.openmacaw.ai"
+  ).replace(/\/$/, "");
+}
+
+function isMarketingHost() {
+  if (typeof window === "undefined") return false;
+  return ["openmacaw.ai", "www.openmacaw.ai"].includes(
+    window.location.hostname,
+  );
+}
+
+function isProductionAppHost() {
+  if (typeof window === "undefined") return false;
+  return ["app.openmacaw.ai", "claw.harper.new"].includes(
+    window.location.hostname,
+  );
+}
+
+function AppHostRedirect() {
+  useEffect(() => {
+    if (!isMarketingHost()) return;
+    const target = `${appBaseUrl()}${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.replace(target);
+  }, []);
+
+  return <LoadingState label="Opening app..." variant="route" />;
+}
+
+function AppOnlyRoute({ children }: { children: React.ReactNode }) {
+  if (isMarketingHost()) {
+    return <AppHostRedirect />;
+  }
+
+  return <>{children}</>;
+}
+
+function RootRoute() {
+  if (isProductionAppHost()) {
+    return (
+      <AuthGate>
+        <Home />
+      </AuthGate>
+    );
+  }
+
+  return <Landing appUrl={appBaseUrl()} />;
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuthStore();
 
@@ -143,7 +199,7 @@ function UnauthenticatedOnly({ children }: { children: React.ReactNode }) {
   }
 
   if (status === "authenticated") {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   return <>{children}</>;
@@ -179,22 +235,41 @@ function AppRoutes() {
   return (
     <Suspense fallback={<RouteLoading />}>
       <Routes>
-        <Route path="/login" element={<LoginRoute />} />
-        <Route path="/signup" element={<SignUpRoute />} />
+        <Route path="/" element={<RootRoute />} />
+        <Route
+          path="/login"
+          element={
+            <AppOnlyRoute>
+              <LoginRoute />
+            </AppOnlyRoute>
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <AppOnlyRoute>
+              <SignUpRoute />
+            </AppOnlyRoute>
+          }
+        />
         <Route
           path="/onboarding"
           element={
-            <AuthGate>
-              <Onboarding />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <Onboarding />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         />
         <Route
           path="/settings"
           element={
-            <AuthGate>
-              <SettingsLayout />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <SettingsLayout />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         >
           <Route index element={<SettingsIndex />} />
@@ -215,41 +290,51 @@ function AppRoutes() {
         <Route
           path="/work"
           element={
-            <AuthGate>
-              <WorkspaceItems />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <WorkspaceItems />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         />
         <Route
           path="/plans/new"
           element={
-            <AuthGate>
-              <NewPlan />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <NewPlan />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         />
         <Route
           path="/plans/:planId"
           element={
-            <AuthGate>
-              <PlanDetail />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <PlanDetail />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         />
         <Route
-          path="/"
+          path="/app"
           element={
-            <AuthGate>
-              <Home />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <Home />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         />
         <Route
           path="/dashboard/:agentId"
           element={
-            <AuthGate>
-              <Dashboard />
-            </AuthGate>
+            <AppOnlyRoute>
+              <AuthGate>
+                <Dashboard />
+              </AuthGate>
+            </AppOnlyRoute>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
