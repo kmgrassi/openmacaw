@@ -183,7 +183,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     {:ok, state} = init_socket()
     frame = register_frame(%{auth: %{token: "wrong-token"}})
 
-    assert {:stop, {:shutdown, :invalid_token}, [{:text, reply_json}], ^state} =
+    assert {:stop, {:shutdown, :invalid_token}, {1008, _close_reason}, [{:text, reply_json}], ^state} =
              LocalRelaySocket.handle_in({encode(frame), []}, state)
 
     reply = Jason.decode!(reply_json)
@@ -214,7 +214,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
         auth: %{token: "revoked-token"}
       })
 
-    assert {:stop, {:shutdown, :local_runtime_token_revoked}, [{:text, reply_json}], ^state} =
+    assert {:stop, {:shutdown, :local_runtime_token_revoked}, {1008, _close_reason}, [{:text, reply_json}], ^state} =
              LocalRelaySocket.handle_in({encode(frame), []}, state)
 
     reply = Jason.decode!(reply_json)
