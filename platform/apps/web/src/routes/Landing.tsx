@@ -1,6 +1,151 @@
+import { useState, type CSSProperties } from "react";
+
 type LandingProps = {
   appUrl: string;
 };
+
+type ThemePreset = {
+  name: string;
+  label: string;
+  page: string;
+  surface: string;
+  surfaceSoft: string;
+  text: string;
+  muted: string;
+  border: string;
+  accent: string;
+  accentSoft: string;
+  accentText: string;
+  primary: string;
+  primaryHover: string;
+  primaryText: string;
+  inverse: string;
+  inverseMuted: string;
+  hero: string;
+};
+
+const themes: ThemePreset[] = [
+  {
+    name: "Evergreen",
+    label: "Default",
+    page: "#fafaf9",
+    surface: "#ffffff",
+    surfaceSoft: "#ecfdf5",
+    text: "#020617",
+    muted: "#475569",
+    border: "#cbd5e1",
+    accent: "#0f766e",
+    accentSoft: "#ccfbf1",
+    accentText: "#134e4a",
+    primary: "#020617",
+    primaryHover: "#1e293b",
+    primaryText: "#ffffff",
+    inverse: "#020617",
+    inverseMuted: "#94a3b8",
+    hero:
+      "radial-gradient(circle at 20% 18%, rgba(20,184,166,0.18), transparent 30%), radial-gradient(circle at 92% 8%, rgba(225,83,61,0.14), transparent 28%), linear-gradient(135deg, #f8faf5 0%, #eaf5f1 45%, #fbf0e9 100%)",
+  },
+  {
+    name: "Signal",
+    label: "Blue",
+    page: "#f8fbff",
+    surface: "#ffffff",
+    surfaceSoft: "#e0f2fe",
+    text: "#0f172a",
+    muted: "#475569",
+    border: "#bfdbfe",
+    accent: "#2563eb",
+    accentSoft: "#dbeafe",
+    accentText: "#1e3a8a",
+    primary: "#1d4ed8",
+    primaryHover: "#1e40af",
+    primaryText: "#ffffff",
+    inverse: "#0b1220",
+    inverseMuted: "#93c5fd",
+    hero:
+      "radial-gradient(circle at 20% 18%, rgba(37,99,235,0.16), transparent 30%), radial-gradient(circle at 88% 12%, rgba(14,165,233,0.16), transparent 28%), linear-gradient(135deg, #f8fbff 0%, #eaf4ff 48%, #f6f8ff 100%)",
+  },
+  {
+    name: "Ember",
+    label: "Warm",
+    page: "#fffaf5",
+    surface: "#ffffff",
+    surfaceSoft: "#ffedd5",
+    text: "#18181b",
+    muted: "#57534e",
+    border: "#fed7aa",
+    accent: "#c2410c",
+    accentSoft: "#fed7aa",
+    accentText: "#7c2d12",
+    primary: "#9a3412",
+    primaryHover: "#7c2d12",
+    primaryText: "#ffffff",
+    inverse: "#1c1917",
+    inverseMuted: "#fdba74",
+    hero:
+      "radial-gradient(circle at 18% 20%, rgba(249,115,22,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(244,63,94,0.12), transparent 28%), linear-gradient(135deg, #fffaf5 0%, #fff1e7 48%, #fff7ed 100%)",
+  },
+  {
+    name: "Orchid",
+    label: "Violet",
+    page: "#fbf8ff",
+    surface: "#ffffff",
+    surfaceSoft: "#f3e8ff",
+    text: "#181026",
+    muted: "#5b5366",
+    border: "#ddd6fe",
+    accent: "#7c3aed",
+    accentSoft: "#ede9fe",
+    accentText: "#4c1d95",
+    primary: "#6d28d9",
+    primaryHover: "#5b21b6",
+    primaryText: "#ffffff",
+    inverse: "#171022",
+    inverseMuted: "#c4b5fd",
+    hero:
+      "radial-gradient(circle at 20% 18%, rgba(124,58,237,0.16), transparent 30%), radial-gradient(circle at 92% 8%, rgba(236,72,153,0.12), transparent 28%), linear-gradient(135deg, #fbf8ff 0%, #f3ecff 46%, #fff7fb 100%)",
+  },
+  {
+    name: "Graphite",
+    label: "Neutral",
+    page: "#f7f7f5",
+    surface: "#ffffff",
+    surfaceSoft: "#e7e5e4",
+    text: "#111827",
+    muted: "#52525b",
+    border: "#d6d3d1",
+    accent: "#3f3f46",
+    accentSoft: "#e7e5e4",
+    accentText: "#27272a",
+    primary: "#18181b",
+    primaryHover: "#3f3f46",
+    primaryText: "#ffffff",
+    inverse: "#18181b",
+    inverseMuted: "#d4d4d8",
+    hero:
+      "radial-gradient(circle at 18% 18%, rgba(63,63,70,0.12), transparent 30%), radial-gradient(circle at 88% 10%, rgba(120,113,108,0.14), transparent 28%), linear-gradient(135deg, #f7f7f5 0%, #eeeeeb 48%, #fafafa 100%)",
+  },
+  {
+    name: "Mint",
+    label: "Green",
+    page: "#f6fff8",
+    surface: "#ffffff",
+    surfaceSoft: "#dcfce7",
+    text: "#052e16",
+    muted: "#3f6212",
+    border: "#bbf7d0",
+    accent: "#15803d",
+    accentSoft: "#dcfce7",
+    accentText: "#14532d",
+    primary: "#166534",
+    primaryHover: "#14532d",
+    primaryText: "#ffffff",
+    inverse: "#052e16",
+    inverseMuted: "#86efac",
+    hero:
+      "radial-gradient(circle at 20% 18%, rgba(34,197,94,0.16), transparent 30%), radial-gradient(circle at 90% 10%, rgba(20,184,166,0.14), transparent 28%), linear-gradient(135deg, #f6fff8 0%, #e9fcef 48%, #f4fff9 100%)",
+  },
+];
 
 const productPillars = [
   {
@@ -52,6 +197,39 @@ const stats = [
   ["Helper", "Local runner bridge"],
 ];
 
+const projectComparisons = [
+  {
+    project: "OpenMacaw",
+    role: "Product control plane for agent operations across web, API, runtime, and local helper surfaces.",
+    runs: "Browser, API service, database, runtime services, and local helper.",
+    fit: "Coordinating teams, workspaces, credentials, health, traces, and mixed hosted/local execution.",
+  },
+  {
+    project: "OpenClaw",
+    role: "Execution backend and runner target with WebSocket and HTTP/SSE adapter paths.",
+    runs: "Local or cloud runner infrastructure.",
+    fit: "Rich runtime control, live event streams, interrupt support, and agent/session operations.",
+  },
+  {
+    project: "Hermes Agent",
+    role: "Learning-layer blueprint for self-improving personal agents and skill evolution.",
+    runs: "Conceptual agent runtime pattern rather than a bundled OpenMacaw runner.",
+    fit: "User memory, skill growth, and personal-agent learning ideas that inform future sidecar work.",
+  },
+  {
+    project: "Local Runtime Helper",
+    role: "Installable daemon that connects a developer machine to OpenMacaw through outbound relay connections.",
+    runs: "User workstation or server.",
+    fit: "Advertising local runners and executing workflows without opening inbound access.",
+  },
+  {
+    project: "Runtime Orchestrator",
+    role: "Launcher and orchestration layer that supervises execution and normalizes runner events.",
+    runs: "Runtime service environment.",
+    fit: "Routing work, tracking lifecycle state, and presenting consistent activity back to the platform.",
+  },
+];
+
 function ArrowIcon() {
   return (
     <svg
@@ -71,13 +249,14 @@ function ArrowIcon() {
   );
 }
 
-function CheckIcon() {
+function CheckIcon({ color }: { color: string }) {
   return (
     <svg
       aria-hidden="true"
-      className="mt-0.5 h-4 w-4 flex-none text-teal-700"
+      className="mt-0.5 h-4 w-4 flex-none"
       viewBox="0 0 20 20"
       fill="none"
+      style={{ color }}
     >
       <path
         d="m5 10.5 3 3L15.5 6"
@@ -91,20 +270,41 @@ function CheckIcon() {
 }
 
 export function Landing({ appUrl }: LandingProps) {
+  const [themeIndex, setThemeIndex] = useState(0);
+  const theme = themes[themeIndex] ?? themes[0]!;
+  const primaryButtonStyle: CSSProperties = {
+    backgroundColor: theme.primary,
+    color: theme.primaryText,
+  };
+  const outlineButtonStyle: CSSProperties = {
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    color: theme.text,
+  };
+
   return (
-    <main className="min-h-full bg-stone-50 text-slate-950">
-      <section className="relative overflow-hidden border-b border-slate-200">
+    <main
+      className="min-h-full"
+      style={{ backgroundColor: theme.page, color: theme.text }}
+    >
+      <section
+        className="relative overflow-hidden border-b"
+        style={{ borderColor: theme.border }}
+      >
         <div
           className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(circle at 20% 18%, rgba(20,184,166,0.18), transparent 30%), radial-gradient(circle at 92% 8%, rgba(225,83,61,0.14), transparent 28%), linear-gradient(135deg, #f8faf5 0%, #eaf5f1 45%, #fbf0e9 100%)",
-          }}
+          style={{ background: theme.hero }}
         />
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
           <header className="flex items-center justify-between gap-4">
             <a className="flex items-center gap-3" href="/">
-              <span className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white shadow-sm">
+              <span
+                className="flex h-10 w-10 items-center justify-center rounded-md border shadow-sm"
+                style={{
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                }}
+              >
                 <img
                   src="/favicon.svg"
                   alt=""
@@ -117,13 +317,15 @@ export function Landing({ appUrl }: LandingProps) {
             <nav className="flex items-center gap-2">
               <a
                 href="https://github.com/kmgrassi/OpenMacaw"
-                className="hidden rounded-md px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-950 sm:inline-flex"
+                className="hidden rounded-md px-3 py-2 text-sm font-medium transition hover:opacity-80 sm:inline-flex"
+                style={{ color: theme.muted }}
               >
                 GitHub
               </a>
               <a
                 href={appUrl}
-                className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                style={primaryButtonStyle}
               >
                 Open app
                 <ArrowIcon />
@@ -133,13 +335,23 @@ export function Landing({ appUrl }: LandingProps) {
 
           <div className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(430px,1.1fr)] lg:py-16">
             <div className="max-w-3xl">
-              <p className="mb-5 inline-flex rounded-md border border-slate-300 bg-white/75 px-3 py-1 text-sm font-medium text-slate-600">
+              <p
+                className="mb-5 inline-flex rounded-md border px-3 py-1 text-sm font-medium"
+                style={{
+                  backgroundColor: `${theme.surface}bf`,
+                  borderColor: theme.border,
+                  color: theme.muted,
+                }}
+              >
                 Open-source AI agent coordination
               </p>
-              <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] text-slate-950 sm:text-6xl lg:text-7xl">
+              <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] sm:text-6xl lg:text-7xl">
                 One control plane for hosted and local AI agents.
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+              <p
+                className="mt-6 max-w-2xl text-lg leading-8"
+                style={{ color: theme.muted }}
+              >
                 OpenMacaw combines a web/API platform, runtime orchestrator, and
                 installable local helper so teams can coordinate agent work
                 across cloud and local execution without losing visibility.
@@ -147,22 +359,28 @@ export function Landing({ appUrl }: LandingProps) {
               <div className="mt-8 flex flex-wrap gap-3">
                 <a
                   href={appUrl}
-                  className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  className="inline-flex items-center gap-2 rounded-md px-5 py-3 text-sm font-semibold transition hover:opacity-90"
+                  style={primaryButtonStyle}
                 >
                   Launch dashboard
                   <ArrowIcon />
                 </a>
                 <a
                   href="https://github.com/kmgrassi/OpenMacaw"
-                  className="rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:border-slate-500"
+                  className="rounded-md border px-5 py-3 text-sm font-semibold transition hover:opacity-80"
+                  style={outlineButtonStyle}
                 >
                   View source
                 </a>
               </div>
               <div className="mt-9 grid max-w-2xl gap-3 sm:grid-cols-2">
-                {workflowSteps.slice(0, 4).map((item) => (
-                  <div key={item} className="flex gap-2 text-sm text-slate-600">
-                    <CheckIcon />
+                {workflowSteps.map((item) => (
+                  <div
+                    key={item}
+                    className="flex gap-2 text-sm"
+                    style={{ color: theme.muted }}
+                  >
+                    <CheckIcon color={theme.accent} />
                     <span>{item}</span>
                   </div>
                 ))}
@@ -184,16 +402,19 @@ export function Landing({ appUrl }: LandingProps) {
                 <div className="grid gap-3 p-3 md:grid-cols-[190px_1fr]">
                   <aside className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                     <div className="mb-4 h-3 w-24 rounded bg-white/25" />
-                    {["Agent dashboard", "Runtime health", "Local runners", "Credentials"].map(
-                      (route) => (
-                        <div
-                          key={route}
-                          className="mb-2 rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-xs text-slate-300"
-                        >
-                          {route}
-                        </div>
-                      ),
-                    )}
+                    {[
+                      "Agent dashboard",
+                      "Runtime health",
+                      "Local runners",
+                      "Credentials",
+                    ].map((route) => (
+                      <div
+                        key={route}
+                        className="mb-2 rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-xs text-slate-300"
+                      >
+                        {route}
+                      </div>
+                    ))}
                   </aside>
                   <div className="rounded-md border border-white/10 bg-slate-900 p-4">
                     <div className="mb-5 flex items-start justify-between gap-3">
@@ -203,7 +424,13 @@ export function Landing({ appUrl }: LandingProps) {
                         </div>
                         <div className="mt-2 h-2 w-52 max-w-full rounded bg-white/15" />
                       </div>
-                      <div className="rounded-md bg-teal-300 px-3 py-1 text-xs font-semibold text-teal-950">
+                      <div
+                        className="rounded-md px-3 py-1 text-xs font-semibold"
+                        style={{
+                          backgroundColor: theme.accentSoft,
+                          color: theme.accentText,
+                        }}
+                      >
                         Healthy
                       </div>
                     </div>
@@ -232,7 +459,10 @@ export function Landing({ appUrl }: LandingProps) {
                         <span>Live</span>
                       </div>
                       <div className="space-y-2">
-                        <div className="h-2 rounded bg-teal-300/70" />
+                        <div
+                          className="h-2 rounded"
+                          style={{ backgroundColor: theme.accent }}
+                        />
                         <div className="h-2 w-4/5 rounded bg-red-500/70" />
                         <div className="h-2 w-3/5 rounded bg-amber-300/70" />
                       </div>
@@ -245,26 +475,41 @@ export function Landing({ appUrl }: LandingProps) {
         </div>
       </section>
 
-      <section className="border-b border-slate-200 bg-white">
+      <section
+        className="border-b"
+        style={{ backgroundColor: theme.surface, borderColor: theme.border }}
+      >
         <div className="mx-auto grid max-w-7xl gap-4 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
           {stats.map(([label, value]) => (
-            <div key={label} className="rounded-md border border-slate-200 p-5">
-              <div className="text-sm font-semibold text-teal-700">
+            <div
+              key={label}
+              className="rounded-md border p-5"
+              style={{ borderColor: theme.border }}
+            >
+              <div
+                className="text-sm font-semibold"
+                style={{ color: theme.accent }}
+              >
                 {label}
               </div>
-              <div className="mt-2 text-sm text-slate-600">{value}</div>
+              <div className="mt-2 text-sm" style={{ color: theme.muted }}>
+                {value}
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="bg-stone-50">
+      <section style={{ backgroundColor: theme.page }}>
         <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10">
           <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-700">
+            <p
+              className="text-sm font-semibold uppercase tracking-[0.14em]"
+              style={{ color: theme.accent }}
+            >
               Built for agent operations
             </p>
-            <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 sm:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
               Bring coordination, runtime control, and local execution into one
               workflow.
             </h2>
@@ -274,12 +519,17 @@ export function Landing({ appUrl }: LandingProps) {
             {productPillars.map((pillar) => (
               <article
                 key={pillar.title}
-                className="rounded-md border border-slate-200 bg-white p-6 shadow-sm"
+                className="rounded-md border p-6 shadow-sm"
+                style={{
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                }}
               >
-                <h3 className="text-lg font-semibold text-slate-950">
-                  {pillar.title}
-                </h3>
-                <p className="mt-4 text-sm leading-7 text-slate-600">
+                <h3 className="text-lg font-semibold">{pillar.title}</h3>
+                <p
+                  className="mt-4 text-sm leading-7"
+                  style={{ color: theme.muted }}
+                >
                   {pillar.description}
                 </p>
               </article>
@@ -288,17 +538,26 @@ export function Landing({ appUrl }: LandingProps) {
         </div>
       </section>
 
-      <section className="border-y border-slate-200 bg-slate-950 text-white">
+      <section
+        className="border-y text-white"
+        style={{ backgroundColor: theme.inverse, borderColor: theme.border }}
+      >
         <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.72fr_1fr] lg:px-10">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-300">
+            <p
+              className="text-sm font-semibold uppercase tracking-[0.14em]"
+              style={{ color: theme.inverseMuted }}
+            >
               System architecture
             </p>
             <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
               A single source tree for the platform, orchestrator, and local
               helper.
             </h2>
-            <p className="mt-5 text-sm leading-7 text-slate-400">
+            <p
+              className="mt-5 text-sm leading-7"
+              style={{ color: theme.inverseMuted }}
+            >
               OpenMacaw is designed so the browser UI, API coordination layer,
               runtime orchestration, and local machine bridge can be developed
               together while still preserving clear subsystem boundaries.
@@ -312,7 +571,10 @@ export function Landing({ appUrl }: LandingProps) {
                 className="rounded-md border border-white/10 bg-white/[0.04] p-5"
               >
                 <h3 className="text-lg font-semibold">{layer.name}</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-400">
+                <p
+                  className="mt-3 text-sm leading-7"
+                  style={{ color: theme.inverseMuted }}
+                >
                   {layer.detail}
                 </p>
               </article>
@@ -321,18 +583,21 @@ export function Landing({ appUrl }: LandingProps) {
         </div>
       </section>
 
-      <section className="bg-white">
+      <section style={{ backgroundColor: theme.surface }}>
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-20 sm:px-8 lg:grid-cols-[0.82fr_1fr] lg:px-10">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-700">
+            <p
+              className="text-sm font-semibold uppercase tracking-[0.14em]"
+              style={{ color: theme.accent }}
+            >
               Local-first when it matters
             </p>
-            <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 sm:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
               Connect local runners without opening inbound access to your
               machine.
             </h2>
           </div>
-          <div className="text-sm leading-7 text-slate-600">
+          <div className="text-sm leading-7" style={{ color: theme.muted }}>
             <p>
               The local runtime helper runs as a daemon on a user machine,
               opens an outbound relay connection, advertises configured local
@@ -349,31 +614,199 @@ export function Landing({ appUrl }: LandingProps) {
         </div>
       </section>
 
-      <section className="border-t border-slate-200 bg-teal-50">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-14 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
+      <section
+        className="border-y"
+        style={{ backgroundColor: theme.page, borderColor: theme.border }}
+      >
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10">
+          <div className="max-w-3xl">
+            <p
+              className="text-sm font-semibold uppercase tracking-[0.14em]"
+              style={{ color: theme.accent }}
+            >
+              Project comparison
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
+              How OpenMacaw relates to OpenClaw, Hermes, and the runtime stack.
+            </h2>
+            <p
+              className="mt-4 text-sm leading-7"
+              style={{ color: theme.muted }}
+            >
+              The local docs frame Hermes as a learning-layer blueprint,
+              OpenClaw as an execution backend, and OpenMacaw as the operating
+              surface that brings the pieces together.
+            </p>
+          </div>
+
+          <div
+            className="mt-10 overflow-hidden rounded-md border"
+            style={{
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+            }}
+          >
+            <div
+              className="hidden grid-cols-[0.9fr_1.35fr_1fr_1.25fr] border-b px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] lg:grid"
+              style={{ borderColor: theme.border, color: theme.muted }}
+            >
+              <div>Project</div>
+              <div>Primary job</div>
+              <div>Where it runs</div>
+              <div>Best fit</div>
+            </div>
+            {projectComparisons.map((item) => (
+              <article
+                key={item.project}
+                className="grid gap-4 border-b px-5 py-5 last:border-b-0 lg:grid-cols-[0.9fr_1.35fr_1fr_1.25fr]"
+                style={{ borderColor: theme.border }}
+              >
+                <div>
+                  <div
+                    className="text-xs font-semibold uppercase tracking-[0.12em] lg:hidden"
+                    style={{ color: theme.muted }}
+                  >
+                    Project
+                  </div>
+                  <h3 className="mt-1 text-base font-semibold lg:mt-0">
+                    {item.project}
+                  </h3>
+                </div>
+                <div>
+                  <div
+                    className="text-xs font-semibold uppercase tracking-[0.12em] lg:hidden"
+                    style={{ color: theme.muted }}
+                  >
+                    Primary job
+                  </div>
+                  <p
+                    className="mt-1 text-sm leading-6 lg:mt-0"
+                    style={{ color: theme.muted }}
+                  >
+                    {item.role}
+                  </p>
+                </div>
+                <div>
+                  <div
+                    className="text-xs font-semibold uppercase tracking-[0.12em] lg:hidden"
+                    style={{ color: theme.muted }}
+                  >
+                    Where it runs
+                  </div>
+                  <p
+                    className="mt-1 text-sm leading-6 lg:mt-0"
+                    style={{ color: theme.muted }}
+                  >
+                    {item.runs}
+                  </p>
+                </div>
+                <div>
+                  <div
+                    className="text-xs font-semibold uppercase tracking-[0.12em] lg:hidden"
+                    style={{ color: theme.muted }}
+                  >
+                    Best fit
+                  </div>
+                  <p
+                    className="mt-1 text-sm leading-6 lg:mt-0"
+                    style={{ color: theme.muted }}
+                  >
+                    {item.fit}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section
+        className="border-t"
+        style={{ backgroundColor: theme.surfaceSoft, borderColor: theme.border }}
+      >
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-14 sm:px-8 lg:grid-cols-[1fr_410px] lg:items-start lg:px-10">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-950">
+            <h2 className="text-2xl font-semibold">
               Start with the dashboard or inspect the source.
             </h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm" style={{ color: theme.muted }}>
               OpenMacaw is moving toward a polished open-source launch while
               remaining usable for active local development.
             </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a
+                href={appUrl}
+                className="inline-flex items-center gap-2 rounded-md px-5 py-3 text-sm font-semibold transition hover:opacity-90"
+                style={primaryButtonStyle}
+              >
+                Open app
+                <ArrowIcon />
+              </a>
+              <a
+                href="https://github.com/kmgrassi/OpenMacaw"
+                className="rounded-md border px-5 py-3 text-sm font-semibold transition hover:opacity-80"
+                style={outlineButtonStyle}
+              >
+                GitHub repository
+              </a>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <a
-              href={appUrl}
-              className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Open app
-              <ArrowIcon />
-            </a>
-            <a
-              href="https://github.com/kmgrassi/OpenMacaw"
-              className="rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:border-slate-500"
-            >
-              GitHub repository
-            </a>
+
+          <div
+            className="rounded-md border p-4"
+            style={{
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+            }}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold">Theme settings</h3>
+                <p className="mt-1 text-xs" style={{ color: theme.muted }}>
+                  Preview launch palettes before choosing the production look.
+                </p>
+              </div>
+              <span
+                className="rounded-md px-2 py-1 text-xs font-semibold"
+                style={{
+                  backgroundColor: theme.accentSoft,
+                  color: theme.accentText,
+                }}
+              >
+                {theme.name}
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {themes.map((preset, index) => {
+                const selected = index === themeIndex;
+
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setThemeIndex(index)}
+                    className="flex min-h-12 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm font-medium transition hover:opacity-80"
+                    style={{
+                      backgroundColor: selected
+                        ? preset.accentSoft
+                        : theme.surface,
+                      borderColor: selected ? preset.accent : theme.border,
+                      color: selected ? preset.accentText : theme.text,
+                    }}
+                  >
+                    <span
+                      className="h-4 w-4 flex-none rounded-full border"
+                      style={{
+                        background: `linear-gradient(135deg, ${preset.accent} 0%, ${preset.primary} 55%, ${preset.surfaceSoft} 100%)`,
+                        borderColor: selected ? preset.accent : theme.border,
+                      }}
+                    />
+                    <span>{preset.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
