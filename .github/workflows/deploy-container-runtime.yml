@@ -167,6 +167,7 @@ jobs:
         env:
           ECS_CLUSTER: ${{ steps.runtime.outputs.cluster }}
           TASK_DEFINITION: ${{ steps.runtime.outputs.task_definition }}
+          CONTAINER_NAME: ${{ steps.runtime.outputs.container_name }}
           SECURITY_GROUP_ID: ${{ steps.runtime.outputs.security_group_id }}
           SUBNETS_FILE: ${{ steps.runtime.outputs.subnets_file }}
         run: |
@@ -181,11 +182,24 @@ jobs:
               assignPublicIp: "DISABLED"
             }}')"
 
+          SMOKE_REQUEST_JSON='{"existing_workspace":"."}'
+          TASK_OVERRIDES="$(jq -cn \
+            --arg containerName "$CONTAINER_NAME" \
+            --arg smokeRequestJson "$SMOKE_REQUEST_JSON" \
+            '{containerOverrides: [{
+              name: $containerName,
+              environment: [{
+                name: "SYMPHONY_EXECUTION_REQUEST_JSON",
+                value: $smokeRequestJson
+              }]
+            }]}')"
+
           RUN_RESPONSE="$(aws ecs run-task \
             --cluster "$ECS_CLUSTER" \
             --task-definition "$TASK_DEFINITION" \
             --launch-type FARGATE \
             --network-configuration "$NETWORK_CONFIGURATION" \
+            --overrides "$TASK_OVERRIDES" \
             --started-by "github-actions-container-runtime-smoke-${GITHUB_RUN_ID}" \
             --enable-ecs-managed-tags \
             --tags key=runtime,value=parallel-agent-runtime key=run_id,value="github-actions-${GITHUB_RUN_ID}" \

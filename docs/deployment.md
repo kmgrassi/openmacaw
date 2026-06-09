@@ -169,7 +169,10 @@ The container-runtime workflow does not build an image; it consumes the
 executor image published by the container-executor image workflow and applies
 the ECS task definition, task roles, and executor task security group. Its
 post-apply smoke step can launch one Fargate task and require it to stop with
-exit code `0`, matching the D2 acceptance check.
+exit code `0`, matching the D2 acceptance check. The smoke task injects a
+minimal executor request through `SYMPHONY_EXECUTION_REQUEST_JSON`, so it
+proves the registered executor entrypoint can start successfully without
+requiring a live coding session payload.
 
 For the operational model around deploying OpenMacaw changes into an existing
 AWS environment, see [AWS deployment operations](aws-deployment-operations.md).
