@@ -34,6 +34,11 @@ on:
         required: true
         default: true
         type: boolean
+      openmacaw_ref:
+        description: "kmgrassi/OpenMacaw ref (branch/tag/SHA) to deploy from."
+        required: false
+        default: main
+        type: string
   workflow_call:
     inputs:
       deploy_environment:
@@ -61,6 +66,10 @@ on:
         required: false
         default: true
         type: boolean
+      openmacaw_ref:
+        required: false
+        default: main
+        type: string
 
 permissions:
   contents: read
@@ -87,8 +96,14 @@ jobs:
       TF_IN_AUTOMATION: "true"
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      # Explicitly check out OpenMacaw (not the caller) so the
+      # container-runtime Terraform stack is present when invoked via
+      # workflow_call from the KG-prod repo.
+      - name: Check out OpenMacaw
+        uses: actions/checkout@v5
+        with:
+          repository: kmgrassi/OpenMacaw
+          ref: ${{ inputs.openmacaw_ref || 'main' }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
