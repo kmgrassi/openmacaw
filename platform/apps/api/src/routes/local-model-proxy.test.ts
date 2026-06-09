@@ -5,6 +5,8 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { ExecutionProfileResolution } from "../../../../contracts/execution-profile.js";
+import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
+import { getServiceRoleSupabase } from "../supabase-client.js";
 import { registerLocalModelProxyRoutes } from "./local-model-proxy.js";
 
 const serviceMocks = vi.hoisted(() => ({
@@ -186,5 +188,50 @@ describe("local model proxy", () => {
     });
     expect(upstreamCalls).toHaveLength(1);
     expect(String(upstreamCalls[0]?.[0])).toContain("http://localhost:11434/v1/chat/completions");
+  });
+
+  it("rejects stored local runtime endpoints outside loopback before fetching them", async () => {
+    serviceMocks.resolveExecutionProfile.mockResolvedValue({
+      ...localProfile("local_runtime"),
+      source: {
+        routingRuleId: "rule-unsafe-endpoint",
+        credentialAlias: null,
+        fallbackUsed: false,
+        legacyGatewayConfigUsed: false,
+      },
+    });
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        routing_rule_match: [
+          {
+            workspace_id: workspaceId,
+            rule_id: "rule-unsafe-endpoint",
+            kind: "local_endpoint",
+            key: "url",
+            value: "http://169.254.169.254/latest/meta-data",
+          },
+        ],
+      }) as never,
+    );
+
+    const response = await fetch(`${baseUrl}/api/agents/${agentId}/local-chat`, {
+      method: "POST",
+      headers: { Authorization: "Bearer test-token", "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "local_runtime_invalid_endpoint",
+        message: "endpoint host must be localhost, 127.0.0.1, or ::1",
+      },
+    });
+
+    const upstreamCalls = fetchSpy.mock.calls.filter(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return !url.startsWith(baseUrl);
+    });
+    expect(upstreamCalls).toHaveLength(0);
   });
 });

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalRuntimeRegistrationRequestSchema } from "../../../../contracts/local-runtime.js";
+import {
+  LocalModelProbeRequestSchema,
+  LocalRuntimeRegistrationRequestSchema,
+} from "../../../../contracts/local-runtime.js";
 
 describe("local runtime contract", () => {
   it("rejects local model providers outside the execution provider enum", () => {
@@ -49,6 +52,20 @@ describe("local runtime contract", () => {
     expect(first.endpoint).toBe("http://localhost:7100");
   });
 
+  it("accepts bracketed IPv6 loopback endpoints", () => {
+    const parsed = LocalRuntimeRegistrationRequestSchema.parse({
+      runners: [
+        {
+          kind: "openai_compatible",
+          endpoint: "http://[::1]:11434/v1",
+          model: "qwen3-coder:30b",
+        },
+      ],
+    });
+    const first = parsed.runners[0]!;
+    expect(first.endpoint).toBe("http://[::1]:11434/v1");
+  });
+
   it("accepts a multi-kind registration carrying both openai_compatible and openclaw runners", () => {
     const parsed = LocalRuntimeRegistrationRequestSchema.parse({
       runners: [
@@ -81,5 +98,36 @@ describe("local runtime contract", () => {
 
   it("rejects a registration with no runners", () => {
     expect(LocalRuntimeRegistrationRequestSchema.safeParse({ runners: [] }).success).toBe(false);
+  });
+
+  it("rejects non-loopback local runtime endpoints", () => {
+    expect(
+      LocalRuntimeRegistrationRequestSchema.safeParse({
+        runners: [
+          {
+            kind: "openai_compatible",
+            endpoint: "http://169.254.169.254/latest/meta-data",
+            model: "qwen3-coder:30b",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects local runtime endpoints with embedded credentials", () => {
+    expect(
+      LocalRuntimeRegistrationRequestSchema.safeParse({
+        runners: [{ kind: "openclaw", endpoint: "http://user:pass@localhost:7100" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects probe endpoints outside loopback", () => {
+    expect(
+      LocalModelProbeRequestSchema.safeParse({
+        endpoint: "https://example.com/v1",
+        model: "qwen3-coder:30b",
+      }).success,
+    ).toBe(false);
   });
 });
