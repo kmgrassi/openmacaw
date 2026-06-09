@@ -111,6 +111,34 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
     refute File.exists?(Path.join(root, "escape.txt"))
   end
 
+  test "cancels a running shell command through relay correlation id", %{root: root} do
+    assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
+
+    frames =
+      delayed_stream([
+        Jason.encode!(%{
+          "type" => "tool_execution_request",
+          "schema_version" => "1",
+          "correlation_id" => "corr-cancel",
+          "tool_call_id" => "call-sleep",
+          "name" => "shell.exec",
+          "arguments" => %{"argv" => ["sh", "-c", "sleep 5"], "timeout_ms" => 10_000}
+        }),
+        Jason.encode!(%{"type" => "cancel", "schema_version" => "1", "correlation_id" => "corr-cancel"})
+      ])
+
+    emitted =
+      capture_frames(fn emit ->
+        CodingExecutor.run_loop(prepared, input: frames, output: emit)
+      end)
+
+    assert Enum.any?(emitted, &match?(%{"type" => "progress", "event" => "cancelled", "payload" => %{"command_id" => "call-sleep"}}, &1))
+
+    result = Enum.find(emitted, &(&1["type"] == "tool_call_result" and &1["tool_call_id"] == "call-sleep"))
+    assert result["success"] == false
+    assert result["output"]["cancelled"] == true
+  end
+
   test "rejects existing workspaces outside the workspace root", %{root: root} do
     assert {:error, %{"code" => "existing_workspace_denied"}} =
              CodingExecutor.prepare(%{"existing_workspace" => "../outside"}, workspace_root: root)
@@ -128,5 +156,23 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
     after
       0 -> Enum.reverse(frames)
     end
+  end
+
+  defp delayed_stream([first, second]) do
+    Stream.resource(
+      fn -> {0, [first, second]} end,
+      fn
+        {0, [line | rest]} ->
+          {[line], {1, rest}}
+
+        {1, [line | rest]} ->
+          Process.sleep(250)
+          {[line], {2, rest}}
+
+        {_index, []} ->
+          {:halt, nil}
+      end,
+      fn _state -> :ok end
+    )
   end
 end

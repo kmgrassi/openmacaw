@@ -141,11 +141,11 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
         result
       end)
 
-    Map.put(running, task.ref, %{task: task, tool_call_id: tool_call_id})
+    Map.put(running, task.ref, %{task: task, correlation_id: Map.get(frame, "correlation_id"), tool_call_id: tool_call_id})
   end
 
   defp dispatch_frame(%{"type" => "cancel"} = frame, _prepared, output, running) do
-    command_id = string_value(frame, "command_id") || string_value(frame, "tool_call_id")
+    command_id = cancel_command_id(frame, running)
 
     result =
       case ShellExecutor.cancel(command_id) do
@@ -161,6 +161,22 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     output.(error_frame(Map.get(frame, "correlation_id"), "unsupported_frame", "Unsupported executor frame"))
     running
   end
+
+  defp cancel_command_id(frame, running) do
+    string_value(frame, "command_id") || string_value(frame, "tool_call_id") ||
+      command_id_for_correlation(Map.get(frame, "correlation_id"), running)
+  end
+
+  defp command_id_for_correlation(correlation_id, running) when is_binary(correlation_id) and correlation_id != "" do
+    running
+    |> Map.values()
+    |> Enum.find_value(fn
+      %{correlation_id: ^correlation_id, tool_call_id: tool_call_id} -> tool_call_id
+      _entry -> nil
+    end)
+  end
+
+  defp command_id_for_correlation(_correlation_id, _running), do: nil
 
   defp await_running(running, output) when map_size(running) == 0 do
     output.(progress_frame("executor_complete", %{}))
