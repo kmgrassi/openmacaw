@@ -1,7 +1,9 @@
 import { AgentLocalRuntimeAssignResponseSchema } from "../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../http.js";
 import { assertSupabaseSuccess } from "../lib/supabase-errors.js";
+import { getRoutingRuleLocalEndpointUrl } from "../repositories/routing-rules.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
+import { updateAgentRuntimeProfile } from "./agent-runtime-profile.js";
 import {
   LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX,
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
@@ -73,6 +75,39 @@ export async function assignLocalModelToAgent(input: {
     .single();
 
   assertSupabaseSuccess("assign local runtime to agent", matchId, matchError);
+
+  const { data: agent, error: agentError } = await supabase
+    .from("agent")
+    .select("id, type")
+    .eq("id", input.agentId)
+    .eq("workspace_id", input.workspaceId)
+    .maybeSingle();
+
+  assertSupabaseSuccess("read assigned local runtime agent", agent, agentError);
+  if (!agent) {
+    throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
+  }
+
+  const provider = rule.provider?.trim();
+  const model = rule.model?.trim();
+  if (agent.type === "manager" && provider === "openai_compatible" && model) {
+    const localEndpointUrl = await getRoutingRuleLocalEndpointUrl({
+      ruleId: input.ruleId,
+      workspaceId: input.workspaceId,
+    });
+    await updateAgentRuntimeProfile({
+      accessToken: "",
+      userId: input.userId,
+      agentId: input.agentId,
+      body: {
+        workspaceId: input.workspaceId,
+        provider,
+        model,
+        credentialRef: null,
+        localEndpointUrl,
+      },
+    });
+  }
 
   return AgentLocalRuntimeAssignResponseSchema.parse({
     routingRuleId: input.ruleId,

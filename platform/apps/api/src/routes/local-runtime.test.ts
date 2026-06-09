@@ -60,13 +60,24 @@ describe("local runtime routes", () => {
           provider: "openai_compatible",
         },
       ],
-      routing_rule_match: [] as Array<Record<string, unknown>>,
+      routing_rule_match: [
+        {
+          id: "local-endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
+      ] as Array<Record<string, unknown>>,
       agent: [
         {
           id: "manager-agent-1",
+          name: "Manager",
           workspace_id: workspaceId,
           type: "manager",
-          runner_kind: "llm_tool_runner",
+          model_settings: { primary: "openai/gpt-5.1" },
+          tool_policy: {},
         },
       ],
       gateway_config: [] as Array<Record<string, unknown>>,
@@ -92,15 +103,50 @@ describe("local runtime routes", () => {
       agentId: "manager-agent-1",
       model: "qwen3-coder:30b",
     });
-    expect(db.routing_rule_match).toEqual([
-      expect.objectContaining({
-        workspace_id: workspaceId,
-        rule_id: "local-rule-1",
-        kind: "agent_id",
-        key: "agent_id",
-        value: "manager-agent-1",
-      }),
-    ]);
+    expect(db.routing_rule_match).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        }),
+        expect.objectContaining({
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "agent_id",
+          key: "agent_id",
+          value: "manager-agent-1",
+        }),
+      ]),
+    );
+    expect(db.agent[0]).toMatchObject({
+      model_settings: { primary: "qwen3-coder:30b" },
+    });
+    expect(db.routing_rule).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "agent:manager-agent-1:execution-profile",
+          runner_kind: "llm_tool_runner",
+          provider: "openai_compatible",
+          model: "qwen3-coder:30b",
+        }),
+      ]),
+    );
+    const runtimeProfileRule = db.routing_rule.find(
+      (rule) => rule.name === "agent:manager-agent-1:execution-profile",
+    );
+    expect(db.routing_rule_match).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule_id: runtimeProfileRule?.id,
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        }),
+      ]),
+    );
     expect(db.gateway_config).toEqual([]);
     expect(db.gateway_config_versions).toEqual([]);
   });
