@@ -42,8 +42,10 @@ Recommended SSM parameters:
 
 - `/openmacaw/dev/platform-api/deploy/config`
 - `/openmacaw/dev/runtime-orchestrator/deploy/config`
+- `/openmacaw/dev/container-runtime/deploy/config`
 - `/openmacaw/prod/platform-api/deploy/config`
 - `/openmacaw/prod/runtime-orchestrator/deploy/config`
+- `/openmacaw/prod/container-runtime/deploy/config`
 
 Push-triggered workflow runs default to the `dev` SSM path segment. Manual
 workflow runs can select `dev`, `staging`, or `prod`, and can override the full
@@ -62,3 +64,26 @@ terraform plan -var-file=../../envs/example/platform-api/terraform.tfvars.exampl
 ```
 
 Replace example values before applying.
+
+## Container Runtime Deploy
+
+The `container-runtime` stack is the D2 container-execution stack. It creates
+the executor task definition, ECS task roles, executor task security group, and
+the launch coordinates Runtime uses for `RunTask`.
+
+The reusable deploy entrypoint is:
+
+```bash
+.github/workflows/deploy-container-runtime.yml
+```
+
+It reads SSM JSON from
+`/openmacaw/<environment_slug>/container-runtime/deploy/config` by default,
+runs Terraform apply for `stacks/container-runtime`, and can launch one smoke
+task after apply. The smoke task waits for `STOPPED` and requires container
+exit code `0`, which proves the configured cluster, task definition, ECR image,
+subnets, security group, and task roles can run a task to completion.
+
+Use
+`envs/example/container-execution/deploy-config.runtime.ssm.example.json` as
+the SSM shape for private dev/prod deployments.
