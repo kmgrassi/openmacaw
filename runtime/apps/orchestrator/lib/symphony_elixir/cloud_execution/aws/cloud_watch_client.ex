@@ -151,7 +151,7 @@ defmodule SymphonyElixir.CloudExecution.Aws.CloudWatchClient do
   end
 
   defp required_opt(opts, key, default) do
-    case Keyword.get(opts, key, default) do
+    case Keyword.get(opts, key) || default do
       value when is_binary(value) and value != "" -> {:ok, value}
       _ -> {:error, {:missing_aws_config, key}}
     end
