@@ -134,9 +134,7 @@ function isMarketingHost() {
 
 function isProductionAppHost() {
   if (typeof window === "undefined") return false;
-  return ["app.openmacaw.ai", "claw.harper.new"].includes(
-    window.location.hostname,
-  );
+  return window.location.hostname === "app.openmacaw.ai";
 }
 
 function AppHostRedirect() {
