@@ -28,6 +28,12 @@ Required environment variables (set in your deployment platform):
 | `PORT` | No (default: 3100) | Server listen port |
 | `ORCHESTRATOR_BASE_URL` | Yes | Full URL to orchestrator API |
 | `ORCHESTRATOR_REQUEST_TIMEOUT_MS` | No (default: 15000) | Timeout in ms |
+| `CONTAINER_EXECUTION_ROUTING_MODE` | No (default: `local_helper_default`) | Container rollout stage: `local_helper_default`, `allowlist`, `percentage`, or `container_default` |
+| `CONTAINER_EXECUTION_ALLOWLIST_WORKSPACE_IDS` | No | Comma-separated workspace IDs always routed to container execution in allowlist/percentage modes |
+| `CONTAINER_EXECUTION_ROLLOUT_PERCENTAGE` | No (default: 0) | Percentage of non-allowlisted workspaces routed to containers in `percentage` mode |
+
+Set `CONTAINER_EXECUTION_ROUTING_MODE=local_helper_default` to roll container
+coding traffic back to the local-helper path without a data migration.
 
 ## Docker
 

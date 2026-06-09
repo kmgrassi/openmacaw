@@ -4,6 +4,8 @@ import {
   type RuntimeExecutionTargetKind,
 } from "../../../contracts/execution-profile.js";
 
+export type ContainerExecutionRoutingMode = "local_helper_default" | "allowlist" | "percentage" | "container_default";
+
 export type ApiConfig = {
   port: number;
   host: string;
@@ -29,6 +31,11 @@ export type ToolExecutionConfig = {
   legacyLocalChatToolHelperBaseUrl: string;
   toolExecutionTimeoutMs: number;
   localCodingExecutionTargetKind: RuntimeExecutionTargetKind;
+  containerExecutionRouting: {
+    mode: ContainerExecutionRoutingMode;
+    allowlistWorkspaceIds: readonly string[];
+    percentage: number;
+  };
 };
 
 function parseStringMap(value: string | undefined): Record<string, string> {
@@ -51,6 +58,39 @@ function parseStringMap(value: string | undefined): Record<string, string> {
 function parseRuntimeExecutionTargetKind(value: string | undefined): RuntimeExecutionTargetKind {
   const parsed = RuntimeExecutionTargetKindSchema.safeParse((value ?? "").trim());
   return parsed.success ? parsed.data : "local_helper";
+}
+
+function parseContainerExecutionRoutingMode(value: string | undefined): ContainerExecutionRoutingMode {
+  const trimmed = (value ?? "").trim();
+  if (
+    trimmed === "allowlist" ||
+    trimmed === "percentage" ||
+    trimmed === "container_default" ||
+    trimmed === "local_helper_default"
+  ) {
+    return trimmed;
+  }
+  return "local_helper_default";
+}
+
+function parseUuidList(value: string | undefined): readonly string[] {
+  const trimmed = value?.trim();
+  if (!trimmed) return [];
+
+  return Array.from(
+    new Set(
+      trimmed
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function parsePercentage(value: string | undefined): number {
+  const parsed = Number.parseInt((value ?? "").trim(), 10);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(100, Math.max(0, parsed));
 }
 
 export function deriveWsUrl(baseUrl: string): string {
@@ -101,5 +141,10 @@ export function loadToolExecutionConfig(): ToolExecutionConfig {
     legacyLocalChatToolHelperBaseUrl,
     toolExecutionTimeoutMs: parsePositiveInt(process.env.TOOL_EXECUTION_TIMEOUT_MS, 30_000),
     localCodingExecutionTargetKind: parseRuntimeExecutionTargetKind(process.env.LOCAL_CODING_EXECUTION_TARGET_KIND),
+    containerExecutionRouting: {
+      mode: parseContainerExecutionRoutingMode(process.env.CONTAINER_EXECUTION_ROUTING_MODE),
+      allowlistWorkspaceIds: parseUuidList(process.env.CONTAINER_EXECUTION_ALLOWLIST_WORKSPACE_IDS),
+      percentage: parsePercentage(process.env.CONTAINER_EXECUTION_ROLLOUT_PERCENTAGE),
+    },
   };
 }
