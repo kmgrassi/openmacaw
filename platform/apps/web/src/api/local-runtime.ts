@@ -98,6 +98,7 @@ export type RegisterLocalRuntimeResponse = {
   };
   token: string;
   configSnippet: string;
+  setupCommand: string;
   launchCommand: string;
   localExecution: LocalExecutionTarget;
   runners: LocalRuntimeRunner[];
@@ -108,6 +109,7 @@ export type LocalRuntimeConfigResponse = {
   token: string | null;
   tokenAvailable: boolean;
   configSnippet: string;
+  setupCommand: string;
   launchCommand: string;
   filename: "runtime.toml";
 };

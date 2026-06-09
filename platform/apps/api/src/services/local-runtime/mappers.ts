@@ -7,7 +7,7 @@ import {
   type LocalRuntimeRunner,
   type LocalToolCallCapability,
 } from "../../../../../contracts/local-runtime.js";
-import { buildConfigSnippet, buildLaunchCommand, type ConfigSnippetInput } from "./config-snippet.js";
+import { buildConfigSnippet, buildLaunchCommand, buildSetupCommand, type ConfigSnippetInput } from "./config-snippet.js";
 import type { buildLocalExecution } from "./config-snippet.js";
 
 type LocalExecution = ReturnType<typeof buildLocalExecution>;
@@ -23,6 +23,7 @@ export function toLocalRuntimeConfigResponse(input: {
     token: input.token,
     tokenAvailable: input.tokenAvailable,
     configSnippet: buildConfigSnippet(input.config),
+    setupCommand: buildSetupCommand(input.config),
     launchCommand: buildLaunchCommand(),
     filename: "runtime.toml",
   });
@@ -64,6 +65,7 @@ export function toLocalRuntimeRegistrationResponse(input: {
     machine: input.machine,
     token: input.token,
     configSnippet: buildConfigSnippet(input.config),
+    setupCommand: buildSetupCommand(input.config),
     launchCommand: buildLaunchCommand(),
     localExecution: input.localExecution,
     runners: input.runners.map(toLocalRuntimeRunner),

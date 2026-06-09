@@ -470,6 +470,7 @@ describe("local runtime routes", () => {
         toolCallCapability: string | null;
       }>;
       configSnippet: string;
+      setupCommand: string;
     };
     expect(body.runners).toHaveLength(1);
     expect(body.runners[0]).toMatchObject({
@@ -482,6 +483,12 @@ describe("local runtime routes", () => {
     expect(body.configSnippet).toContain("[runner.openai_compatible]");
     expect(body.configSnippet).toContain('model = "qwen3-coder:30b"');
     expect(body.configSnippet).not.toContain("[runner.openclaw]");
+    expect(body.setupCommand).toContain('"$HELPER_BIN"');
+    expect(body.setupCommand).toContain("'register'");
+    expect(body.setupCommand).toContain("--openai-compatible-endpoint");
+    expect(body.setupCommand).toContain("--openai-compatible-model");
+    expect(body.setupCommand).toContain("--workspace-root");
+    expect(body.setupCommand).toContain('"$HELPER_BIN" start');
 
     expect(db.routing_rule).toEqual([
       expect.objectContaining({
@@ -533,6 +540,7 @@ describe("local runtime routes", () => {
         toolCallCapability: string | null;
       }>;
       configSnippet: string;
+      setupCommand: string;
     };
     expect(body.runners).toHaveLength(1);
     expect(body.runners[0]).toMatchObject({
@@ -547,6 +555,8 @@ describe("local runtime routes", () => {
     expect(body.configSnippet).toContain('api_key = "sk-openclaw"');
     expect(body.configSnippet).not.toContain("[runner.openai_compatible]");
     expect(body.configSnippet).not.toContain("model =");
+    expect(body.setupCommand).toContain("--openclaw-endpoint");
+    expect(body.setupCommand).toContain("--openclaw-api-key");
 
     expect(db.routing_rule).toEqual([
       expect.objectContaining({
@@ -597,10 +607,13 @@ describe("local runtime routes", () => {
     const body = (await response.json()) as {
       runners: Array<{ kind: string; runnerKind: string }>;
       configSnippet: string;
+      setupCommand: string;
     };
     expect(body.runners.map((runner) => runner.kind).sort()).toEqual(["openai_compatible", "openclaw"]);
     expect(body.configSnippet).toContain("[runner.openai_compatible]");
     expect(body.configSnippet).toContain("[runner.openclaw]");
+    expect(body.setupCommand).toContain("--openai-compatible-endpoint");
+    expect(body.setupCommand).toContain("--openclaw-endpoint");
 
     expect(db.routing_rule).toHaveLength(2);
     expect(db.routing_rule).toEqual(

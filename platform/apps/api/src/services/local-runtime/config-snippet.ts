@@ -29,7 +29,7 @@ function tomlString(value: string) {
 }
 
 export function buildLaunchCommand() {
-  return "local-runtime-helper start --config ./runtime.toml";
+  return "local-runtime-helper start";
 }
 
 export type RunnerSnippet =
@@ -55,6 +55,53 @@ export type ConfigSnippetInput = {
   token: string;
   runners: RunnerSnippet[];
 };
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildSetupCommand(input: ConfigSnippetInput) {
+  const args = [
+    "register",
+    "--endpoint",
+    input.runtimeEndpoint,
+    "--workspace",
+    input.workspaceId,
+    "--name",
+    input.displayName,
+    "--token",
+    input.token,
+    "--force",
+  ];
+  if (input.workspaceRoot) {
+    args.push("--workspace-root", input.workspaceRoot);
+  }
+  for (const runner of input.runners) {
+    if (runner.kind === "openai_compatible") {
+      args.push(
+        "--openai-compatible-endpoint",
+        runner.endpoint,
+        "--openai-compatible-model",
+        runner.model,
+        "--tool-call-capability",
+        runner.toolCallCapability,
+      );
+      if (runner.apiKey) args.push("--openai-compatible-api-key", runner.apiKey);
+    } else {
+      args.push("--openclaw-endpoint", runner.endpoint);
+      if (runner.apiKey) args.push("--openclaw-api-key", runner.apiKey);
+    }
+  }
+
+  const helperArgs = args.map(shellQuote).join(" ");
+  return [
+    'HELPER_BIN="$(go env GOPATH)/bin/local-runtime-helper"',
+    "cd local-runtime-helper",
+    'go install ./cmd/local-runtime-helper',
+    `"$HELPER_BIN" ${helperArgs}`,
+    '"$HELPER_BIN" start',
+  ].join(" && ");
+}
 
 export function buildConfigSnippet(input: ConfigSnippetInput) {
   const header = [
