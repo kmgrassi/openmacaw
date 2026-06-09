@@ -116,7 +116,26 @@ resource "aws_sfn_state_machine" "executor_lifecycle" {
           ResultPath  = "$.error"
           Next        = "LifecycleFailed"
         }]
-        Next = "LifecycleSucceeded"
+        Next = "CheckExecutorExit"
+      }
+      CheckExecutorExit = {
+        Type = "Choice"
+        Choices = [
+          {
+            And = [
+              {
+                Variable  = "$.Tasks[0].Containers[0].ExitCode"
+                IsPresent = true
+              },
+              {
+                Variable      = "$.Tasks[0].Containers[0].ExitCode"
+                NumericEquals = 0
+              }
+            ]
+            Next = "LifecycleSucceeded"
+          }
+        ]
+        Default = "LifecycleFailed"
       }
       LifecycleSucceeded = {
         Type = "Succeed"

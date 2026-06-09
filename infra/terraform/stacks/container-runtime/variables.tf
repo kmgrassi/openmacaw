@@ -182,6 +182,18 @@ variable "network_firewall_subnet_ids" {
   default     = []
 }
 
+variable "network_firewall_protected_route_table_map" {
+  description = "Map of route table IDs to the firewall subnet ID whose endpoint should receive executor egress traffic"
+  type        = map(string)
+  default     = {}
+}
+
+variable "network_firewall_route_destination_cidr_block" {
+  description = "IPv4 route destination sent through Network Firewall for protected executor route tables"
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
 variable "network_firewall_allowed_domains" {
   description = "FQDN allowlist enforced by AWS Network Firewall for executor task egress"
   type        = list(string)

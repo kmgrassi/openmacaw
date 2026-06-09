@@ -1,5 +1,9 @@
 locals {
   network_firewall_subnet_ids = length(var.network_firewall_subnet_ids) > 0 ? var.network_firewall_subnet_ids : var.private_subnet_ids
+  network_firewall_endpoint_ids_by_subnet_id = {
+    for sync_state in aws_networkfirewall_firewall.executor_egress.firewall_status[0].sync_states :
+    sync_state.attachment[0].subnet_id => sync_state.attachment[0].endpoint_id
+  }
 }
 
 resource "aws_networkfirewall_rule_group" "egress_allowlist" {
@@ -75,5 +79,30 @@ resource "aws_networkfirewall_firewall" "executor_egress" {
       condition     = length(local.network_firewall_subnet_ids) > 0
       error_message = "At least one network firewall subnet is required."
     }
+  }
+}
+
+resource "aws_route" "executor_egress_to_firewall" {
+  for_each = var.network_firewall_protected_route_table_map
+
+  route_table_id         = each.key
+  destination_cidr_block = var.network_firewall_route_destination_cidr_block
+  vpc_endpoint_id        = local.network_firewall_endpoint_ids_by_subnet_id[each.value]
+
+  depends_on = [aws_networkfirewall_firewall.executor_egress]
+}
+
+check "network_firewall_routes_configured" {
+  assert {
+    condition     = !contains(var.egress_cidr_blocks, "0.0.0.0/0") || length(var.network_firewall_protected_route_table_map) > 0
+    error_message = "Broad executor HTTPS egress requires network_firewall_protected_route_table_map so traffic is routed through Network Firewall."
+  }
+
+  assert {
+    condition = alltrue([
+      for subnet_id in values(var.network_firewall_protected_route_table_map) :
+      contains(local.network_firewall_subnet_ids, subnet_id)
+    ])
+    error_message = "Every network_firewall_protected_route_table_map value must be one of the configured Network Firewall subnet IDs."
   }
 }

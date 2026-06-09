@@ -14,6 +14,12 @@ executor_image_tag = "main"
 allowed_secret_arns = []
 egress_cidr_blocks  = ["0.0.0.0/0"]
 
+# Route each executor private route table through the Network Firewall endpoint
+# in the matching firewall subnet so the FQDN allowlist is actually enforced.
+network_firewall_protected_route_table_map = {
+  "rtb_REPLACE_ME" = "subnet_REPLACE_ME"
+}
+
 enable_container_smoke_schedule = false
 container_smoke_schedule_expression = "rate(15 minutes)"
 container_smoke_commands = {

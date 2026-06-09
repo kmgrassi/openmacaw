@@ -16,3 +16,8 @@ resource "aws_secretsmanager_secret" "smoke" {
   kms_key_id              = aws_kms_key.container_secrets.arn
   recovery_window_in_days = 7
 }
+
+resource "aws_secretsmanager_secret_version" "smoke" {
+  secret_id     = aws_secretsmanager_secret.smoke.id
+  secret_string = "container-execution-smoke-ok"
+}
