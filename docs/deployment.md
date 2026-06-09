@@ -1,7 +1,8 @@
 # Deployment
 
 OpenMacaw includes AWS deployment scaffolding for the platform API and runtime
-orchestrator services.
+orchestrator services, plus the container-execution runtime stack used by
+cloud-isolated coding runs.
 
 The repo contains reusable Terraform stacks and deploy workflows, but it does
 not contain private account configuration. Keep AWS account IDs, backend
@@ -74,8 +75,10 @@ The deploy workflows read JSON from SSM:
 ```text
 /openmacaw/dev/platform-api/deploy/config
 /openmacaw/dev/runtime-orchestrator/deploy/config
+/openmacaw/dev/container-runtime/deploy/config
 /openmacaw/prod/platform-api/deploy/config
 /openmacaw/prod/runtime-orchestrator/deploy/config
+/openmacaw/prod/container-runtime/deploy/config
 ```
 
 Use `SecureString` for deploy config parameters when the JSON contains any
@@ -107,6 +110,7 @@ Use the fuller examples in:
 - `infra/terraform/envs/example/platform-api/deploy-config.production.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.ssm.example.json`
 - `infra/terraform/envs/example/runtime-orchestrator/deploy-config.production.ssm.example.json`
+- `infra/terraform/envs/example/container-execution/deploy-config.runtime.ssm.example.json`
 
 ## Deploy Workflows
 
@@ -114,6 +118,7 @@ The service workflows are available as manual/reusable building blocks:
 
 - `.github/workflows/deploy-platform-api.yml`
 - `.github/workflows/deploy-runtime-orchestrator.yml`
+- `.github/workflows/deploy-container-runtime.yml`
 
 They can be run manually through `workflow_dispatch` or called from a private
 deployment repository with `workflow_call`. Keep environment-specific
@@ -155,11 +160,19 @@ and credentials are always used.
 Each workflow:
 
 1. reads backend and tfvars JSON from SSM
-2. builds the service image
-3. pushes `:<commit-sha>` and `:main` tags to ECR
-4. runs `terraform init` with the temporary backend file
-5. runs `terraform apply` with the temporary tfvars file
-6. writes the deployed image URI pointer back to SSM
+2. builds and pushes a service image when the workflow owns an image
+3. runs `terraform init` with the temporary backend file
+4. runs `terraform apply` with the temporary tfvars file
+5. writes the deployed image URI pointer back to SSM when applicable
+
+The container-runtime workflow does not build an image; it consumes the
+executor image published by the container-executor image workflow and applies
+the ECS task definition, task roles, and executor task security group. Its
+post-apply smoke step can launch one Fargate task and require it to stop with
+exit code `0`, matching the D2 acceptance check. The smoke task injects a
+minimal executor request through `SYMPHONY_EXECUTION_REQUEST_JSON`, so it
+proves the registered executor entrypoint can start successfully without
+requiring a live coding session payload.
 
 For the operational model around deploying OpenMacaw changes into an existing
 AWS environment, see [AWS deployment operations](aws-deployment-operations.md).

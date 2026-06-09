@@ -1,0 +1,23 @@
+{
+  "terraform_backend": {
+    "bucket": "YOUR_TERRAFORM_STATE_BUCKET",
+    "key": "openmacaw/dev/container-execution/runtime/terraform.tfstate",
+    "region": "us-east-1",
+    "dynamodb_table": "YOUR_TERRAFORM_LOCK_TABLE",
+    "encrypt": true
+  },
+  "terraform_vars": {
+    "project_name": "openmacaw",
+    "environment": "dev",
+    "aws_region": "us-east-1",
+    "foundation_state_bucket": "YOUR_TERRAFORM_STATE_BUCKET",
+    "foundation_state_key": "openmacaw/dev/container-execution/foundation/terraform.tfstate",
+    "foundation_state_region": "us-east-1",
+    "ecs_cluster_arn": "arn:aws:ecs:us-east-1:123456789012:cluster/openmacaw-dev",
+    "vpc_id": "vpc_REPLACE_ME",
+    "private_subnet_ids": ["subnet_REPLACE_ME"],
+    "executor_image_tag": "main",
+    "allowed_secret_arns": [],
+    "egress_cidr_blocks": ["0.0.0.0/0"]
+  }
+}

@@ -1,0 +1,233 @@
+name: Deploy Container Runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use for the deploy."
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      environment_slug:
+        description: "Environment path/name segment used for SSM and Terraform values."
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploy_config_param:
+        description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/container-runtime/deploy/config."
+        required: false
+        type: string
+      executor_image_tag:
+        description: "Optional executor image tag override. Leave empty to use the tag from deploy config."
+        required: false
+        type: string
+      run_smoke_task:
+        description: "Run one ECS task after apply and require STOPPED exit 0."
+        required: true
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use for the deploy."
+        required: false
+        default: production
+        type: string
+      environment_slug:
+        description: "Environment path/name segment used for SSM and Terraform values."
+        required: false
+        default: prod
+        type: string
+      deploy_config_param:
+        description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/container-runtime/deploy/config."
+        required: false
+        default: ""
+        type: string
+      executor_image_tag:
+        description: "Optional executor image tag override. Leave empty to use the tag from deploy config."
+        required: false
+        default: ""
+        type: string
+      run_smoke_task:
+        description: "Run one ECS task after apply and require STOPPED exit 0."
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-container-runtime-${{ inputs.environment_slug || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: infra/terraform/stacks/container-runtime
+  DEPLOY_ENVIRONMENT: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
+  ENVIRONMENT_SLUG: ${{ inputs.environment_slug || 'dev' }}
+  DEPLOY_CONFIG_PARAM_OVERRIDE: ${{ inputs.deploy_config_param || '' }}
+  EXECUTOR_IMAGE_TAG_OVERRIDE: ${{ inputs.executor_image_tag || '' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
+    timeout-minutes: 30
+    env:
+      TF_IN_AUTOMATION: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve deploy config from SSM
+        id: deploy-config
+        run: |
+          set -euo pipefail
+
+          DEPLOY_CONFIG_PARAM="${DEPLOY_CONFIG_PARAM_OVERRIDE:-/openmacaw/${ENVIRONMENT_SLUG}/container-runtime/deploy/config}"
+
+          echo "deploy_config_param=${DEPLOY_CONFIG_PARAM}" >> "$GITHUB_OUTPUT"
+          echo "Deploy environment: ${DEPLOY_ENVIRONMENT}"
+          echo "Environment slug: ${ENVIRONMENT_SLUG}"
+          echo "Deploy config parameter: ${DEPLOY_CONFIG_PARAM}"
+
+          CONFIG_JSON="$(aws ssm get-parameter \
+            --name "$DEPLOY_CONFIG_PARAM" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text)"
+
+          echo "$CONFIG_JSON" | jq -e '.terraform_backend and .terraform_vars' >/dev/null
+
+          jq -r '.terraform_backend | to_entries[] |
+            if (.value | type) == "boolean" or (.value | type) == "number" then
+              "\(.key) = \(.value)"
+            else
+              "\(.key) = \"\(.value)\""
+            end' <<<"$CONFIG_JSON" > "$RUNNER_TEMP/container-runtime.backend.hcl"
+
+          if [[ -n "$EXECUTOR_IMAGE_TAG_OVERRIDE" ]]; then
+            jq -n \
+              --argjson cfg "$CONFIG_JSON" \
+              --arg executor_image_tag "$EXECUTOR_IMAGE_TAG_OVERRIDE" \
+              '$cfg.terraform_vars + {
+                executor_image_tag: $executor_image_tag
+              }' > "$RUNNER_TEMP/container-runtime.tfvars.json"
+          else
+            jq -n \
+              --argjson cfg "$CONFIG_JSON" \
+              '$cfg.terraform_vars' > "$RUNNER_TEMP/container-runtime.tfvars.json"
+          fi
+
+          echo "backend_file=$RUNNER_TEMP/container-runtime.backend.hcl" >> "$GITHUB_OUTPUT"
+          echo "tfvars_file=$RUNNER_TEMP/container-runtime.tfvars.json" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="${{ steps.deploy-config.outputs.backend_file }}"
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -input=false -auto-approve -var-file="${{ steps.deploy-config.outputs.tfvars_file }}"
+
+      - name: Resolve runtime outputs
+        id: runtime
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          echo "cluster=$(terraform output -raw executor_cluster_arn)" >> "$GITHUB_OUTPUT"
+          echo "task_definition=$(terraform output -raw executor_task_definition_arn)" >> "$GITHUB_OUTPUT"
+          echo "container_name=$(terraform output -raw executor_container_name)" >> "$GITHUB_OUTPUT"
+          echo "security_group_id=$(terraform output -raw executor_security_group_id)" >> "$GITHUB_OUTPUT"
+          terraform output -json executor_private_subnet_ids > "$RUNNER_TEMP/container-runtime-subnets.json"
+          echo "subnets_file=$RUNNER_TEMP/container-runtime-subnets.json" >> "$GITHUB_OUTPUT"
+
+      - name: Run ECS launch smoke
+        if: ${{ inputs.run_smoke_task }}
+        env:
+          ECS_CLUSTER: ${{ steps.runtime.outputs.cluster }}
+          TASK_DEFINITION: ${{ steps.runtime.outputs.task_definition }}
+          CONTAINER_NAME: ${{ steps.runtime.outputs.container_name }}
+          SECURITY_GROUP_ID: ${{ steps.runtime.outputs.security_group_id }}
+          SUBNETS_FILE: ${{ steps.runtime.outputs.subnets_file }}
+        run: |
+          set -euo pipefail
+
+          NETWORK_CONFIGURATION="$(jq -cn \
+            --argjson subnets "$(cat "$SUBNETS_FILE")" \
+            --arg securityGroup "$SECURITY_GROUP_ID" \
+            '{awsvpcConfiguration: {
+              subnets: $subnets,
+              securityGroups: [$securityGroup],
+              assignPublicIp: "DISABLED"
+            }}')"
+
+          SMOKE_REQUEST_JSON='{"existing_workspace":"."}'
+          TASK_OVERRIDES="$(jq -cn \
+            --arg containerName "$CONTAINER_NAME" \
+            --arg smokeRequestJson "$SMOKE_REQUEST_JSON" \
+            '{containerOverrides: [{
+              name: $containerName,
+              environment: [{
+                name: "SYMPHONY_EXECUTION_REQUEST_JSON",
+                value: $smokeRequestJson
+              }]
+            }]}')"
+
+          RUN_RESPONSE="$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$TASK_DEFINITION" \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIGURATION" \
+            --overrides "$TASK_OVERRIDES" \
+            --started-by "github-actions-container-runtime-smoke-${GITHUB_RUN_ID}" \
+            --enable-ecs-managed-tags \
+            --tags key=runtime,value=parallel-agent-runtime key=run_id,value="github-actions-${GITHUB_RUN_ID}" \
+            --output json)"
+
+          FAILURES="$(jq '.failures | length' <<<"$RUN_RESPONSE")"
+          if [[ "$FAILURES" != "0" ]]; then
+            jq '.failures' <<<"$RUN_RESPONSE"
+            exit 1
+          fi
+
+          TASK_ARN="$(jq -er '.tasks[0].taskArn' <<<"$RUN_RESPONSE")"
+          echo "Launched smoke task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          DESCRIBE_RESPONSE="$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$TASK_ARN" \
+            --output json)"
+
+          STOPPED_REASON="$(jq -r '.tasks[0].stoppedReason // ""' <<<"$DESCRIBE_RESPONSE")"
+          EXIT_CODE="$(jq -r '.tasks[0].containers[0].exitCode // "missing"' <<<"$DESCRIBE_RESPONSE")"
+
+          echo "Stopped reason: $STOPPED_REASON"
+          echo "Exit code: $EXIT_CODE"
+
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            jq '.tasks[0].containers[0]' <<<"$DESCRIBE_RESPONSE"
+            exit 1
+          fi
