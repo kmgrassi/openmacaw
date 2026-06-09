@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   ContainerExecutionDispatchMetadataSchema,
   NetworkPolicySchema,
@@ -8,7 +10,7 @@ import {
   RuntimeWorkspacePolicySchema,
   type RuntimeWorkspacePolicy,
 } from "../../../../contracts/execution-profile.js";
-import { loadToolExecutionConfig } from "../config.js";
+import { loadToolExecutionConfig, type ToolExecutionConfig } from "../config.js";
 import { ApiRouteError } from "../http.js";
 import { findSetupAgentById } from "../repositories/agents.js";
 import { getToolsForAgent } from "./agent-tools.js";
@@ -23,6 +25,7 @@ const LOCAL_MODEL_CODING_RUNNER = "local_model_coding";
 const PLANNER_RUNNER = "planner";
 const LOCAL_RELAY_PROVIDER = "local";
 const EXECUTION_TARGET_KINDS = new Set(["local_helper", "container"]);
+const ROLLOUT_BUCKET_COUNT = 10_000;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -120,6 +123,45 @@ function configuredExecutionTargetKind(agentToolPolicy: unknown): "local_helper"
   throw new ApiRouteError(422, "invalid_execution_target", "Agent execution target is invalid");
 }
 
+function workspaceRolloutBucket(workspaceId: string): number {
+  const digest = createHash("sha256").update(workspaceId).digest();
+  return digest.readUInt32BE(0) % ROLLOUT_BUCKET_COUNT;
+}
+
+function rolloutPercentageIncludesWorkspace(workspaceId: string, percentage: number): boolean {
+  if (percentage <= 0) return false;
+  if (percentage >= 100) return true;
+  return workspaceRolloutBucket(workspaceId) < percentage * 100;
+}
+
+export function resolveRoutedExecutionTargetKind(input: {
+  agentToolPolicy: unknown;
+  workspaceId: string;
+  config?: Pick<ToolExecutionConfig, "localCodingExecutionTargetKind" | "containerExecutionRouting">;
+}): "local_helper" | "container" {
+  const explicitKind = configuredExecutionTargetKind(input.agentToolPolicy);
+  if (explicitKind === "local_helper") return "local_helper";
+
+  const config = input.config ?? loadToolExecutionConfig();
+  const routing = config.containerExecutionRouting;
+  const isAllowlisted = routing.allowlistWorkspaceIds.includes(input.workspaceId);
+
+  switch (routing.mode) {
+    case "container_default":
+      return "container";
+    case "percentage":
+      if (isAllowlisted || rolloutPercentageIncludesWorkspace(input.workspaceId, routing.percentage)) {
+        return "container";
+      }
+      return "local_helper";
+    case "allowlist":
+      if (isAllowlisted) return "container";
+      return "local_helper";
+    case "local_helper_default":
+      return "local_helper";
+  }
+}
+
 async function buildContainerMetadata(input: {
   accessToken: string;
   executionProfile: ExecutionProfile;
@@ -205,8 +247,10 @@ async function buildExecutionTarget(input: {
   agentToolPolicy: unknown;
   requestBody: unknown;
 }): Promise<RuntimeExecutionTarget> {
-  const targetKind =
-    configuredExecutionTargetKind(input.agentToolPolicy) ?? loadToolExecutionConfig().localCodingExecutionTargetKind;
+  const targetKind = resolveRoutedExecutionTargetKind({
+    agentToolPolicy: input.agentToolPolicy,
+    workspaceId: input.executionProfile.workspaceId,
+  });
   if (targetKind === "container") {
     const workspaceRoot = configuredWorkspaceRoot(input.agentToolPolicy);
     if (workspaceRoot) {

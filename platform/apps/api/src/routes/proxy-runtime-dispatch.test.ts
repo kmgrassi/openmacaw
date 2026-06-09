@@ -194,8 +194,25 @@ describe("runtime dispatch proxy contract", () => {
   let runtimeStatus = 202;
   let runtimeBody: unknown = { run_id: "run-1", status: "queued" };
   let launcherRequest: ReturnType<typeof vi.fn>;
+  let previousSupabaseUrl: string | undefined;
+  let previousSupabaseServiceRoleKey: string | undefined;
+
+  function resetContainerRoutingEnv() {
+    delete process.env.CONTAINER_EXECUTION_ROUTING_MODE;
+    delete process.env.CONTAINER_EXECUTION_ALLOWLIST_WORKSPACE_IDS;
+    delete process.env.CONTAINER_EXECUTION_ROLLOUT_PERCENTAGE;
+  }
+
+  function enableContainerRouting() {
+    process.env.CONTAINER_EXECUTION_ROUTING_MODE = "container_default";
+  }
 
   beforeEach(async () => {
+    resetContainerRoutingEnv();
+    previousSupabaseUrl = process.env.SUPABASE_URL;
+    previousSupabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_URL = process.env.SUPABASE_URL || "http://127.0.0.1:54321";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "service-role-key";
     vi.clearAllMocks();
     capturedBody = null;
     runtimeStatus = 202;
@@ -277,6 +294,17 @@ describe("runtime dispatch proxy contract", () => {
   afterEach(async () => {
     await closeServer(apiServer);
     apiServer = undefined;
+    resetContainerRoutingEnv();
+    if (previousSupabaseUrl === undefined) {
+      delete process.env.SUPABASE_URL;
+    } else {
+      process.env.SUPABASE_URL = previousSupabaseUrl;
+    }
+    if (previousSupabaseServiceRoleKey === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = previousSupabaseServiceRoleKey;
+    }
   });
 
   it("passes local model coding profile, workspace policy, and tools to runtime dispatch", async () => {
@@ -444,6 +472,7 @@ describe("runtime dispatch proxy contract", () => {
   });
 
   it("passes container execution target metadata through runtime dispatch", async () => {
+    enableContainerRouting();
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         executionTarget: {
@@ -538,6 +567,7 @@ describe("runtime dispatch proxy contract", () => {
   });
 
   it("rejects local workspace roots on container dispatch before contacting runtime", async () => {
+    enableContainerRouting();
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         executionTarget: {
@@ -590,6 +620,7 @@ describe("runtime dispatch proxy contract", () => {
   });
 
   it("rejects container dispatch when required target metadata is missing", async () => {
+    enableContainerRouting();
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         executionTarget: {
@@ -620,6 +651,7 @@ describe("runtime dispatch proxy contract", () => {
   });
 
   it("rejects container dispatch when no repository ref is available for bootstrap", async () => {
+    enableContainerRouting();
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         executionTarget: {
@@ -671,6 +703,7 @@ describe("runtime dispatch proxy contract", () => {
   });
 
   it("rejects workspace snapshots for production container bootstrap", async () => {
+    enableContainerRouting();
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         executionTarget: {
@@ -729,6 +762,7 @@ describe("runtime dispatch proxy contract", () => {
   });
 
   it("rejects malformed optional container metadata objects when present", async () => {
+    enableContainerRouting();
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         executionTarget: {

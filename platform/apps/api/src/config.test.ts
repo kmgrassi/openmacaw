@@ -54,23 +54,53 @@ describe("loadApiConfig", () => {
     delete process.env.HELPER_DAEMON_URL;
     delete process.env.TOOL_EXECUTION_TIMEOUT_MS;
     delete process.env.LOCAL_CODING_EXECUTION_TARGET_KIND;
+    delete process.env.CONTAINER_EXECUTION_ROUTING_MODE;
+    delete process.env.CONTAINER_EXECUTION_ALLOWLIST_WORKSPACE_IDS;
+    delete process.env.CONTAINER_EXECUTION_ROLLOUT_PERCENTAGE;
 
     const config = loadToolExecutionConfig();
 
     expect(config.legacyLocalChatToolHelperBaseUrl).toBe("http://localhost:17654");
     expect(config.toolExecutionTimeoutMs).toBe(30_000);
     expect(config.localCodingExecutionTargetKind).toBe("local_helper");
+    expect(config.containerExecutionRouting).toEqual({
+      mode: "local_helper_default",
+      allowlistWorkspaceIds: [],
+      percentage: 0,
+    });
   });
 
   it("loads legacy local-chat HTTP helper overrides", () => {
     process.env.LOCAL_TOOL_HELPER_URL = "http://legacy-local-chat-helper.internal/";
     process.env.TOOL_EXECUTION_TIMEOUT_MS = "45000";
     process.env.LOCAL_CODING_EXECUTION_TARGET_KIND = "container";
+    process.env.CONTAINER_EXECUTION_ROUTING_MODE = "percentage";
+    process.env.CONTAINER_EXECUTION_ALLOWLIST_WORKSPACE_IDS =
+      "22222222-2222-4222-8222-222222222222, 33333333-3333-4333-8333-333333333333";
+    process.env.CONTAINER_EXECUTION_ROLLOUT_PERCENTAGE = "25";
 
     const config = loadToolExecutionConfig();
 
     expect(config.legacyLocalChatToolHelperBaseUrl).toBe("http://legacy-local-chat-helper.internal");
     expect(config.toolExecutionTimeoutMs).toBe(45_000);
     expect(config.localCodingExecutionTargetKind).toBe("container");
+    expect(config.containerExecutionRouting).toEqual({
+      mode: "percentage",
+      allowlistWorkspaceIds: ["22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"],
+      percentage: 25,
+    });
+  });
+
+  it("fails closed for invalid container routing config", () => {
+    process.env.CONTAINER_EXECUTION_ROUTING_MODE = "unknown";
+    process.env.CONTAINER_EXECUTION_ROLLOUT_PERCENTAGE = "250";
+
+    const config = loadToolExecutionConfig();
+
+    expect(config.containerExecutionRouting).toEqual({
+      mode: "local_helper_default",
+      allowlistWorkspaceIds: [],
+      percentage: 100,
+    });
   });
 });
