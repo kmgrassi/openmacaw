@@ -93,6 +93,17 @@ variable "executor_ephemeral_storage_gib" {
   }
 }
 
+variable "executor_stop_timeout_seconds" {
+  description = "Seconds ECS waits after SIGTERM before SIGKILL for executor containers"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.executor_stop_timeout_seconds >= 2 && var.executor_stop_timeout_seconds <= 120
+    error_message = "executor_stop_timeout_seconds must be between 2 and 120 seconds."
+  }
+}
+
 variable "workspace_root" {
   description = "Task-local root where resources are materialized"
   type        = string
@@ -135,10 +146,98 @@ variable "allowed_secret_arns" {
   default     = []
 }
 
+variable "secret_path_root" {
+  description = "Secrets Manager path root for container execution secrets"
+  type        = string
+  default     = "container-execution"
+}
+
+variable "secret_workspace_ids" {
+  description = "Workspace IDs whose container-execution secret paths are readable by executor tasks"
+  type        = list(string)
+  default     = ["dev-smoke-workspace"]
+}
+
+variable "secret_smoke_workspace_id" {
+  description = "Workspace ID used for the managed smoke-test secret"
+  type        = string
+  default     = "dev-smoke-workspace"
+}
+
+variable "secret_smoke_run_id" {
+  description = "Run ID used for the managed smoke-test secret"
+  type        = string
+  default     = "dev-smoke-run"
+}
+
 variable "egress_cidr_blocks" {
   description = "CIDR blocks executor tasks may reach over HTTPS for Git providers, Runtime callbacks, and AWS service endpoints"
   type        = list(string)
   default     = []
+}
+
+variable "network_firewall_subnet_ids" {
+  description = "Subnet IDs where AWS Network Firewall endpoints should be placed; defaults to private_subnet_ids when empty"
+  type        = list(string)
+  default     = []
+}
+
+variable "network_firewall_protected_route_table_map" {
+  description = "Map of route table IDs to the firewall subnet ID whose endpoint should receive executor egress traffic"
+  type        = map(string)
+  default     = {}
+}
+
+variable "network_firewall_route_destination_cidr_block" {
+  description = "IPv4 route destination sent through Network Firewall for protected executor route tables"
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
+variable "network_firewall_allowed_domains" {
+  description = "FQDN allowlist enforced by AWS Network Firewall for executor task egress"
+  type        = list(string)
+  default = [
+    ".github.com",
+    ".githubusercontent.com",
+    ".npmjs.org",
+    ".pypi.org",
+    ".pythonhosted.org",
+    ".crates.io",
+    ".rubygems.org",
+    ".golang.org",
+    ".go.dev",
+  ]
+}
+
+variable "network_firewall_rule_group_capacity" {
+  description = "Capacity units allocated to the Network Firewall egress allowlist rule group"
+  type        = number
+  default     = 100
+}
+
+variable "network_firewall_delete_protection" {
+  description = "Whether deletion protection is enabled for the Network Firewall"
+  type        = bool
+  default     = true
+}
+
+variable "network_firewall_subnet_change_protection" {
+  description = "Whether subnet change protection is enabled for the Network Firewall"
+  type        = bool
+  default     = true
+}
+
+variable "network_firewall_policy_change_protection" {
+  description = "Whether firewall policy change protection is enabled for the Network Firewall"
+  type        = bool
+  default     = true
+}
+
+variable "state_machine_task_timeout_seconds" {
+  description = "Maximum executor task duration enforced by the Step Functions lifecycle state machine"
+  type        = number
+  default     = 3600
 }
 
 variable "network_policy_json" {

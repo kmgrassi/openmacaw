@@ -22,22 +22,32 @@ resource "aws_iam_role_policy_attachment" "executor_execution_base" {
 }
 
 resource "aws_iam_role_policy" "executor_execution_secrets" {
-  count = length(var.allowed_secret_arns) > 0 ? 1 : 0
+  count = length(local.allowed_secret_arns) > 0 ? 1 : 0
 
   name = "${local.name_prefix}-executor-secret-injection"
   role = aws_iam_role.executor_execution.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "secretsmanager:GetSecretValue",
-        "ssm:GetParameter",
-        "ssm:GetParameters",
-      ]
-      Resource = var.allowed_secret_arns
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+        ]
+        Resource = local.allowed_secret_arns
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+        ]
+        Resource = aws_kms_key.container_secrets.arn
+      }
+    ]
   })
 }
 
@@ -101,21 +111,31 @@ resource "aws_iam_role_policy" "executor_task_artifacts" {
 }
 
 resource "aws_iam_role_policy" "executor_task_secrets" {
-  count = length(var.allowed_secret_arns) > 0 ? 1 : 0
+  count = length(local.allowed_secret_arns) > 0 ? 1 : 0
 
   name = "${local.name_prefix}-executor-resource-secrets"
   role = aws_iam_role.executor_task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "secretsmanager:GetSecretValue",
-        "ssm:GetParameter",
-        "ssm:GetParameters",
-      ]
-      Resource = var.allowed_secret_arns
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+        ]
+        Resource = local.allowed_secret_arns
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+        ]
+        Resource = aws_kms_key.container_secrets.arn
+      }
+    ]
   })
 }
