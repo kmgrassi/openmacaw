@@ -32,6 +32,11 @@ on:
         description: "Image tag. Defaults to the checked-out commit SHA."
         required: false
         type: string
+      openmacaw_ref:
+        description: "kmgrassi/OpenMacaw ref (branch/tag/SHA) to build from."
+        required: false
+        default: main
+        type: string
   workflow_call:
     inputs:
       deploy_environment:
@@ -44,6 +49,10 @@ on:
       image_tag:
         required: false
         default: ""
+        type: string
+      openmacaw_ref:
+        required: false
+        default: main
         type: string
     outputs:
       image_tag:
@@ -77,8 +86,14 @@ jobs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       image_uri: ${{ steps.meta.outputs.image_uri }}
     steps:
-      - name: Check out repository
+      # Explicitly check out OpenMacaw (not the caller) so the executor
+      # Dockerfile and the runtime/ build context are present when this
+      # reusable workflow is invoked via workflow_call from the KG-prod repo.
+      - name: Check out OpenMacaw
         uses: actions/checkout@v5
+        with:
+          repository: kmgrassi/OpenMacaw
+          ref: ${{ inputs.openmacaw_ref || 'main' }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -99,7 +114,10 @@ jobs:
             --query 'repositories[0].repositoryUri' \
             --output text)"
 
-          IMAGE_TAG="${IMAGE_TAG_OVERRIDE:-$GITHUB_SHA}"
+          # Default the tag to the checked-out OpenMacaw commit (not the
+          # caller's GITHUB_SHA), so it matches the app-deploy image tags.
+          OPENMACAW_SHA="$(git rev-parse HEAD)"
+          IMAGE_TAG="${IMAGE_TAG_OVERRIDE:-$OPENMACAW_SHA}"
           IMAGE_URI="${REPO_URL}:${IMAGE_TAG}"
 
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"

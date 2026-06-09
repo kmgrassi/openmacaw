@@ -41,6 +41,11 @@ on:
         description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/container-execution-foundation/deploy/config."
         required: false
         type: string
+      openmacaw_ref:
+        description: "kmgrassi/OpenMacaw ref (branch/tag/SHA) to deploy from."
+        required: false
+        default: main
+        type: string
   workflow_call:
     inputs:
       deploy_environment:
@@ -54,6 +59,10 @@ on:
       deploy_config_param:
         required: false
         default: ""
+        type: string
+      openmacaw_ref:
+        required: false
+        default: main
         type: string
     outputs:
       ecr_repository_name:
@@ -88,8 +97,15 @@ jobs:
       ecr_repository_name: ${{ steps.outputs.outputs.ecr_repository_name }}
       ecr_repository_url: ${{ steps.outputs.outputs.ecr_repository_url }}
     steps:
-      - name: Check out repository
+      # Explicitly check out OpenMacaw (not the caller). When this reusable
+      # workflow is invoked via workflow_call from the KG-prod repo, the
+      # default checkout would pull the caller, which lacks the OpenMacaw
+      # Terraform stacks.
+      - name: Check out OpenMacaw
         uses: actions/checkout@v5
+        with:
+          repository: kmgrassi/OpenMacaw
+          ref: ${{ inputs.openmacaw_ref || 'main' }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
