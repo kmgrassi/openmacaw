@@ -12,10 +12,14 @@ vi.mock("./ensure-gateway-config.js", () => ({
 vi.mock("./local-coding-execution-target.js", () => ({
   resolveLocalCodingExecutionTarget: vi.fn(),
 }));
+vi.mock("../repositories/agents.js", () => ({
+  findSetupAgentById: vi.fn(),
+}));
 
 const { resolveExecutionProfile } = vi.mocked(await import("./execution-profile-resolver.js"));
 const { ensureGatewayConfigExists } = vi.mocked(await import("./ensure-gateway-config.js"));
 const { resolveLocalCodingExecutionTarget } = vi.mocked(await import("./local-coding-execution-target.js"));
+const { findSetupAgentById } = vi.mocked(await import("../repositories/agents.js"));
 const { assertRuntimePrepareSupported } = await import("./runtime-prepare.js");
 
 const agentId = "11111111-1111-4111-8111-111111111111";
@@ -120,13 +124,31 @@ function localRelayResolution(): ExecutionProfileResolution {
 
 describe("assertRuntimePrepareSupported", () => {
   const originalNodeEnv = process.env.NODE_ENV;
+  const originalContainerExecutionRoutingMode = process.env.CONTAINER_EXECUTION_ROUTING_MODE;
 
   beforeEach(() => {
     vi.resetAllMocks();
+    delete process.env.CONTAINER_EXECUTION_ROUTING_MODE;
+    findSetupAgentById.mockResolvedValue({
+      id: agentId,
+      workspace_id: workspaceId,
+      name: "Coding Agent",
+      status: "active",
+      type: "coding",
+      model_settings: {},
+      tool_policy: {},
+      created_by_user_id: userId,
+      updated_at: "2026-06-09T12:00:00.000Z",
+    });
   });
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv;
+    if (originalContainerExecutionRoutingMode === undefined) {
+      delete process.env.CONTAINER_EXECUTION_ROUTING_MODE;
+    } else {
+      process.env.CONTAINER_EXECUTION_ROUTING_MODE = originalContainerExecutionRoutingMode;
+    }
   });
 
   it("short-circuits custom agents before credential preflight", async () => {
@@ -306,6 +328,51 @@ describe("assertRuntimePrepareSupported", () => {
       localRuntime: true,
     });
     expect(resolveLocalCodingExecutionTarget).toHaveBeenCalledWith({ workspaceId });
+  });
+
+  it("container-routed local_model_coding agents do not require a registered helper before startup", async () => {
+    process.env.CONTAINER_EXECUTION_ROUTING_MODE = "container_default";
+    resolveExecutionProfile.mockResolvedValueOnce(
+      completeResolution({
+        agent: { agentId, workspaceId, role: "coding" },
+        profile: profile({
+          role: "coding",
+          runnerKind: "local_model_coding",
+          provider: "openai_compatible",
+          model: "qwen3-coder:30b",
+          credentialRef: null,
+          capabilities: {
+            streaming: true,
+            toolCalls: true,
+            workspaceWrite: true,
+            structuredOutput: true,
+            interrupt: true,
+          },
+        }),
+      }),
+    );
+    resolveExecutionProfile.mockResolvedValueOnce(
+      completeResolution({
+        agent: { agentId, workspaceId, role: "coding" },
+        profile: profile({
+          role: "coding",
+          runnerKind: "local_model_coding",
+          provider: "openai_compatible",
+          model: "qwen3-coder:30b",
+          credentialRef: null,
+        }),
+      }),
+    );
+
+    const result = await assertRuntimePrepareSupported(accessToken, userId, agentId);
+
+    expect(result).toEqual({
+      agentId,
+      agentType: "coding",
+      workspaceId,
+      localRuntime: false,
+    });
+    expect(resolveLocalCodingExecutionTarget).not.toHaveBeenCalled();
   });
 
   it("local_runtime agent bypasses launcher in development", async () => {

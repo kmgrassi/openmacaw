@@ -1,9 +1,11 @@
 import { isLocalRunnerKind } from "../../../../contracts/runner-kinds.js";
 import type { DefaultAgentRole } from "../../../../contracts/setup.js";
 import { ApiRouteError } from "../http.js";
+import { findSetupAgentById } from "../repositories/agents.js";
 import { resolveLocalCodingExecutionTarget } from "./local-coding-execution-target.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
 import { ensureGatewayConfigExists } from "./ensure-gateway-config.js";
+import { resolveRoutedExecutionTargetKind } from "./runtime-dispatch-context.js";
 import { buildConfigurationChecklist } from "./setup/builders.js";
 
 function customBackendType(profile: Awaited<ReturnType<typeof resolveExecutionProfile>>["profile"]): string | null {
@@ -33,10 +35,17 @@ export async function assertRuntimePrepareSupported(accessToken: string, request
     throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
   }
 
-  // local_model_coding is also a local path, but it additionally needs a
-  // registered helper target before the dashboard can report readiness.
+  // local_model_coding needs a registered helper only when the staged
+  // execution-target routing still resolves this workspace to local_helper.
   if (initialResolution.profile?.runnerKind === "local_model_coding") {
-    await resolveLocalCodingExecutionTarget({ workspaceId: initialResolution.profile.workspaceId });
+    const agent = await findSetupAgentById(accessToken, agentId);
+    const executionTargetKind = resolveRoutedExecutionTargetKind({
+      agentToolPolicy: agent?.tool_policy ?? {},
+      workspaceId: initialResolution.profile.workspaceId,
+    });
+    if (executionTargetKind === "local_helper") {
+      await resolveLocalCodingExecutionTarget({ workspaceId: initialResolution.profile.workspaceId });
+    }
 
     const resolution = await resolveExecutionProfile({ accessToken, requesterUserId, agentId });
     if (resolution.missing.length > 0 || !resolution.profile) {
@@ -52,7 +61,7 @@ export async function assertRuntimePrepareSupported(accessToken: string, request
       agentId: resolution.profile.agentId,
       agentType: resolution.profile.role,
       workspaceId: resolution.profile.workspaceId,
-      localRuntime: true,
+      localRuntime: executionTargetKind === "local_helper",
     };
   }
 
