@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { TranscriptRecorder, summarizeHttpExchange } from "./agent-transcript.mjs";
 
 const DEFAULT_ORCHESTRATOR_URL = "http://127.0.0.1:4000";
 const DEFAULT_TIMEOUT_MS = 5_000;
+
+loadDotEnv(path.resolve(process.cwd(), ".env"));
+loadDotEnv(path.resolve(process.cwd(), "apps/orchestrator/.env"));
+loadDotEnv(path.resolve(process.cwd(), "../platform/.env"));
 
 function parseArgs(argv) {
   const opts = {
@@ -15,6 +22,8 @@ function parseArgs(argv) {
     timeoutMs: numberFromEnv("LOCAL_RELAY_SMOKE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS),
     json: false,
     recordPath: process.env.RUNTIME_AGENT_TRANSCRIPT || "",
+    supabaseKey:
+      process.env.LAUNCHER_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -73,7 +82,7 @@ async function main() {
     model_present: Boolean(opts.model),
     required_capabilities: opts.requiredCapabilities,
   });
-  const result = await captureJson(localRuntimeHealthUrl(opts), opts.timeoutMs);
+  const result = await captureJson(localRuntimeHealthUrl(opts), opts.timeoutMs, serviceRoleHeaders(opts));
   recorder.record("relay.health.response", summarizeHttpExchange({ method: "GET", ...result }));
   const payload = result.body || {};
   const report = {
@@ -96,12 +105,12 @@ async function main() {
   process.exitCode = report.ok ? 0 : 1;
 }
 
-async function captureJson(url, timeoutMs) {
+async function captureJson(url, timeoutMs, headers = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, { headers: { accept: "application/json" }, signal: controller.signal });
+    const response = await fetch(url, { headers: { accept: "application/json", ...headers }, signal: controller.signal });
     const text = await response.text();
     return {
       ok: response.ok,
@@ -121,6 +130,14 @@ async function captureJson(url, timeoutMs) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function serviceRoleHeaders(opts) {
+  if (!opts.supabaseKey) return {};
+  return {
+    apikey: opts.supabaseKey,
+    authorization: `Bearer ${opts.supabaseKey}`,
+  };
 }
 
 function localRuntimeHealthUrl(opts) {
@@ -164,6 +181,30 @@ function parsePositiveInt(value, label) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} must be a positive integer`);
   return parsed;
+}
+
+function loadDotEnv(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const text = fs.readFileSync(filePath, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = unquoteEnv(rawValue.trim());
+  }
+}
+
+function unquoteEnv(value) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 main().catch((error) => {

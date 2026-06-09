@@ -184,13 +184,12 @@ defmodule SymphonyElixir.LocalRelay.Registry do
   end
 
   def handle_call({:complete, correlation_id, frame}, _from, state) do
-    case pop_pending(state, correlation_id) do
-      {:ok, pending, state} ->
-        send(pending.caller, {:local_relay_complete, correlation_id, frame})
+    case Map.fetch(state.pending, correlation_id) do
+      {:ok, %{awaiting_tool_outputs?: true}} ->
         {:reply, :ok, state}
 
-      {:error, state} ->
-        {:reply, {:error, :local_runner_protocol_error}, state}
+      _other ->
+        complete_pending(correlation_id, frame, state)
     end
   end
 
@@ -209,6 +208,7 @@ defmodule SymphonyElixir.LocalRelay.Registry do
     case Map.fetch(state.pending, correlation_id) do
       {:ok, pending} ->
         send(pending.caller, {:local_relay_tool_call_request, correlation_id, frame})
+        state = put_in(state, [:pending, correlation_id, :awaiting_tool_outputs?], true)
         {:reply, :ok, state}
 
       :error ->
@@ -247,6 +247,7 @@ defmodule SymphonyElixir.LocalRelay.Registry do
       {:ok, pending} ->
         with %{pid: pid} <- Map.get(state.helpers, pending.helper_id) do
           send(pid, {:local_relay_frame, Map.put(frame, "correlation_id", correlation_id)})
+          state = put_in(state, [:pending, correlation_id, :awaiting_tool_outputs?], false)
           {:reply, :ok, state}
         else
           _missing_helper -> {:reply, {:error, :local_runner_protocol_error}, state}
@@ -274,6 +275,17 @@ defmodule SymphonyElixir.LocalRelay.Registry do
   def handle_call(:reset, _from, state) do
     Enum.each(state.helpers, fn {_id, helper} -> Process.demonitor(helper.monitor, [:flush]) end)
     {:reply, :ok, %{helpers: %{}, by_key: %{}, pending: %{}}}
+  end
+
+  defp complete_pending(correlation_id, frame, state) do
+    case pop_pending(state, correlation_id) do
+      {:ok, pending, state} ->
+        send(pending.caller, {:local_relay_complete, correlation_id, frame})
+        {:reply, :ok, state}
+
+      {:error, state} ->
+        {:reply, {:error, :local_runner_protocol_error}, state}
+    end
   end
 
   @impl true

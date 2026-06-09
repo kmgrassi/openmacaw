@@ -9,7 +9,7 @@ This is mostly **configuration, not new code** — the manager agent, its
 autonomous scheduler, the `git.run` tool (full `git`/`gh` CLI), and a PR-
 shepherding prompt already exist. This runbook wires them together.
 
-> **Read the caveats first** ([§7](#7-caveats--known-limitations)). The two that
+> **Read the caveats first** ([§8](#8-caveats--known-limitations)). The two that
 > bite: (a) local small models are unreliable at tool-calling, and (b) the
 > current prompt dispatches an internal coding runner to *address* reviews
 > rather than asking `@codex` — changing that is a prompt edit
@@ -67,9 +67,9 @@ end-to-end with a local model** — not new subsystems.
 | GitHub read/act (`gh pr list/view/comment/merge`) | ✅ Built | `tools/git_run.ex` |
 | PR-shepherding decision logic | 🟡 Mostly | prompt matches review-trigger + merge; **address-via-`@codex` is a 1-line edit** ([§6](#6-tune-the-manager-prompt-to-your-exact-flow)) |
 | Watch a *set* of repos | 🟡 Config | one scheduled task / work item per repo; one workspace root hosts `gh --repo <owner/repo>` calls |
-| Binding the manager → local model | ✅ Built | runtime-profile editor / `PUT …/runtime-profile` rewrites the rule ([§3](#3-point-the-managers-model-at-the-local-runner), [§8](#8-do-routing-rules-update-when-i-change-an-agents-provider)) |
-| Repo-root + `manager_runner_id` wiring | 🟡 Friction | may still need a direct row in some builds ([§7](#7-caveats--known-limitations) #4) |
-| Local model emits **reliable** tool calls | 🔴 Unproven | the real risk — depends on the model; capability handshake passes regardless ([§7](#7-caveats--known-limitations) #1) |
+| Binding the manager → local model | ✅ Built | runtime-profile editor / `PUT …/runtime-profile` rewrites the rule ([§3](#3-point-the-managers-model-at-the-local-runner), [§9](#9-do-routing-rules-update-when-i-change-an-agents-provider)) |
+| Repo-root + `manager_runner_id` wiring | 🟡 Friction | may still need a direct row in some builds ([§8](#8-caveats--known-limitations) #4) |
+| Local model emits **reliable** tool calls | 🔴 Unproven | the real risk — depends on the model; capability handshake passes regardless ([§8](#8-caveats--known-limitations) #1) |
 | Event-driven PR state tracking | 🔴 Not built | today state is re-derived by polling `gh` each tick (design open question) |
 | Proven in production with a local model | 🔴 Not yet | this runbook is the path to the first end-to-end run |
 
@@ -202,7 +202,7 @@ Under the hood this calls `PUT /api/stored-agents/:id/runtime-profile`
 (`updateAgentRuntimeProfile`), which **rewrites the agent's routing rule**
 (runner kind, provider, model, credential) in one upsert — so switching
 providers later updates the rule automatically (see
-[§8](#8-do-routing-rules-update-when-i-change-an-agents-provider)). The editor
+[§9](#9-do-routing-rules-update-when-i-change-an-agents-provider)). The editor
 will confirm the local helper is registered once it's online (fixed for
 managers in the PR that ships this runbook — previously it falsely warned
 "no helper").
@@ -310,7 +310,51 @@ dedicated prompt/agent if you want this behavior isolated.)
 
 ---
 
-## 7. Caveats & known limitations
+## 7. End-to-end smoke harness
+
+The manual gold standard above now has a scriptable harness:
+
+```bash
+pnpm -C runtime run smoke:manager-github-pr -- \
+  --workspace-id "$WORKSPACE_ID" \
+  --agent-id "$MANAGER_AGENT_ID" \
+  --repo owner/repo \
+  --pr owner/repo#123
+```
+
+By default this is read-only. It preflights `gh auth`, verifies the target
+repo/PR, checks that the local relay has an online Qwen-capable helper, waits
+for the manager to be ready, seeds disposable due work items, forces a manager
+tick, then asserts persisted `git.run` calls for:
+
+- `gh pr list --repo owner/repo ...`
+- `gh pr view <num> --repo owner/repo ...`
+- `gh pr checks <num> --repo owner/repo`
+
+It fails if a read-only run observes write commands such as `gh pr comment`,
+`gh pr review`, `gh pr merge`, or `git push`.
+
+Real GitHub writes are deliberately gated:
+
+```bash
+pnpm -C runtime run smoke:manager-github-pr -- \
+  --workspace-id "$WORKSPACE_ID" \
+  --agent-id "$MANAGER_AGENT_ID" \
+  --repo owner/repo \
+  --pr owner/repo#123 \
+  --action review-comment \
+  --allow-github-writes \
+  --confirm-github-writes owner/repo#123
+```
+
+Supported write actions are `review-comment` (`@codex review`),
+`address-comment` (`@codex address that feedback`), and `merge`
+(`gh pr merge --squash --delete-branch`). Keep the read-only run passing
+before trying write modes against production repos.
+
+---
+
+## 8. Caveats & known limitations
 
 1. **Local-model tool-calling reliability — the #1 risk.** The capability
    handshake passes *unconditionally* (the helper hardcodes
@@ -341,7 +385,7 @@ dedicated prompt/agent if you want this behavior isolated.)
 
 ---
 
-## 8. Do routing rules update when I change an agent's provider?
+## 9. Do routing rules update when I change an agent's provider?
 
 **Yes.** The `routing_rule` is the canonical record the runtime resolves
 against (preferred over the legacy `gateway_config` fallback), and it is
