@@ -14,7 +14,7 @@ function closeServer(server: Server | undefined) {
   return new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
-describe("AWS resource access PR8 smoke route", () => {
+describe("container execution E1 handoff smoke route", () => {
   let server: Server;
   let baseUrl = "";
 
@@ -32,14 +32,23 @@ describe("AWS resource access PR8 smoke route", () => {
   });
 
   it("returns artifact, failure, and review handoff evidence without secrets", async () => {
-    const response = await fetch(`${baseUrl}/api/smoke/aws-resource-access-pr8`);
+    const response = await fetch(`${baseUrl}/api/smoke/container-execution-e1-handoff`);
 
     expect(response.status).toBe(200);
     const body = AwsResourceAccessSmokeResponseSchema.parse(await response.json());
 
+    expect(body.scenario).toBe("container-execution-e1-handoff");
     expect(body.liveAwsCalls).toBe(false);
     expect(body.resources).toHaveLength(2);
     expect(body.artifacts.map((artifact) => artifact.kind)).toEqual(["summary", "command_log", "patch"]);
+    expect(body.commandSummary.map((command) => command.command)).toEqual([
+      "git diff --stat",
+      "pnpm test -- --runInBand",
+    ]);
+    expect(body.filesChanged.map((file) => file.path)).toEqual([
+      "platform/apps/api/src/services/runtime-dispatch-context.ts",
+      "runtime/apps/orchestrator/lib/symphony_elixir/runner/artifacts.ex",
+    ]);
     expect(body.failures[0]?.phase).toBe("clone");
     expect(body.reviewHandoff.patchArtifactUri).toBe(body.artifacts.find((artifact) => artifact.kind === "patch")?.uri);
     expect(body.smokeSteps.map((step) => step.name)).toEqual([

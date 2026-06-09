@@ -18,11 +18,12 @@ export function buildAwsResourceAccessSmokeHarness(): AwsResourceAccessSmokeResp
   const agentId = "22222222-2222-4222-8222-222222222222";
   const runId = "run-pr8-smoke";
   const sessionId = "session-pr8-smoke";
-  const artifactPrefix = `s3://symphony-dev-container-artifacts/workspaces/${workspaceId}/runs/${runId}/`;
-  const patchArtifactUri = `${artifactPrefix}patches/final.diff`;
+  const artifactPrefix = `s3://symphony-dev-container-artifacts/container/workspaces/${workspaceId}/runs/${runId}/`;
+  const commandLogUri = `${artifactPrefix}command-logs/pnpm_test.log`;
+  const patchArtifactUri = `${artifactPrefix}final/final.diff`;
 
   const response = AwsResourceAccessSmokeResponseSchema.parse({
-    scenario: "aws-resource-access-pr8-handoff",
+    scenario: "container-execution-e1-handoff",
     liveAwsCalls: false,
     workspaceId,
     agentId,
@@ -50,15 +51,15 @@ export function buildAwsResourceAccessSmokeHarness(): AwsResourceAccessSmokeResp
     artifacts: [
       {
         kind: "summary",
-        uri: `${artifactPrefix}summaries/run-summary.json`,
+        uri: `${artifactPrefix}summary.json`,
         contentType: "application/json",
         sizeBytes: 624,
         sha256: "fixture-summary-sha256",
       },
       {
         kind: "command_log",
-        uri: `${artifactPrefix}logs/tool-events.ndjson`,
-        contentType: "application/x-ndjson",
+        uri: commandLogUri,
+        contentType: "text/plain; charset=utf-8",
         sizeBytes: 1820,
         sha256: "fixture-command-log-sha256",
       },
@@ -68,6 +69,36 @@ export function buildAwsResourceAccessSmokeHarness(): AwsResourceAccessSmokeResp
         contentType: "text/x-diff",
         sizeBytes: 412,
         sha256: "fixture-patch-sha256",
+      },
+    ],
+    commandSummary: [
+      {
+        command: "git diff --stat",
+        status: "completed",
+        exitCode: 0,
+        durationMs: 184,
+        artifactUri: commandLogUri,
+      },
+      {
+        command: "pnpm test -- --runInBand",
+        status: "completed",
+        exitCode: 0,
+        durationMs: 4238,
+        artifactUri: commandLogUri,
+      },
+    ],
+    filesChanged: [
+      {
+        path: "platform/apps/api/src/services/runtime-dispatch-context.ts",
+        status: "modified",
+        additions: 18,
+        deletions: 4,
+      },
+      {
+        path: "runtime/apps/orchestrator/lib/symphony_elixir/runner/artifacts.ex",
+        status: "modified",
+        additions: 12,
+        deletions: 6,
       },
     ],
     failures: [
@@ -109,7 +140,7 @@ export function buildAwsResourceAccessSmokeHarness(): AwsResourceAccessSmokeResp
         name: "artifact_write",
         status: "passed",
         evidence: "Summary, command log, and patch artifacts written under the run prefix.",
-        artifactUri: `${artifactPrefix}summaries/run-summary.json`,
+        artifactUri: `${artifactPrefix}summary.json`,
       },
       {
         name: "cleanup",

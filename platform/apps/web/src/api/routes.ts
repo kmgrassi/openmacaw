@@ -214,6 +214,7 @@ export const ROUTES = {
   claudeCodeSmoke: `${SMOKE_PREFIX}/claude-code-dispatch`,
   modelAgnosticSmoke: `${SMOKE_PREFIX}/model-agnostic-handoff`,
   localModelCodingSmoke: `${SMOKE_PREFIX}/local-model-coding-runner`,
+  containerArtifactHandoffSmoke: `${SMOKE_PREFIX}/container-execution-e1-handoff`,
 
   /** Scheduled agent config and live manager status */
   managerAgentConfig: (agentId: string, workspaceId: string) =>

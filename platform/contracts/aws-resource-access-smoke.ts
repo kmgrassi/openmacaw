@@ -21,7 +21,7 @@ export const AwsResourceAccessSmokeStepSchema = z.object({
 });
 
 export const AwsResourceAccessSmokeResponseSchema = z.object({
-  scenario: z.literal("aws-resource-access-pr8-handoff"),
+  scenario: z.literal("container-execution-e1-handoff"),
   liveAwsCalls: z.literal(false),
   workspaceId: z.string().uuid(),
   agentId: z.string().uuid(),
@@ -39,6 +39,23 @@ export const AwsResourceAccessSmokeResponseSchema = z.object({
   ),
   artifactPrefix: z.string().trim().min(1),
   artifacts: z.array(RuntimeArtifactSchema),
+  commandSummary: z.array(
+    z.object({
+      command: z.string().trim().min(1),
+      status: z.enum(["completed", "failed"]),
+      exitCode: z.number().int().nullable(),
+      durationMs: z.number().int().nonnegative(),
+      artifactUri: z.string().trim().min(1).optional(),
+    }),
+  ),
+  filesChanged: z.array(
+    z.object({
+      path: z.string().trim().min(1),
+      status: z.enum(["added", "modified", "deleted", "renamed"]),
+      additions: z.number().int().nonnegative(),
+      deletions: z.number().int().nonnegative(),
+    }),
+  ),
   failures: z.array(RuntimeFailureSurfaceSchema),
   reviewHandoff: z.object({
     mode: z.enum(["patch_artifact", "branch_pr"]),
