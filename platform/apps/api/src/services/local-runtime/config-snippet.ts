@@ -95,7 +95,9 @@ export function buildSetupCommand(input: ConfigSnippetInput) {
 
   const helperArgs = args.map(shellQuote).join(" ");
   return [
-    'HELPER_BIN="$(go env GOPATH)/bin/local-runtime-helper"',
+    'GOBIN="$(go env GOBIN)"',
+    'GOPATH="$(go env GOPATH)"',
+    'HELPER_BIN="${GOBIN:-$GOPATH/bin}/local-runtime-helper"',
     "cd local-runtime-helper",
     'go install ./cmd/local-runtime-helper',
     `"$HELPER_BIN" ${helperArgs}`,
