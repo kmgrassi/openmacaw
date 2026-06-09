@@ -31,7 +31,7 @@ seed_rows as (
     from public.scheduled_task st
     where st.workspace_id = ma.workspace_id
       and st.delivery->>'kind' = 'learning_distillation'
-      and coalesce(st.cancelled_reason, '') = ''
+      and st.enabled = true
   )
 )
 insert into public.scheduled_task (
