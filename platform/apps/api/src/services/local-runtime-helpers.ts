@@ -126,7 +126,7 @@ export async function unassignLocalModelFromAgent(input: {
 
   const { data: rule, error: ruleError } = await supabase
     .from("routing_rule")
-    .select("id")
+    .select("id, model, provider")
     .eq("id", input.ruleId)
     .eq("workspace_id", input.workspaceId)
     .in("runner_kind", [...REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS])
@@ -146,5 +146,74 @@ export async function unassignLocalModelFromAgent(input: {
 
   if (deleteError) {
     assertSupabaseSuccess("remove local runtime assignment", null, deleteError);
+  }
+
+  const { data: agent, error: agentError } = await supabase
+    .from("agent")
+    .select("id, type")
+    .eq("id", input.agentId)
+    .eq("workspace_id", input.workspaceId)
+    .maybeSingle();
+
+  assertSupabaseSuccess("read unassigned local runtime agent", agent, agentError);
+
+  const provider = rule.provider?.trim();
+  const model = rule.model?.trim();
+  if (agent?.type !== "manager" || provider !== "openai_compatible" || !model) {
+    return;
+  }
+
+  const localEndpointUrl = await getRoutingRuleLocalEndpointUrl({
+    ruleId: input.ruleId,
+    workspaceId: input.workspaceId,
+  });
+  if (!localEndpointUrl) {
+    return;
+  }
+
+  const { data: runtimeProfileRule, error: runtimeProfileRuleError } = await supabase
+    .from("routing_rule")
+    .select("id")
+    .eq("workspace_id", input.workspaceId)
+    .eq("name", `agent:${input.agentId}:execution-profile`)
+    .eq("provider", provider)
+    .eq("model", model)
+    .maybeSingle();
+
+  assertSupabaseSuccess("read manager local runtime profile", runtimeProfileRule, runtimeProfileRuleError);
+  if (!runtimeProfileRule?.id) {
+    return;
+  }
+
+  const runtimeProfileEndpointUrl = await getRoutingRuleLocalEndpointUrl({
+    ruleId: runtimeProfileRule.id,
+    workspaceId: input.workspaceId,
+  });
+  if (runtimeProfileEndpointUrl !== localEndpointUrl) {
+    return;
+  }
+
+  const { error: deleteRuntimeProfileMatchesError } = await supabase
+    .from("routing_rule_match")
+    .delete()
+    .eq("workspace_id", input.workspaceId)
+    .eq("rule_id", runtimeProfileRule.id);
+
+  if (deleteRuntimeProfileMatchesError) {
+    assertSupabaseSuccess(
+      "remove manager local runtime profile matches",
+      null,
+      deleteRuntimeProfileMatchesError,
+    );
+  }
+
+  const { error: deleteRuntimeProfileError } = await supabase
+    .from("routing_rule")
+    .delete()
+    .eq("workspace_id", input.workspaceId)
+    .eq("id", runtimeProfileRule.id);
+
+  if (deleteRuntimeProfileError) {
+    assertSupabaseSuccess("remove manager local runtime profile", null, deleteRuntimeProfileError);
   }
 }

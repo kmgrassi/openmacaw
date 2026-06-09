@@ -401,8 +401,24 @@ describe("local runtime routes", () => {
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
+        {
+          id: "manager-profile-rule",
+          workspace_id: workspaceId,
+          name: "agent:manager-agent-1:execution-profile",
+          runner_kind: "llm_tool_runner",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
       ],
       routing_rule_match: [
+        {
+          id: "local-endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
         {
           id: "match-1",
           workspace_id: workspaceId,
@@ -410,6 +426,22 @@ describe("local runtime routes", () => {
           kind: "agent_id",
           key: "agent_id",
           value: "manager-agent-1",
+        },
+        {
+          id: "manager-profile-agent-match",
+          workspace_id: workspaceId,
+          rule_id: "manager-profile-rule",
+          kind: "agent_id",
+          key: "agent_id",
+          value: "manager-agent-1",
+        },
+        {
+          id: "manager-profile-endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "manager-profile-rule",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
         },
       ] as Array<Record<string, unknown>>,
       agent: [
@@ -457,7 +489,19 @@ describe("local runtime routes", () => {
     );
 
     expect(response.status).toBe(204);
-    expect(db.routing_rule_match).toEqual([]);
+    expect(db.routing_rule_match).toEqual([
+      expect.objectContaining({
+        id: "local-endpoint-match",
+        rule_id: "local-rule-1",
+        kind: "local_endpoint",
+        value: "http://127.0.0.1:11434/v1",
+      }),
+    ]);
+    expect(db.routing_rule).toEqual([
+      expect.objectContaining({
+        id: "local-rule-1",
+      }),
+    ]);
     expect(db.gateway_config[0]).toMatchObject({
       id: "gateway-config-1",
       version: 4,
