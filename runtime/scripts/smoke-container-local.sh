@@ -34,7 +34,7 @@ docker build -f "$ROOT_DIR/apps/orchestrator/deploy/Dockerfile.container-executo
 docker run --rm -i \
   -v "$SMOKE_ROOT/workspace:/workspace" \
   -v "$SMOKE_ROOT/request.json:/tmp/request.json:ro" \
-  "$IMAGE_TAG" --request-json /tmp/request.json < "$SMOKE_ROOT/frames.jsonl" > "$SMOKE_ROOT/output.jsonl"
+  "$IMAGE_TAG" coding-executor --request-json /tmp/request.json < "$SMOKE_ROOT/frames.jsonl" > "$SMOKE_ROOT/output.jsonl"
 
 node - "$SMOKE_ROOT/output.jsonl" "$repo/message.txt" <<'NODE'
 const fs = require("fs");

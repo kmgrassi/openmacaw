@@ -33,4 +33,5 @@ USER appuser
 
 ENV SYMPHONY_EXECUTOR_WORKSPACE_ROOT=/workspace
 
-ENTRYPOINT ["/app/bin/symphony", "cloud-executor", "coding-executor"]
+ENTRYPOINT ["/app/bin/symphony", "cloud-executor"]
+CMD ["coding-executor"]
