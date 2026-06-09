@@ -60,6 +60,12 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/canonical-work-items-routing-scope.md](active/canonical-work-items-routing-scope.md)
   — Planner-chat-first dashboard and work-items routing: landing route,
   plans/work-items view improvements, background-agent navigation contract.
+- [active/container-execution-pr-plan.md](active/container-execution-pr-plan.md)
+  — Finish-it PR plan for per-run isolated container execution of coding
+  tools: in-container executor + image, worker-bridge container backend,
+  dispatch routing, the two Terraform stacks, security infra, and staged
+  rollout — broken into parallelizable PRs with a dependency graph.
+  Operationalizes production-container-tool-execution-scope.
 - [active/contract-safety-pr-plan.md](active/contract-safety-pr-plan.md) —
   Contract safety checks across boundaries.
 - [active/credentials-streamlining-scope.md](active/credentials-streamlining-scope.md)
