@@ -62,7 +62,7 @@ Wave 3 (first real dev end-to-end + hardening)
 
 Wave 4 (rollout)
   ├─ F1  Smoke catalog + schedule + alarms           (needs D3)
-  └─ F2  Routing flag + staged rollout               (needs INT green)
+  └─ F2  Routing flag + staged rollout               (needs INT green + F1)
 ```
 
 **Critical path:** A1 → B1/B2 → D1 → D2 → D3 → INT → F. C1 is off the critical
