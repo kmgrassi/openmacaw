@@ -10,23 +10,36 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
   @behaviour SymphonyElixir.Runner
 
   alias SymphonyElixir.{ClaudeCode.Bridge, Config, PathSafety, WorkItem}
+  alias SymphonyElixir.Runner.WorkerBridgeRouting
 
   @impl true
   def start_session(config, workspace) when is_map(config) do
-    if probe_only?(config) do
-      with :ok <- ping(config) do
-        {:ok, %{probe_only: true, runner: "claude_code"}}
-      end
-    else
-      with {:ok, cwd} <- validate_workspace_cwd(workspace, config),
-           :ok <- validate_credentials(config) do
-        options = normalize_options(config)
-        Bridge.start_session(cwd, options)
-      end
+    cond do
+      probe_only?(config) ->
+        with :ok <- ping(config) do
+          {:ok, %{probe_only: true, runner: "claude_code"}}
+        end
+
+      WorkerBridgeRouting.container_target?(config) ->
+        with {:ok, cwd} <- validate_workspace_cwd(workspace, config),
+             :ok <- validate_credentials(config) do
+          WorkerBridgeRouting.start_session("claude_code", config, cwd)
+        end
+
+      true ->
+        with {:ok, cwd} <- validate_workspace_cwd(workspace, config),
+             :ok <- validate_credentials(config) do
+          options = normalize_options(config)
+          Bridge.start_session(cwd, options)
+        end
     end
   end
 
   @impl true
+  def run_turn(%{worker_bridge: true} = session, _prompt, %WorkItem{}) do
+    WorkerBridgeRouting.run_turn(session, "claude_code")
+  end
+
   def run_turn(session, prompt, %WorkItem{} = work_item) when is_map(session) do
     on_message = Map.get(session.options, "on_message", fn _message -> :ok end)
 
@@ -46,6 +59,7 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
 
   @impl true
   def stop_session(%{probe_only: true}), do: :ok
+  def stop_session(%{worker_bridge: true} = session), do: WorkerBridgeRouting.stop_session(session)
 
   def stop_session(session), do: Bridge.stop(session)
 

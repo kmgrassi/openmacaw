@@ -41,7 +41,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
 
   @type start_params :: %{required(String.t()) => term()}
 
-  @supported_kinds ~w(codex)
+  @supported_kinds ~w(codex claude_code)
   @default_idle_timeout_ms 15 * 60 * 1_000
   @default_max_lifetime_ms 3 * 60 * 60 * 1_000
 
@@ -327,6 +327,29 @@ defmodule SymphonyElixir.WorkerBridge.Server do
     end
   end
 
+  defp build_launch_spec(%{"kind" => "claude_code"} = params, env, workspace_path, resources) do
+    case Map.get(params, "command") do
+      command when is_binary(command) ->
+        command = String.trim(command)
+
+        if command == "" do
+          {:error, :missing_worker_command}
+        else
+          {:ok,
+           %{
+             kind: "claude_code",
+             command: command,
+             cwd: workspace_path,
+             env: maybe_put_resource_env(env, resources),
+             resources: resources
+           }}
+        end
+
+      _command ->
+        {:error, :missing_worker_command}
+    end
+  end
+
   defp build_session_entry(id, params, resolved_env, launch_spec, port, authorized_resources) do
     %{
       id: id,
@@ -508,8 +531,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
         {:ok, expanded_workspace}
 
       true ->
-        {:error,
-         {:invalid_workspace_cwd, :outside_workspace_root, expanded_workspace, expanded_root}}
+        {:error, {:invalid_workspace_cwd, :outside_workspace_root, expanded_workspace, expanded_root}}
     end
   end
 
@@ -552,9 +574,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
   end
 
   defp validate_workspace_cwd(workspace) when is_binary(workspace) do
-    case PathSafety.validate_local_workspace_cwd(workspace, Config.settings!().workspace.root,
-           require_dir?: true
-         ) do
+    case PathSafety.validate_local_workspace_cwd(workspace, Config.settings!().workspace.root, require_dir?: true) do
       {:error, {:invalid_workspace_cwd, :cwd_not_found, canonical_workspace}} ->
         {:error, {:cwd_not_found, canonical_workspace}}
 

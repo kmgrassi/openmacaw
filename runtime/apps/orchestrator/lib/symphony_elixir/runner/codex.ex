@@ -24,27 +24,38 @@ defmodule SymphonyElixir.Runner.Codex do
   @behaviour SymphonyElixir.Runner
 
   alias SymphonyElixir.Codex.AppServer
+  alias SymphonyElixir.Runner.WorkerBridgeRouting
 
   @impl true
   def start_session(config, workspace) do
-    if probe_only?(config) do
-      with :ok <- ping(config) do
-        {:ok, %{probe_only: true, runner: "codex"}}
-      end
-    else
-      opts = session_opts(config)
-      AppServer.start_session(workspace, opts)
+    cond do
+      probe_only?(config) ->
+        with :ok <- ping(config) do
+          {:ok, %{probe_only: true, runner: "codex"}}
+        end
+
+      WorkerBridgeRouting.container_target?(config) ->
+        WorkerBridgeRouting.start_session("codex", config, workspace)
+
+      true ->
+        opts = session_opts(config)
+        AppServer.start_session(workspace, opts)
     end
   end
 
   @impl true
   def run_turn(session, prompt, work_item) do
-    opts = turn_opts(session)
-    AppServer.run_turn(session, prompt, work_item, opts)
+    if Map.get(session, :worker_bridge) do
+      WorkerBridgeRouting.run_turn(session, "codex")
+    else
+      opts = turn_opts(session)
+      AppServer.run_turn(session, prompt, work_item, opts)
+    end
   end
 
   @impl true
   def stop_session(%{probe_only: true}), do: :ok
+  def stop_session(%{worker_bridge: true} = session), do: WorkerBridgeRouting.stop_session(session)
 
   def stop_session(session) do
     AppServer.stop_session(session)
