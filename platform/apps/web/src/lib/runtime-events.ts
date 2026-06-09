@@ -1,4 +1,5 @@
 import type { GatewayEventFrame, SessionKey } from "../api/ws-types";
+import { formatDisplayLabel } from "./display-labels";
 
 export type RuntimeEventStatus = "running" | "success" | "error" | "info";
 
@@ -95,11 +96,7 @@ function sessionMatches(
 }
 
 function formatEventLabel(value: string): string {
-  return value
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^\w/, (first) => first.toUpperCase());
+  return formatDisplayLabel(value, { fallback: "" });
 }
 
 function formatUsageDetail(

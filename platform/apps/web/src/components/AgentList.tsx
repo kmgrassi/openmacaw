@@ -1,5 +1,6 @@
 import type { Agent } from "../hooks/useAgents";
 import { cn } from "../lib/cn";
+import { formatAgentMetadata } from "../lib/agent-metadata";
 import { statusToneClass, statusToneForValue } from "./ui/status-tones";
 
 export type AgentActivationState = {
@@ -16,16 +17,6 @@ type Props = {
   error?: string | null;
   onRetry?: () => void;
 };
-
-function formatAgentType(type: Agent["agentType"]) {
-  return type.charAt(0).toUpperCase() + type.slice(1);
-}
-
-function formatAgentMetadata(agent: Pick<Agent, "agentType" | "model">) {
-  return [formatAgentType(agent.agentType), agent.model]
-    .filter(Boolean)
-    .join(" · ");
-}
 
 export function AgentList({
   agents,

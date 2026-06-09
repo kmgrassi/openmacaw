@@ -1,4 +1,5 @@
 import { isApprovalRequiredText } from "../ApprovalRequiredNotice";
+import { normalizeDisplayLabel } from "../../lib/display-labels";
 import { formatStatusLabel as formatSharedStatusLabel } from "../../lib/status-labels";
 
 export function formatNumber(value: number | null | undefined) {
@@ -78,7 +79,7 @@ export function formatDuration(value: number | null | undefined) {
 }
 
 export function formatCommandAction(value: string) {
-  return value.replace(/[_-]+/g, " ");
+  return normalizeDisplayLabel(value);
 }
 
 export function toolEventTitle(event: {
