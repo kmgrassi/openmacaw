@@ -48,6 +48,46 @@ output "artifact_write_prefix" {
   value       = local.artifact_write_prefix
 }
 
+output "per_run_artifact_session_policy_template" {
+  description = "STS session policy template Runtime fills with artifact_bucket_arn and artifact_prefix for each run"
+  value       = local.per_run_artifact_session_policy_template
+}
+
+output "container_secret_kms_key_arn" {
+  description = "KMS key ARN used to encrypt container execution secrets"
+  value       = aws_kms_key.container_secrets.arn
+}
+
+output "container_secret_path_root" {
+  description = "Secrets Manager path root for container execution secrets"
+  value       = local.secret_path_root
+}
+
+output "container_smoke_secret_arn" {
+  description = "Smoke-test secret ARN used to verify in-scope secret reads"
+  value       = aws_secretsmanager_secret.smoke.arn
+}
+
+output "executor_lifecycle_state_machine_arn" {
+  description = "Step Functions state machine ARN Runtime should call instead of raw ECS RunTask"
+  value       = aws_sfn_state_machine.executor_lifecycle.arn
+}
+
+output "executor_network_firewall_arn" {
+  description = "AWS Network Firewall ARN enforcing executor egress policy"
+  value       = aws_networkfirewall_firewall.executor_egress.arn
+}
+
+output "executor_network_firewall_policy_arn" {
+  description = "AWS Network Firewall policy ARN for executor egress"
+  value       = aws_networkfirewall_firewall_policy.executor_egress.arn
+}
+
+output "executor_network_firewall_allowed_domains" {
+  description = "FQDN allowlist enforced for executor egress"
+  value       = var.network_firewall_allowed_domains
+}
+
 output "cloudwatch_log_group_name" {
   description = "CloudWatch log group for executor lifecycle logs"
   value       = aws_cloudwatch_log_group.executor.name

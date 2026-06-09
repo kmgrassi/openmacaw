@@ -24,9 +24,10 @@ resource "aws_ecs_task_definition" "executor" {
   container_definitions = jsonencode([
     merge(
       {
-        name      = var.executor_container_name
-        image     = local.executor_image
-        essential = true
+        name        = var.executor_container_name
+        image       = local.executor_image
+        essential   = true
+        stopTimeout = var.executor_stop_timeout_seconds
 
         environment = [
           { name = "EXECUTION_ADAPTER", value = "aws_ecs" },
