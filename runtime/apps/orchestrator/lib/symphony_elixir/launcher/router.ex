@@ -51,13 +51,7 @@ defmodule SymphonyElixir.Launcher.Router do
   end
 
   get "/local-relay/ws" do
-    state = %{
-      query_params: conn.query_params,
-      request_headers: Map.new(conn.req_headers),
-      peer_data: conn.remote_ip
-    }
-
-    Plug.Conn.upgrade_adapter(conn, :websocket, {SymphonyElixirWeb.LocalRelaySocket, state, []})
+    SymphonyElixirWeb.LocalRelayController.upgrade(conn, conn.params)
   end
 
   get "/api/v1/local-runtime/health" do

@@ -35,7 +35,7 @@ function parseArgs(argv) {
     requireQwen: true,
     allowGithubWrites: false,
     confirmGithubWrites: "",
-    requireAllCommands: false,
+    requireAllCommands: true,
     json: false,
     keepWorkItems: false,
     tickTimeoutMs: numberFromEnv("MANAGER_GITHUB_PR_SMOKE_TICK_TIMEOUT_MS", DEFAULT_TICK_TIMEOUT_MS),
@@ -65,7 +65,7 @@ function parseArgs(argv) {
     else if (arg === "--wait-timeout-ms" && next) opts.waitTimeoutMs = parsePositiveInt(next, "--wait-timeout-ms"), i += 1;
     else if (arg === "--allow-github-writes") opts.allowGithubWrites = true;
     else if (arg === "--confirm-github-writes" && next) opts.confirmGithubWrites = next, i += 1;
-    else if (arg === "--require-all-commands") opts.requireAllCommands = true;
+    else if (arg === "--allow-partial-commands") opts.requireAllCommands = false;
     else if (arg === "--skip-local-relay-check") opts.requireLocalRelay = false;
     else if (arg === "--skip-qwen-check") opts.requireQwen = false;
     else if (arg === "--json") opts.json = true;
@@ -111,7 +111,7 @@ Options:
   --orchestrator-url <url>        Default: ${DEFAULT_ORCHESTRATOR_URL}
   --skip-local-relay-check        Do not require helper health before running.
   --skip-qwen-check               Do not require manager status model to contain qwen.
-  --require-all-commands          Fail read-only runs unless every seeded exact command is observed.
+  --allow-partial-commands        Let read-only runs pass after any git.run command with no writes.
   --json                          Print machine-readable JSON.
   --keep-work-items               Leave disposable work items behind for debugging.
 
