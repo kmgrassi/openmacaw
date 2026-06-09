@@ -99,6 +99,7 @@ export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, re
         last_seen_at: null,
         revoked_at: null,
         runner_kinds: machineRunnerKinds,
+        advertised_runner_kinds: [],
       },
       workspaceRoot: sharedWorkspaceRoot,
     }),

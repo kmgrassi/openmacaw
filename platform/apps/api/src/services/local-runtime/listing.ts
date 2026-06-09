@@ -85,7 +85,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     machineIds.length > 0
       ? await supabase
           .from("local_runtime_machine")
-          .select("id, display_name, last_seen_at, revoked_at, runner_kinds")
+          .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds")
           .eq("workspace_id", workspaceId)
           .is("revoked_at", null)
           .in("id", machineIds)

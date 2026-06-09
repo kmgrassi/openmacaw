@@ -63,7 +63,7 @@ export async function getLocalRuntimeMachineDetails(
 
   const { data: machine, error: machineError } = await supabase
     .from("local_runtime_machine")
-    .select("id, display_name, last_seen_at, revoked_at, runner_kinds")
+    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds")
     .eq("workspace_id", workspaceId)
     .eq("id", machineId)
     .is("revoked_at", null)
@@ -180,6 +180,9 @@ export type LocalRuntimeRuleDetails = {
   provider: string;
   machineId: string;
   machineDisplayName: string;
+  machineLastSeenAt: string | null;
+  machineRunnerKinds: string[];
+  machineAdvertisedRunnerKinds: string[];
   workspaceRoot: string | null;
   toolCallCapability: LocalToolCallCapability | null;
   registrationRunnerKind: LocalRuntimeRegistrationRunnerKind;
@@ -243,7 +246,7 @@ export async function getLocalRuntimeRuleDetails(
 
   const { data: machine, error: machineError } = await supabase
     .from("local_runtime_machine")
-    .select("id, display_name, last_seen_at, revoked_at, runner_kinds")
+    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds")
     .eq("workspace_id", workspaceId)
     .eq("id", machineId)
     .is("revoked_at", null)
@@ -265,6 +268,9 @@ export async function getLocalRuntimeRuleDetails(
     provider: parsedRule.provider ?? (registrationKind === "openclaw" ? "openclaw" : "openai_compatible"),
     machineId,
     machineDisplayName: parsedMachine.display_name,
+    machineLastSeenAt: parsedMachine.last_seen_at,
+    machineRunnerKinds: parsedMachine.runner_kinds,
+    machineAdvertisedRunnerKinds: parsedMachine.advertised_runner_kinds ?? [],
     workspaceRoot: matchValue(ruleMatches, "local_workspace_root", "path"),
     toolCallCapability:
       registrationKind === "openclaw"
