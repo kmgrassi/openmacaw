@@ -914,7 +914,7 @@ describe("PL-3 setup flow", () => {
     expect(findLatestEngine(agent.id)?.status).toBe("running");
   });
 
-  it("prepares a production local relay agent without launcher startup", async () => {
+  it("starts a production local relay agent through the launcher path", async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     const now = new Date().toISOString();
@@ -953,13 +953,13 @@ describe("PL-3 setup flow", () => {
 
       expect(startResponse.status).toBe(200);
       await expect(startResponse.json()).resolves.toMatchObject({
-        status: "ready",
-        agentId: agent.id,
-        agentType: "manager",
-        workspaceId: TEST_WORKSPACE_ID,
-        localRuntime: true,
+        data: {
+          agent_id: agent.id,
+          workspace_id: TEST_WORKSPACE_ID,
+          status: "running",
+        },
       });
-      expect(findLatestEngine(agent.id)).toBeNull();
+      expect(findLatestEngine(agent.id)?.status).toBe("running");
     } finally {
       process.env.NODE_ENV = originalNodeEnv;
     }

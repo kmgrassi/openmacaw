@@ -337,7 +337,7 @@ describe("assertRuntimePrepareSupported", () => {
     expect((error as ApiRouteError).code).toBe("local_runtime_not_supported");
   });
 
-  it("local_relay agent bypasses launcher in production", async () => {
+  it("local_relay agent uses launcher startup in production", async () => {
     process.env.NODE_ENV = "production";
 
     const resolution = localRelayResolution();
@@ -349,7 +349,7 @@ describe("assertRuntimePrepareSupported", () => {
       agentId,
       agentType: "manager",
       workspaceId,
-      localRuntime: true,
+      localRuntime: false,
     });
   });
 
