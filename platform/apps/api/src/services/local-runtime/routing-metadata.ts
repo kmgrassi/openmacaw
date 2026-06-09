@@ -180,6 +180,8 @@ export type LocalRuntimeRuleDetails = {
   provider: string;
   machineId: string;
   machineDisplayName: string;
+  machineLastSeenAt: string | null;
+  machineRunnerKinds: string[];
   workspaceRoot: string | null;
   toolCallCapability: LocalToolCallCapability | null;
   registrationRunnerKind: LocalRuntimeRegistrationRunnerKind;
@@ -265,6 +267,8 @@ export async function getLocalRuntimeRuleDetails(
     provider: parsedRule.provider ?? (registrationKind === "openclaw" ? "openclaw" : "openai_compatible"),
     machineId,
     machineDisplayName: parsedMachine.display_name,
+    machineLastSeenAt: parsedMachine.last_seen_at,
+    machineRunnerKinds: parsedMachine.runner_kinds,
     workspaceRoot: matchValue(ruleMatches, "local_workspace_root", "path"),
     toolCallCapability:
       registrationKind === "openclaw"

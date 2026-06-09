@@ -12,7 +12,7 @@ export type LocalRuntimeMachineRow = Pick<
   "id" | "display_name" | "last_seen_at" | "revoked_at" | "runner_kinds"
 >;
 
-function helperOnline(lastSeenAt: string | null | undefined) {
+export function helperOnline(lastSeenAt: string | null | undefined) {
   if (!lastSeenAt) return false;
   const timestamp = Date.parse(lastSeenAt);
   if (Number.isNaN(timestamp)) return false;

@@ -4,6 +4,7 @@ import {
   type LocalModelProbeRequest,
 } from "../../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../../http.js";
+import { helperOnline } from "./config-snippet.js";
 import { getLocalRuntimeRuleDetails } from "./routing-metadata.js";
 
 function modelListUrl(endpoint: string) {
@@ -67,6 +68,7 @@ export async function probeLocalModel(input: LocalModelProbeRequest) {
 }
 
 export async function probeRegisteredLocalRuntimeForWorkspace(workspaceId: string, ruleId: string) {
+  const checkedAt = new Date().toISOString();
   const details = await getLocalRuntimeRuleDetails(workspaceId, ruleId);
   if (details.registrationRunnerKind === "openclaw") {
     throw new ApiRouteError(
@@ -75,5 +77,20 @@ export async function probeRegisteredLocalRuntimeForWorkspace(workspaceId: strin
       "OpenClaw runtimes do not expose an OpenAI-compatible model list to probe",
     );
   }
-  return probeLocalModel({ endpoint: details.endpoint, model: details.model });
+  const online = helperOnline(details.machineLastSeenAt);
+  const runnerAdvertised = details.machineRunnerKinds.includes(details.registrationRunnerKind);
+
+  return LocalModelProbeResponseSchema.parse({
+    endpoint: details.endpoint,
+    model: details.model,
+    reachable: online && runnerAdvertised,
+    modelFound: online && runnerAdvertised && Boolean(details.model),
+    checkedAt,
+    error:
+      online && runnerAdvertised
+        ? null
+        : online
+          ? `Helper is online, but it is not advertising ${details.registrationRunnerKind}`
+          : "Local runtime helper is not currently online",
+  });
 }
