@@ -9,7 +9,7 @@ const HELPER_ONLINE_WINDOW_MS = LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS * 2;
 
 export type LocalRuntimeMachineRow = Pick<
   Tables<"local_runtime_machine">,
-  "id" | "display_name" | "last_seen_at" | "revoked_at" | "runner_kinds"
+  "id" | "display_name" | "last_seen_at" | "revoked_at" | "runner_kinds" | "advertised_runner_kinds"
 >;
 
 export function helperOnline(lastSeenAt: string | null | undefined) {
@@ -148,7 +148,7 @@ export function buildLocalExecution(input: { machine: LocalRuntimeMachineRow | n
     workspaceRoot: input.workspaceRoot,
     registered: Boolean(input.machine && input.workspaceRoot),
     helperVersion: null,
-    advertisedRunnerKinds: input.machine?.runner_kinds ?? [],
+    advertisedRunnerKinds: input.machine?.advertised_runner_kinds ?? [],
     advertisedModels: [],
     runtimeManagedTools: null,
   };

@@ -15,6 +15,7 @@ export const LocalRuntimeMachineRowSchema = z.object({
   last_seen_at: z.string().nullable(),
   revoked_at: z.string().nullable(),
   runner_kinds: z.array(z.string()),
+  advertised_runner_kinds: z.array(z.string()).nullable().default(null),
 });
 
 export const LocalRuntimeRoutingRuleRowSchema = z.object({

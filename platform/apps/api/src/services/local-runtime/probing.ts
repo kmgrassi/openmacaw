@@ -78,7 +78,7 @@ export async function probeRegisteredLocalRuntimeForWorkspace(workspaceId: strin
     );
   }
   const online = helperOnline(details.machineLastSeenAt);
-  const runnerAdvertised = details.machineRunnerKinds.includes(details.registrationRunnerKind);
+  const runnerAdvertised = details.machineAdvertisedRunnerKinds.includes(details.registrationRunnerKind);
 
   return LocalModelProbeResponseSchema.parse({
     endpoint: details.endpoint,

@@ -124,6 +124,7 @@ describe("local runtime routes", () => {
           last_seen_at: new Date().toISOString(),
           revoked_at: null,
           runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
         },
       ],
     };
@@ -146,6 +147,70 @@ describe("local runtime routes", () => {
       reachable: true,
       modelFound: true,
       error: null,
+    });
+  });
+
+  it("does not report registered local runner reachable from stale registration-time runner kinds", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "local-endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          display_name: "qwen3-coder:30b@localhost:11434",
+          last_seen_at: new Date().toISOString(),
+          revoked_at: null,
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: [],
+        },
+      ],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(
+      `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/probe?workspaceId=${workspaceId}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-token",
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      endpoint: "http://127.0.0.1:11434/v1",
+      model: "qwen3-coder:30b",
+      reachable: false,
+      modelFound: false,
+      error: "Helper is online, but it is not advertising openai_compatible",
     });
   });
 
