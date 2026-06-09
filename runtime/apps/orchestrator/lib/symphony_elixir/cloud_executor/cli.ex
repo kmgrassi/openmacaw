@@ -8,6 +8,16 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
     workspace_root: :string
   ]
 
+  def evaluate(["coding-executor" | args]) do
+    case OptionParser.parse(args, strict: @switches) do
+      {opts, [], []} ->
+        run_coding_executor(opts)
+
+      _ ->
+        {:error, usage()}
+    end
+  end
+
   @spec evaluate([String.t()]) :: :ok | {:error, String.t()}
   def evaluate(["public-repository" | args]) do
     case OptionParser.parse(args, strict: @switches) do
@@ -20,6 +30,32 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
   end
 
   def evaluate(_args), do: {:error, usage()}
+
+  defp run_coding_executor(opts) do
+    with {:ok, request} <- read_request(Keyword.get(opts, :request_json)),
+         {:ok, prepared} <- SymphonyElixir.CloudExecutor.CodingExecutor.prepare(request, workspace_root: workspace_root(opts)) do
+      SymphonyElixir.CloudExecutor.CodingExecutor.run_loop(prepared)
+      :ok
+    else
+      {:error, %{} = error} ->
+        IO.puts(
+          Jason.encode!(%{
+            "type" => "error",
+            "schema_version" => "1",
+            "code" => Map.get(error, "code", "coding_executor_failed"),
+            "message" => Map.get(error, "detail", inspect(error))
+          })
+        )
+
+        {:error, "coding executor failed: #{Map.get(error, "code", "unknown")}"}
+
+      {:error, message} when is_binary(message) ->
+        {:error, message}
+
+      {:error, reason} ->
+        {:error, "coding executor failed: #{inspect(reason)}"}
+    end
+  end
 
   defp run_public_repository(opts) do
     with {:ok, request} <- read_request(Keyword.get(opts, :request_json)),
@@ -67,6 +103,6 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
   end
 
   defp usage do
-    "Usage: symphony cloud-executor public-repository [--request-json <path>] [--workspace-root <path>]"
+    "Usage: symphony cloud-executor <public-repository|coding-executor> [--request-json <path>] [--workspace-root <path>]"
   end
 end
