@@ -5,6 +5,40 @@ locals {
     secretsmanager = "com.amazonaws.${var.aws_region}.secretsmanager"
     logs           = "com.amazonaws.${var.aws_region}.logs"
   }
+
+  # Use the caller-provided endpoint SG if given; otherwise create one below.
+  manage_endpoint_sg         = var.create_vpc_endpoints && var.endpoint_security_group_id == ""
+  endpoint_security_group_id = var.endpoint_security_group_id != "" ? var.endpoint_security_group_id : (local.manage_endpoint_sg ? aws_security_group.endpoints[0].id : "")
+}
+
+data "aws_vpc" "this" {
+  id = var.vpc_id
+}
+
+# Endpoint security group: allows HTTPS from inside the VPC to the interface
+# endpoints, so executor tasks can reach ECR/Secrets/Logs privately. Created
+# only when endpoints are enabled and no SG was supplied.
+resource "aws_security_group" "endpoints" {
+  count = local.manage_endpoint_sg ? 1 : 0
+
+  name        = "${local.name_prefix}-vpc-endpoints"
+  description = "HTTPS from the VPC to container-execution interface endpoints"
+  vpc_id      = var.vpc_id
+
+  tags = {
+    Name = "${local.name_prefix}-vpc-endpoints"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "endpoints_https" {
+  count = local.manage_endpoint_sg ? 1 : 0
+
+  security_group_id = aws_security_group.endpoints[0].id
+  description       = "HTTPS from the VPC"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = data.aws_vpc.this.cidr_block
 }
 
 data "aws_route_tables" "private_by_subnet" {
@@ -34,7 +68,7 @@ resource "aws_vpc_endpoint" "interface" {
   private_dns_enabled = true
 
   security_group_ids = [
-    var.endpoint_security_group_id
+    local.endpoint_security_group_id
   ]
 
   tags = {
