@@ -14,7 +14,7 @@ export async function applyToolPolicyTemplateToAgent(input: {
   templateId: string;
   workspaceId?: string | null;
 }): Promise<AgentToolSettingsResponse> {
-  const { workspaceId } = await assertAgentAccess(input);
+  const { agent, workspaceId } = await assertAgentAccess(input);
   await getVisibleTemplateRow(input.templateId, workspaceId);
   const [templateToolRows, availableToolRows] = await Promise.all([
     listTemplateToolRows(input.templateId),
@@ -25,7 +25,7 @@ export async function applyToolPolicyTemplateToAgent(input: {
     .filter((row) => row.workspace_id === null || row.workspace_id === workspaceId)
     .map((row) => toolsById.get(row.tool_id))
     .filter((tool): tool is ToolRow => Boolean(tool));
-  await assertLocalCodingToolsAllowed({ workspaceId, tools: selectedTools });
+  await assertLocalCodingToolsAllowed({ workspaceId, tools: selectedTools, agentToolPolicy: agent.tool_policy });
 
   for (const tool of selectedTools) {
     await upsertAgentToolGrantRow({
