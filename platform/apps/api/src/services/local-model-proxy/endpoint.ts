@@ -1,13 +1,30 @@
+import { normalizeLocalEndpoint } from "../../../../../contracts/local-runtime.js";
+import { ApiRouteError } from "../../http.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
 
 const DEFAULT_LOCAL_ENDPOINT = "http://localhost:11434/v1";
+
+function requireSafeLocalEndpoint(endpoint: string) {
+  try {
+    return normalizeLocalEndpoint(endpoint);
+  } catch (error) {
+    throw new ApiRouteError(
+      422,
+      "local_runtime_invalid_endpoint",
+      error instanceof Error ? error.message : String(error),
+      {
+        endpoint,
+      },
+    );
+  }
+}
 
 /**
  * Look up the model endpoint URL stored on this agent's selected routing rule.
  * Falls back to the default Ollama endpoint if nothing is stored.
  */
 export async function resolveLocalEndpoint(workspaceId: string, routingRuleId: string | null): Promise<string> {
-  if (!routingRuleId) return DEFAULT_LOCAL_ENDPOINT;
+  if (!routingRuleId) return requireSafeLocalEndpoint(DEFAULT_LOCAL_ENDPOINT);
 
   const supabase = getServiceRoleSupabase();
 
@@ -23,10 +40,10 @@ export async function resolveLocalEndpoint(workspaceId: string, routingRuleId: s
 
   const endpoint = typeof endpointMatch?.value === "string" ? endpointMatch.value.trim() : "";
   if (endpoint) {
-    return endpoint;
+    return requireSafeLocalEndpoint(endpoint);
   }
 
-  return DEFAULT_LOCAL_ENDPOINT;
+  return requireSafeLocalEndpoint(DEFAULT_LOCAL_ENDPOINT);
 }
 
 export async function resolveLocalWorkspaceRoot(

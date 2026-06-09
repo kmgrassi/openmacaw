@@ -9,6 +9,54 @@ import { LOCAL_RUNNER_KIND_VALUES } from "./runner-kinds.js";
 /** Zod schema matching any local runner kind value. */
 const LocalRunnerKindSchema = z.enum(LOCAL_RUNNER_KIND_VALUES);
 
+const LOOPBACK_ENDPOINT_SCHEMES = new Set(["http:", "https:"]);
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "::1"]);
+const LOOPBACK_IPV4_PATTERN = /^127(?:\.\d{1,3}){3}$/;
+
+function isLoopbackHostname(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    LOOPBACK_HOSTNAMES.has(normalized) || LOOPBACK_IPV4_PATTERN.test(normalized)
+  );
+}
+
+export function normalizeLocalEndpoint(endpoint: string) {
+  const trimmed = endpoint.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error("endpoint must be a valid URL");
+  }
+
+  if (!LOOPBACK_ENDPOINT_SCHEMES.has(parsed.protocol)) {
+    throw new Error("endpoint must use http or https");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("endpoint must not include URL credentials");
+  }
+  if (!isLoopbackHostname(parsed.hostname)) {
+    throw new Error("endpoint host must be localhost, 127.0.0.1, or ::1");
+  }
+
+  return parsed.toString();
+}
+
+const LocalEndpointSchema = z
+  .string()
+  .trim()
+  .min(1, "endpoint is required")
+  .superRefine((endpoint, ctx) => {
+    try {
+      normalizeLocalEndpoint(endpoint);
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error instanceof Error ? error.message : "endpoint is invalid",
+      });
+    }
+  });
+
 export const LocalToolCallCapabilitySchema = z.enum([
   "native_tools",
   "prompt_fallback",
@@ -46,7 +94,7 @@ export type LocalExecutionTarget = z.infer<typeof LocalExecutionTargetSchema>;
 
 const OpenAICompatibleRunnerInputSchema = z.object({
   kind: z.literal("openai_compatible"),
-  endpoint: z.string().min(1, "endpoint is required"),
+  endpoint: LocalEndpointSchema,
   model: z.string().min(1, "model is required"),
   provider: KnownExecutionProviderSchema.default("openai_compatible"),
   apiKey: z.string().trim().min(1).optional(),
@@ -59,7 +107,7 @@ export type OpenAICompatibleRunnerInput = z.infer<
 
 const OpenClawRunnerInputSchema = z.object({
   kind: z.literal("openclaw"),
-  endpoint: z.string().min(1, "endpoint is required"),
+  endpoint: LocalEndpointSchema,
   apiKey: z.string().trim().min(1).optional(),
 });
 export type OpenClawRunnerInput = z.infer<typeof OpenClawRunnerInputSchema>;
@@ -151,7 +199,7 @@ export type LocalRuntimeConfigResponse = z.infer<
 >;
 
 export const LocalModelProbeRequestSchema = z.object({
-  endpoint: z.string().min(1, "endpoint is required"),
+  endpoint: LocalEndpointSchema,
   model: z.string().min(1, "model is required"),
 });
 export type LocalModelProbeRequest = z.infer<

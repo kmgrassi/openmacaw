@@ -1,4 +1,8 @@
-import { LocalModelProbeResponseSchema, type LocalModelProbeRequest } from "../../../../../contracts/local-runtime.js";
+import {
+  LocalModelProbeResponseSchema,
+  normalizeLocalEndpoint,
+  type LocalModelProbeRequest,
+} from "../../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../../http.js";
 import { getLocalRuntimeRuleDetails } from "./routing-metadata.js";
 
@@ -8,15 +12,26 @@ function modelListUrl(endpoint: string) {
 }
 
 export async function probeLocalModel(input: LocalModelProbeRequest) {
+  let endpoint: string;
+  try {
+    endpoint = normalizeLocalEndpoint(input.endpoint);
+  } catch (error) {
+    throw new ApiRouteError(
+      422,
+      "local_runtime_invalid_endpoint",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
   const checkedAt = new Date().toISOString();
   try {
-    const response = await fetch(modelListUrl(input.endpoint), {
+    const response = await fetch(modelListUrl(endpoint), {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
       return LocalModelProbeResponseSchema.parse({
-        endpoint: input.endpoint,
+        endpoint,
         model: input.model,
         reachable: false,
         modelFound: false,
@@ -32,7 +47,7 @@ export async function probeLocalModel(input: LocalModelProbeRequest) {
         : [];
     const modelFound = data.some((model) => model.id === input.model || model.name === input.model);
     return LocalModelProbeResponseSchema.parse({
-      endpoint: input.endpoint,
+      endpoint,
       model: input.model,
       reachable: true,
       modelFound,
@@ -41,7 +56,7 @@ export async function probeLocalModel(input: LocalModelProbeRequest) {
     });
   } catch (error) {
     return LocalModelProbeResponseSchema.parse({
-      endpoint: input.endpoint,
+      endpoint,
       model: input.model,
       reachable: false,
       modelFound: false,

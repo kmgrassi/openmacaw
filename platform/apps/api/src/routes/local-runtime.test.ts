@@ -48,6 +48,28 @@ describe("local runtime routes", () => {
     await closeServer(server);
   });
 
+  it("rejects probe requests for non-loopback endpoints", async () => {
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        endpoint: "http://169.254.169.254/latest/meta-data",
+        model: "qwen3-coder:30b",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message: "Local runtime probe request is invalid",
+      },
+    });
+  });
+
   it("assigns a local model to a manager agent without runner-kind filtering", async () => {
     const db = {
       routing_rule: [
@@ -134,9 +156,7 @@ describe("local runtime routes", () => {
         }),
       ]),
     );
-    const runtimeProfileRule = db.routing_rule.find(
-      (rule) => rule.name === "agent:manager-agent-1:execution-profile",
-    );
+    const runtimeProfileRule = db.routing_rule.find((rule) => rule.name === "agent:manager-agent-1:execution-profile");
     expect(db.routing_rule_match).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
