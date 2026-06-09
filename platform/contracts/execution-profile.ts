@@ -77,12 +77,23 @@ export const RepositorySourceTypeSchema = z.enum([
   "workspace_snapshot",
 ]);
 
-export const RuntimeRepositoryRefSchema = z.object({
-  type: RepositorySourceTypeSchema,
-  branch: z.string().trim().min(1).optional(),
-  ref: z.string().trim().min(1).optional(),
-  commitSha: z.string().trim().min(1).optional(),
-});
+export const RuntimeRepositoryRefSchema = z
+  .object({
+    type: RepositorySourceTypeSchema,
+    branch: z.string().trim().min(1).optional(),
+    ref: z.string().trim().min(1).optional(),
+    commitSha: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.type === "workspace_snapshot") return;
+    if (value.branch || value.ref || value.commitSha) return;
+
+    ctx.addIssue({
+      code: "custom",
+      message: "git_ref repository sources require branch, ref, or commitSha",
+      path: ["ref"],
+    });
+  });
 
 export const RuntimeRepositorySourceSchema = RuntimeRepositoryRefSchema.extend({
   repositoryUrl: z.string().trim().min(1),
@@ -93,6 +104,7 @@ export const ContainerDispatchLimitsSchema = z.object({
   maxCpuCores: z.number().positive(),
   maxMemoryMb: z.number().int().positive(),
   maxDiskMb: z.number().int().positive(),
+  maxProcessCount: z.number().int().positive(),
 });
 
 export const ArtifactRetentionSchema = z.object({

@@ -481,6 +481,7 @@ describe("runtime dispatch proxy contract", () => {
             maxCpuCores: 2,
             maxMemoryMb: 4096,
             maxDiskMb: 8192,
+            maxProcessCount: 64,
           },
           artifactRetention: {
             retainDays: 14,
@@ -563,6 +564,7 @@ describe("runtime dispatch proxy contract", () => {
             maxCpuCores: 2,
             maxMemoryMb: 4096,
             maxDiskMb: 8192,
+            maxProcessCount: 64,
           },
           artifactRetention: {
             retainDays: 14,
@@ -617,6 +619,115 @@ describe("runtime dispatch proxy contract", () => {
     expect(upstreamMocks.runtimeRequest).not.toHaveBeenCalled();
   });
 
+  it("rejects container dispatch when no repository ref is available for bootstrap", async () => {
+    findSetupAgentById.mockResolvedValue(
+      setupAgent({
+        executionTarget: {
+          kind: "container",
+        },
+      }),
+    );
+
+    const response = await fetch(`${baseUrl}/api/agents/${agentId}/runs`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        agent_id: agentId,
+        prompt: "run coding task in container",
+        dispatchMetadata: {
+          sessionId: "session-42",
+          resources: [{ resourceId }],
+          limits: {
+            timeoutMs: 120000,
+            maxCpuCores: 2,
+            maxMemoryMb: 4096,
+            maxDiskMb: 8192,
+            maxProcessCount: 64,
+          },
+          artifactRetention: {
+            retainDays: 14,
+            storeCommandOutput: true,
+            storePatchArtifact: true,
+          },
+          networkPolicy: {
+            mode: "allowlist",
+            allowedHosts: ["github.com"],
+          },
+        },
+      }),
+    });
+
+    expect(response.status, await response.clone().text()).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "container_bootstrap_resource_missing",
+      },
+    });
+    expect(resolveContainerDispatchResources).not.toHaveBeenCalled();
+    expect(upstreamMocks.runtimeRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects workspace snapshots for production container bootstrap", async () => {
+    findSetupAgentById.mockResolvedValue(
+      setupAgent({
+        executionTarget: {
+          kind: "container",
+        },
+      }),
+    );
+
+    const response = await fetch(`${baseUrl}/api/agents/${agentId}/runs`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        agent_id: agentId,
+        prompt: "run coding task in container",
+        dispatchMetadata: {
+          sessionId: "session-42",
+          resources: [
+            {
+              resourceId,
+              repositoryRef: {
+                type: "workspace_snapshot",
+              },
+            },
+          ],
+          limits: {
+            timeoutMs: 120000,
+            maxCpuCores: 2,
+            maxMemoryMb: 4096,
+            maxDiskMb: 8192,
+            maxProcessCount: 64,
+          },
+          artifactRetention: {
+            retainDays: 14,
+            storeCommandOutput: true,
+            storePatchArtifact: true,
+          },
+          networkPolicy: {
+            mode: "allowlist",
+            allowedHosts: ["github.com"],
+          },
+        },
+      }),
+    });
+
+    expect(response.status, await response.clone().text()).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "container_workspace_snapshot_not_supported",
+      },
+    });
+    expect(resolveContainerDispatchResources).not.toHaveBeenCalled();
+    expect(upstreamMocks.runtimeRequest).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed optional container metadata objects when present", async () => {
     findSetupAgentById.mockResolvedValue(
       setupAgent({
@@ -649,6 +760,7 @@ describe("runtime dispatch proxy contract", () => {
             maxCpuCores: 2,
             maxMemoryMb: 4096,
             maxDiskMb: 8192,
+            maxProcessCount: 64,
           },
           artifactRetention: {
             retainDays: 14,

@@ -50,6 +50,44 @@ function optionalRecordField(
   );
 }
 
+function assertCommittedBootstrapResource(dispatchMetadata: Record<string, unknown>): void {
+  const resources = dispatchMetadata.resources;
+  const parsed = Array.isArray(resources) ? resources.map(asRecord) : [];
+  const bootstrapResource = parsed.find((resource) => {
+    const requirement = typeof resource.requirement === "string" ? resource.requirement : "required";
+    return requirement === "required" && Object.hasOwn(resource, "repositoryRef");
+  });
+
+  if (!bootstrapResource) {
+    throw new ApiRouteError(
+      422,
+      "container_bootstrap_resource_missing",
+      "Container execution target requires a required repository resource with repositoryRef",
+    );
+  }
+
+  const repositoryRef = asRecord(bootstrapResource.repositoryRef);
+  const refType = typeof repositoryRef.type === "string" ? repositoryRef.type : "";
+  if (refType === "workspace_snapshot") {
+    throw new ApiRouteError(
+      422,
+      "container_workspace_snapshot_not_supported",
+      "Container execution target requires a committed repository ref",
+    );
+  }
+
+  const hasCommittedRef = [repositoryRef.branch, repositoryRef.ref, repositoryRef.commitSha].some(
+    (value) => typeof value === "string" && value.trim() !== "",
+  );
+  if (refType !== "git_ref" || !hasCommittedRef) {
+    throw new ApiRouteError(
+      422,
+      "container_bootstrap_ref_missing",
+      "Container execution target requires branch, ref, or commitSha for workspace bootstrap",
+    );
+  }
+}
+
 function configuredWorkspacePolicy(agentToolPolicy: unknown): RuntimeWorkspacePolicy | null {
   const toolPolicy = asRecord(agentToolPolicy);
   if (!Object.hasOwn(toolPolicy, "workspacePolicy")) return null;
@@ -106,6 +144,7 @@ async function buildContainerMetadata(input: {
       parsedNetworkPolicy.error.flatten(),
     );
   }
+  assertCommittedBootstrapResource(metadata);
   const resources = await resolveContainerDispatchResources({
     accessToken: input.accessToken,
     workspaceId: input.executionProfile.workspaceId,
@@ -123,6 +162,7 @@ async function buildContainerMetadata(input: {
       maxCpuCores: limits.maxCpuCores,
       maxMemoryMb: limits.maxMemoryMb,
       maxDiskMb: limits.maxDiskMb,
+      maxProcessCount: limits.maxProcessCount,
     },
     artifactRetention: {
       retainDays: artifactRetention.retainDays,
