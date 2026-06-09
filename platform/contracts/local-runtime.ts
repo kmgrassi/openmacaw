@@ -14,7 +14,10 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "::1"]);
 const LOOPBACK_IPV4_PATTERN = /^127(?:\.\d{1,3}){3}$/;
 
 function isLoopbackHostname(hostname: string) {
-  const normalized = hostname.trim().toLowerCase();
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[(.*)\]$/, "$1");
   return (
     LOOPBACK_HOSTNAMES.has(normalized) || LOOPBACK_IPV4_PATTERN.test(normalized)
   );

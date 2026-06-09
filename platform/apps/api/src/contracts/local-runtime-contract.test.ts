@@ -52,6 +52,20 @@ describe("local runtime contract", () => {
     expect(first.endpoint).toBe("http://localhost:7100");
   });
 
+  it("accepts bracketed IPv6 loopback endpoints", () => {
+    const parsed = LocalRuntimeRegistrationRequestSchema.parse({
+      runners: [
+        {
+          kind: "openai_compatible",
+          endpoint: "http://[::1]:11434/v1",
+          model: "qwen3-coder:30b",
+        },
+      ],
+    });
+    const first = parsed.runners[0]!;
+    expect(first.endpoint).toBe("http://[::1]:11434/v1");
+  });
+
   it("accepts a multi-kind registration carrying both openai_compatible and openclaw runners", () => {
     const parsed = LocalRuntimeRegistrationRequestSchema.parse({
       runners: [

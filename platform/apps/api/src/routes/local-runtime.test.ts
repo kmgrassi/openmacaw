@@ -70,6 +70,22 @@ describe("local runtime routes", () => {
     });
   });
 
+  it("accepts probe requests for bracketed IPv6 loopback endpoints", async () => {
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        endpoint: "http://[::1]:11434/v1",
+        model: "qwen3-coder:30b",
+      }),
+    });
+
+    expect(response.status).not.toBe(400);
+  });
+
   it("assigns a local model to a manager agent without runner-kind filtering", async () => {
     const db = {
       routing_rule: [
