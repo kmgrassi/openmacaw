@@ -1,0 +1,36 @@
+FROM hexpm/elixir:1.19.0-erlang-26.2.5.19-ubuntu-jammy-20260217 AS builder
+
+ENV MIX_ENV=prod
+ENV ERL_AFLAGS="-kernel shell_history enabled"
+
+WORKDIR /app
+
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+COPY apps/orchestrator/mix.exs apps/orchestrator/mix.lock ./
+RUN mix deps.get
+
+COPY apps/orchestrator/ .
+RUN mix do deps.get, escript.build
+
+FROM hexpm/elixir:1.19.0-erlang-26.2.5.19-ubuntu-jammy-20260217
+
+WORKDIR /app
+
+RUN useradd --create-home --shell /bin/bash appuser && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git ripgrep && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /app/bin /workspace && \
+    chown -R appuser:appuser /app /workspace
+
+COPY --from=builder --chown=appuser:appuser /app/bin/symphony /app/bin/symphony
+
+RUN chmod 755 /app/bin/symphony
+
+USER appuser
+
+ENV SYMPHONY_EXECUTOR_WORKSPACE_ROOT=/workspace
+
+ENTRYPOINT ["/app/bin/symphony", "cloud-executor", "coding-executor"]

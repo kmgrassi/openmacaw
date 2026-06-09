@@ -25,6 +25,7 @@
     "smoke:local-relay": "node ./scripts/local-relay-smoke.mjs",
     "smoke:local-relay-conversation": "node ./scripts/local-relay-conversation-smoke.mjs",
     "smoke:local-ollama-qwen": "./scripts/local-ollama-qwen-smoke.sh",
+    "smoke:container-local": "./scripts/smoke-container-local.sh",
     "smoke:local-model-coding": "cd apps/orchestrator && mix local_model.coding_smoke",
     "test:agent-tool-smoke": "node --test ./scripts/test/agent-tool-smoke.test.mjs",
     "start:orchestrator": "./scripts/with-local-env.sh apps/orchestrator ../../scripts/start-orchestrator.sh",
