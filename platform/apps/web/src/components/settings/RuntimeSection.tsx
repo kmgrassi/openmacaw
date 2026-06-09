@@ -20,6 +20,7 @@ import { CapabilitiesCard } from "./RuntimeSection/CapabilitiesCard";
 import { ClaudeCodeDiagnosticsCard } from "./RuntimeSection/ClaudeCodeDiagnosticsCard";
 import { CodexOAuthDiagnosticsCard } from "./RuntimeSection/CodexOAuthDiagnosticsCard";
 import { ConnectionCard } from "./RuntimeSection/ConnectionCard";
+import { ContainerArtifactHandoffCard } from "./RuntimeSection/ContainerArtifactHandoffCard";
 import { DebugSnapshotCard } from "./RuntimeSection/DebugSnapshotCard";
 import { OrchestratorSessionsCard } from "./RuntimeSection/OrchestratorSessionsCard";
 import { ResolvedScopeCard } from "./RuntimeSection/ResolvedScopeCard";
@@ -172,6 +173,8 @@ export function RuntimeSection() {
         loading={agentDiagnosticLoading}
         onRefresh={refreshRuntimeDiagnostics}
       />
+
+      <ContainerArtifactHandoffCard />
 
       {agentHealth && (
         <AgentHealthCard agentHealth={agentHealth} error={agentHealthError} />

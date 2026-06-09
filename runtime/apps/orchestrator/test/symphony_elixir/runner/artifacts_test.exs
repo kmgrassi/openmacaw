@@ -29,6 +29,7 @@ defmodule SymphonyElixir.Runner.ArtifactsTest do
              )
 
     assert length(refs) == 4
+    assert Enum.map(refs, & &1["kind"]) == ["summary", "command_log", "patch", "diagnostic"]
 
     assert Enum.map(refs, & &1["uri"]) == [
              "s3://runtime-artifacts/cloud/workspaces/workspace-1/runs/run-1/summary.json",

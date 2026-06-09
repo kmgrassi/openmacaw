@@ -93,7 +93,7 @@ defmodule SymphonyElixir.Runner.Artifacts do
   """
   @spec final_artifact(String.t(), iodata(), String.t()) :: artifact()
   def final_artifact(name, body, content_type \\ "text/plain; charset=utf-8") when is_binary(name) do
-    %{name: Path.join("final", name), kind: "final", content_type: content_type, body: body}
+    %{name: Path.join("final", name), kind: "patch", content_type: content_type, body: body}
   end
 
   @doc """
@@ -103,7 +103,7 @@ defmodule SymphonyElixir.Runner.Artifacts do
   def diagnostics(diagnostics) when is_map(diagnostics) do
     %{
       name: "diagnostics.json",
-      kind: "diagnostics",
+      kind: "diagnostic",
       content_type: "application/json",
       body: Jason.encode_to_iodata!(diagnostics)
     }
