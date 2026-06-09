@@ -84,6 +84,17 @@ Register flags:
   --workspace <id>           Workspace id to register with
   --name <display-name>      Machine display name
   --token <token>            One-time local runtime token
+  --workspace-root <path>    Local workspace root for filesystem tools
+  --openai-compatible-endpoint <url>
+                            OpenAI-compatible runner endpoint
+  --openai-compatible-model <model>
+                            OpenAI-compatible runner model
+  --openai-compatible-api-key <key>
+                            Optional OpenAI-compatible runner API key
+  --tool-call-capability <value>
+                            OpenAI-compatible tool mode (default native_tools)
+  --openclaw-endpoint <url> Local OpenClaw endpoint
+  --openclaw-api-key <key>  Optional OpenClaw API key
   --config <path>            Config path (default ~/.config/harper/runtime.toml)
   --force                    Replace an existing config file
 
@@ -98,12 +109,19 @@ func cmdRegister(args []string) {
 	workspaceID := fs.String("workspace", "", "workspace id")
 	displayName := fs.String("name", "", "machine display name")
 	token := fs.String("token", "", "one-time local runtime token")
+	workspaceRoot := fs.String("workspace-root", "", "local workspace root for filesystem tools")
+	openAICompatibleEndpoint := fs.String("openai-compatible-endpoint", "", "OpenAI-compatible runner endpoint")
+	openAICompatibleModel := fs.String("openai-compatible-model", "", "OpenAI-compatible runner model")
+	openAICompatibleAPIKey := fs.String("openai-compatible-api-key", "", "optional OpenAI-compatible runner API key")
+	toolCallCapability := fs.String("tool-call-capability", "native_tools", "OpenAI-compatible tool mode")
+	openClawEndpoint := fs.String("openclaw-endpoint", "", "local OpenClaw endpoint")
+	openClawAPIKey := fs.String("openclaw-api-key", "", "optional OpenClaw API key")
 	configPath := fs.String("config", "", "config path")
 	force := fs.Bool("force", false, "replace an existing config file")
 
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, `Usage:
-  local-runtime-helper register --endpoint <wss-url> --workspace <id> --name <display-name> --token <token> [--force]
+  local-runtime-helper register --endpoint <wss-url> --workspace <id> --name <display-name> --token <token> --openai-compatible-endpoint <url> --openai-compatible-model <model> [--workspace-root <path>] [--force]
 
 Flags:`)
 		fs.PrintDefaults()
@@ -120,13 +138,28 @@ Flags:`)
 
 	cfg := config.Config{
 		Machine: config.MachineConfig{
-			DisplayName: strings.TrimSpace(*displayName),
+			DisplayName:   strings.TrimSpace(*displayName),
+			WorkspaceRoot: strings.TrimSpace(*workspaceRoot),
 		},
 		Cloud: config.CloudConfig{
 			Endpoint:    strings.TrimSpace(*endpoint),
 			WorkspaceID: strings.TrimSpace(*workspaceID),
 			Token:       strings.TrimSpace(*token),
 		},
+	}
+	if strings.TrimSpace(*openAICompatibleEndpoint) != "" || strings.TrimSpace(*openAICompatibleModel) != "" {
+		cfg.Runners.OpenAICompatible = &config.OpenAICompatibleConfig{
+			Endpoint:           strings.TrimSpace(*openAICompatibleEndpoint),
+			APIKey:             strings.TrimSpace(*openAICompatibleAPIKey),
+			Model:              strings.TrimSpace(*openAICompatibleModel),
+			ToolCallCapability: strings.TrimSpace(*toolCallCapability),
+		}
+	}
+	if strings.TrimSpace(*openClawEndpoint) != "" {
+		cfg.Runners.OpenClaw = &config.OpenClawConfig{
+			Endpoint: strings.TrimSpace(*openClawEndpoint),
+			APIKey:   strings.TrimSpace(*openClawAPIKey),
+		}
 	}
 
 	path, err := config.Write(cfg, config.WriteOptions{

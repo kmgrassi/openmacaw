@@ -24,6 +24,10 @@ func TestRegisterWritesConfigWithoutPrintingToken(t *testing.T) {
 		"--workspace", "ws_123",
 		"--name", "Kevin MBP",
 		"--token", token,
+		"--workspace-root", "/tmp",
+		"--openai-compatible-endpoint", "http://localhost:11434/v1",
+		"--openai-compatible-model", "qwen3-coder:30b",
+		"--tool-call-capability", "native_tools",
 		"--config", configPath,
 	)
 
@@ -45,6 +49,18 @@ func TestRegisterWritesConfigWithoutPrintingToken(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `token = "`+token+`"`) {
 		t.Fatalf("config did not contain token:\n%s", data)
+	}
+	if !strings.Contains(string(data), `workspace_root = "/tmp"`) {
+		t.Fatalf("config did not contain workspace root:\n%s", data)
+	}
+	if !strings.Contains(string(data), `[runner.openai_compatible]`) {
+		t.Fatalf("config did not contain openai-compatible runner:\n%s", data)
+	}
+	if !strings.Contains(string(data), `endpoint = "http://localhost:11434/v1"`) {
+		t.Fatalf("config did not contain runner endpoint:\n%s", data)
+	}
+	if !strings.Contains(string(data), `model = "qwen3-coder:30b"`) {
+		t.Fatalf("config did not contain runner model:\n%s", data)
 	}
 
 	info, err := os.Stat(configPath)
@@ -107,6 +123,8 @@ func registerCommand(t *testing.T, configPath, displayName, token string, extraA
 		"--workspace", "ws_123",
 		"--name", displayName,
 		"--token", token,
+		"--openai-compatible-endpoint", "http://localhost:11434/v1",
+		"--openai-compatible-model", "qwen3-coder:30b",
 		"--config", configPath,
 	}
 	args = append(args, extraArgs...)
@@ -114,7 +132,8 @@ func registerCommand(t *testing.T, configPath, displayName, token string, extraA
 }
 
 func TestStartFailsWithoutConfig(t *testing.T) {
-	cmd := exec.Command("go", "run", ".", "start")
+	missingConfigPath := filepath.Join(t.TempDir(), "missing-runtime.toml")
+	cmd := exec.Command("go", "run", ".", "start", "--config", missingConfigPath)
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("start succeeded unexpectedly:\n%s", output)

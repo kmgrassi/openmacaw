@@ -282,6 +282,20 @@ func validateForWrite(cfg Config) error {
 	if strings.TrimSpace(cfg.Cloud.Token) == "" {
 		return errors.New("one-time token is required")
 	}
+	if cfg.Runners.OpenAICompatible == nil && cfg.Runners.OpenClaw == nil {
+		return errors.New("at least one runner is required")
+	}
+	if cfg.Runners.OpenAICompatible != nil {
+		if strings.TrimSpace(cfg.Runners.OpenAICompatible.Endpoint) == "" {
+			return errors.New("openai-compatible runner endpoint is required")
+		}
+		if strings.TrimSpace(cfg.Runners.OpenAICompatible.Model) == "" {
+			return errors.New("openai-compatible runner model is required")
+		}
+	}
+	if cfg.Runners.OpenClaw != nil && strings.TrimSpace(cfg.Runners.OpenClaw.Endpoint) == "" {
+		return errors.New("openclaw runner endpoint is required")
+	}
 	return nil
 }
 
@@ -313,9 +327,11 @@ func renderRegistrationTOML(cfg Config) []byte {
 	registration := struct {
 		Machine MachineConfig `toml:"machine"`
 		Cloud   CloudConfig   `toml:"cloud"`
+		Runners RunnerConfigs `toml:"runner"`
 	}{
 		Machine: cfg.Machine,
 		Cloud:   cfg.Cloud,
+		Runners: cfg.Runners,
 	}
 	if err := toml.NewEncoder(&b).Encode(registration); err != nil {
 		panic(fmt.Sprintf("encode registration TOML: %v", err))

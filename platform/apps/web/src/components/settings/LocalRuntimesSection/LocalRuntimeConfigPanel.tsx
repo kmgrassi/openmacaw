@@ -3,7 +3,7 @@ import type {
   RegisterLocalRuntimeResponse,
 } from "../../../api/local-runtime";
 import { Button } from "../../ui/Button";
-import { downloadText, LOCAL_HELPER_INSTALL_COMMAND } from "./utils";
+import { downloadText } from "./utils";
 
 type ConfigPanelInput =
   | LocalRuntimeConfigResponse
@@ -27,7 +27,7 @@ export function LocalRuntimeConfigPanel({ config, onClear }: Props) {
           </h4>
           <p className="mt-1 text-xs text-green-300/80">
             {tokenAvailable
-              ? "Install the relay helper, save the generated config, then start the relay."
+              ? "Copy the setup command to install, register, write config, and start the relay."
               : "The existing token cannot be shown again. Reset the token to generate a complete config."}
           </p>
         </div>
@@ -35,11 +35,12 @@ export function LocalRuntimeConfigPanel({ config, onClear }: Props) {
           <Button
             size="sm"
             variant="secondary"
+            disabled={!tokenAvailable}
             onClick={() =>
-              void navigator.clipboard.writeText(config.configSnippet)
+              void navigator.clipboard.writeText(config.setupCommand)
             }
           >
-            Copy config
+            Copy setup
           </Button>
           <Button
             size="sm"
@@ -58,23 +59,27 @@ export function LocalRuntimeConfigPanel({ config, onClear }: Props) {
       <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-white/5 bg-slate-950/80 px-3 py-2">
         <div className="min-w-0">
           <div className="mb-1 text-xs text-green-300/80">
-            From your OpenMacaw checkout root, run this install command in a
-            terminal.
+            From your OpenMacaw checkout root, run this in a terminal.
           </div>
           <code className="block min-w-0 truncate text-xs text-slate-300">
-            {LOCAL_HELPER_INSTALL_COMMAND}
+            {config.setupCommand}
           </code>
         </div>
         <Button
           size="sm"
           variant="ghost"
+          disabled={!tokenAvailable}
           onClick={() =>
-            void navigator.clipboard.writeText(LOCAL_HELPER_INSTALL_COMMAND)
+            void navigator.clipboard.writeText(config.setupCommand)
           }
         >
-          Copy install
+          Copy
         </Button>
       </div>
+      <p className="mb-2 text-xs text-green-300/70">
+        Advanced fallback: save this generated config manually, then run{" "}
+        <code>{config.launchCommand}</code>.
+      </p>
       <pre className="max-h-64 overflow-auto rounded-md bg-slate-950/80 p-3 text-xs text-slate-300">
         {config.configSnippet}
       </pre>
@@ -85,7 +90,7 @@ export function LocalRuntimeConfigPanel({ config, onClear }: Props) {
           </code>
           <p className="mt-1 text-xs text-green-300/70">
             Save the snippet as <code>{filename}</code>, then run this command
-            from the directory containing that file.
+            after installing the helper.
           </p>
         </div>
         <Button

@@ -228,18 +228,13 @@ func TestWriteCreatesOwnerOnlyConfigAndCreatedDir(t *testing.T) {
 		`endpoint = "wss://example.test/relay/ws"`,
 		`workspace_id = "ws_123"`,
 		`token = "lrt_once_123"`,
+		"[runner.openai_compatible]",
+		`endpoint = "http://localhost:11434/v1"`,
+		`model = "qwen3-coder:30b"`,
+		`tool_call_capability = "native_tools"`,
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("config missing %q:\n%s", want, data)
-		}
-	}
-	for _, unwanted := range []string{
-		"[runner.",
-		"api_key",
-		"model",
-	} {
-		if strings.Contains(string(data), unwanted) {
-			t.Fatalf("registration config contains %q unexpectedly:\n%s", unwanted, data)
 		}
 	}
 }
@@ -328,6 +323,13 @@ func validRegistrationConfig() Config {
 			Endpoint:    "wss://example.test/relay/ws",
 			WorkspaceID: "ws_123",
 			Token:       "lrt_once_123",
+		},
+		Runners: RunnerConfigs{
+			OpenAICompatible: &OpenAICompatibleConfig{
+				Endpoint:           "http://localhost:11434/v1",
+				Model:              "qwen3-coder:30b",
+				ToolCallCapability: "native_tools",
+			},
 		},
 	}
 }

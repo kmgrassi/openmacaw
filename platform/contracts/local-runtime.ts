@@ -125,6 +125,8 @@ export const LocalRuntimeRegistrationResponseSchema = z.object({
   token: z.string(),
   /** Ready-to-paste runtime.toml snippet for the local-runtime-helper daemon. */
   configSnippet: z.string(),
+  /** One-command helper setup from the OpenMacaw checkout root. */
+  setupCommand: z.string(),
   /** Ready-to-paste command for launching the helper from the local-runtime-helper repo root. */
   launchCommand: z.string(),
   localExecution: LocalExecutionTargetSchema,
@@ -140,6 +142,7 @@ export const LocalRuntimeConfigResponseSchema = z.object({
   token: z.string().nullable(),
   tokenAvailable: z.boolean(),
   configSnippet: z.string(),
+  setupCommand: z.string(),
   launchCommand: z.string(),
   filename: z.literal("runtime.toml"),
 });
