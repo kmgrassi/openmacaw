@@ -1,6 +1,8 @@
 import { ApiRouteError } from "../../http.js";
 import type { ToolRow } from "../../repositories/agent-tools.js";
 import { hasRegisteredLocalCodingTargetRows } from "../../repositories/agent-tools.js";
+import { RuntimeExecutionTargetKindSchema } from "../../../../../contracts/execution-profile.js";
+import { loadToolExecutionConfig } from "../../config.js";
 import { LOCAL_MODEL_CODING_TOOL_SLUGS } from "../tool-bundles.js";
 
 const LOCAL_CODING_TOOL_SLUGS = new Set<string>(LOCAL_MODEL_CODING_TOOL_SLUGS);
@@ -43,13 +45,43 @@ export async function hasRegisteredLocalCodingTarget(workspaceId: string) {
   return hasRegisteredLocalCodingTargetRows(workspaceId);
 }
 
-export async function assertLocalCodingToolsAllowed(input: { workspaceId: string; tools: ToolRow[] }) {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function configuredCodingExecutionTargetKind(agentToolPolicy: unknown) {
+  const toolPolicy = asRecord(agentToolPolicy);
+  const executionTarget = asRecord(toolPolicy?.executionTarget);
+  if (!executionTarget || !Object.hasOwn(executionTarget, "kind")) return null;
+
+  const parsed = RuntimeExecutionTargetKindSchema.safeParse(
+    typeof executionTarget.kind === "string" ? executionTarget.kind.trim() : executionTarget.kind,
+  );
+  if (parsed.success) return parsed.data;
+
+  throw new ApiRouteError(422, "invalid_execution_target", "Agent execution target is invalid");
+}
+
+function effectiveCodingExecutionTargetKind(agentToolPolicy: unknown) {
+  return (
+    configuredCodingExecutionTargetKind(agentToolPolicy) ?? loadToolExecutionConfig().localCodingExecutionTargetKind
+  );
+}
+
+export async function assertLocalCodingToolsAllowed(input: {
+  workspaceId: string;
+  tools: ToolRow[];
+  agentToolPolicy?: unknown;
+}) {
   const hasLocalCodingTool = input.tools.some((tool) => isLocalCodingTool(tool));
   if (!hasLocalCodingTool) return;
+
+  if (effectiveCodingExecutionTargetKind(input.agentToolPolicy) === "container") return;
   if (await hasRegisteredLocalCodingTarget(input.workspaceId)) return;
+
   throw new ApiRouteError(
     409,
     "local_coding_execution_target_required",
-    "Register a local runtime helper with a workspace root before enabling local coding tools",
+    "Configure a container execution target or register a local runtime helper with a workspace root before enabling local coding tools",
   );
 }

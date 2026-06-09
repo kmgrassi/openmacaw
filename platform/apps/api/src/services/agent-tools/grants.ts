@@ -20,7 +20,7 @@ import { assertAgentAccess } from "./access.js";
 import { logAgentToolOverrideAudit } from "./audit.js";
 import { toolFromRow, toolMatchesName, toolName } from "./mappers.js";
 import { getAgentToolSettings, getResolvedToolsForAgent } from "./settings.js";
-import { assertLocalCodingToolsAllowed, hasRegisteredLocalCodingTarget, isLocalCodingTool } from "./validation.js";
+import { assertLocalCodingToolsAllowed } from "./validation.js";
 
 const AGENT_TOOL_BUNDLE_NAMES = new Set<AgentToolBundleName>([
   ":planner",
@@ -74,7 +74,7 @@ export async function setAgentToolGrant(input: {
   reason?: string | null;
   workspaceId?: string | null;
 }): Promise<AgentToolSettingsResponse> {
-  const { workspaceId } = await assertAgentAccess(input);
+  const { agent, workspaceId } = await assertAgentAccess(input);
   const tool = await getVisibleToolRow(input.toolId, workspaceId);
   if (!tool) {
     throw new ApiRouteError(404, "tool_not_found", "Tool was not found");
@@ -83,7 +83,7 @@ export async function setAgentToolGrant(input: {
     throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
   }
   if (input.mode === "include") {
-    await assertLocalCodingToolsAllowed({ workspaceId, tools: [tool] });
+    await assertLocalCodingToolsAllowed({ workspaceId, tools: [tool], agentToolPolicy: agent.tool_policy });
   }
 
   await upsertAgentToolGrantRow({
@@ -131,15 +131,9 @@ export async function addToolOverrideToAgent(input: {
   toolName: string;
   workspaceId?: string | null;
 }): Promise<{ bundles: AgentToolBundleName[]; tools: ResolvedAgentTool[] }> {
-  const { workspaceId } = await assertAgentAccess(input);
+  const { agent, workspaceId } = await assertAgentAccess(input);
   const tool = await findVisibleToolByName({ toolName: input.toolName, workspaceId });
-  if (isLocalCodingTool(tool) && !(await hasRegisteredLocalCodingTarget(workspaceId))) {
-    throw new ApiRouteError(
-      409,
-      "local_coding_execution_target_required",
-      "Register a local runtime helper with a workspace root before enabling local coding tools",
-    );
-  }
+  await assertLocalCodingToolsAllowed({ workspaceId, tools: [tool], agentToolPolicy: agent.tool_policy });
   await upsertAgentToolGrantRow({
     userId: input.userId,
     agentId: input.agentId,
@@ -221,7 +215,7 @@ export async function assignToolToAgent(input: {
   toolId: string;
   workspaceId?: string | null;
 }): Promise<ToolDefinition> {
-  const { workspaceId } = await assertAgentAccess(input);
+  const { agent, workspaceId } = await assertAgentAccess(input);
   const tool = await getVisibleToolRow(input.toolId, workspaceId);
   if (!tool) {
     throw new ApiRouteError(404, "tool_not_found", "Tool was not found");
@@ -229,13 +223,7 @@ export async function assignToolToAgent(input: {
   if (!tool.enabled) {
     throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
   }
-  if (isLocalCodingTool(tool) && !(await hasRegisteredLocalCodingTarget(workspaceId))) {
-    throw new ApiRouteError(
-      409,
-      "local_coding_execution_target_required",
-      "Register a local runtime helper with a workspace root before enabling local coding tools",
-    );
-  }
+  await assertLocalCodingToolsAllowed({ workspaceId, tools: [tool], agentToolPolicy: agent.tool_policy });
 
   await upsertAgentToolGrantRow({
     userId: input.userId,

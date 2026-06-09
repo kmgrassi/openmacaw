@@ -50,7 +50,9 @@ const workspaceId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
 const toolId = "44444444-4444-4444-8444-444444444444";
 
-function agent(workspace = workspaceId) {
+type SetupAgent = NonNullable<Awaited<ReturnType<typeof findSetupAgentById>>>;
+
+function agent(workspace = workspaceId, toolPolicy: SetupAgent["tool_policy"] = {}): SetupAgent {
   return {
     id: agentId,
     workspace_id: workspace,
@@ -58,7 +60,7 @@ function agent(workspace = workspaceId) {
     status: "ready",
     type: "coding" as const,
     model_settings: {},
-    tool_policy: {},
+    tool_policy: toolPolicy,
     created_by_user_id: userId,
     updated_at: "2026-04-26T12:00:00.000Z",
   };
@@ -332,6 +334,73 @@ describe("agent tool service", () => {
         tool_id: toolId,
         mode: "include",
         source: "manual",
+        created_by_user_id: userId,
+      }),
+    ]);
+  });
+
+  it("allows assigning local coding tools when the agent uses container execution", async () => {
+    vi.mocked(findSetupAgentById).mockResolvedValue(
+      agent(workspaceId, {
+        executionTarget: {
+          kind: "container",
+        },
+      }),
+    );
+    tables.tool[0] = tool({
+      slug: "shell.exec",
+      function_name: "shell_exec",
+      execution_kind: "shell",
+      runner_kind: "local_model_coding",
+    });
+    tables.agent_tool_grant = [];
+
+    await expect(assignToolToAgent({ accessToken, userId, agentId, toolId, workspaceId })).resolves.toMatchObject({
+      slug: "shell.exec",
+    });
+    expect(tables.agent_tool_grant).toEqual([
+      expect.objectContaining({
+        agent_id: agentId,
+        workspace_id: workspaceId,
+        tool_id: toolId,
+        mode: "include",
+        source: "manual",
+        created_by_user_id: userId,
+      }),
+    ]);
+  });
+
+  it("allows applying coding tool templates when the agent uses container execution", async () => {
+    vi.mocked(findSetupAgentById).mockResolvedValue(
+      agent(workspaceId, {
+        executionTarget: {
+          kind: "container",
+        },
+      }),
+    );
+    tables.tool[0] = tool({
+      slug: "apply_patch",
+      function_name: "apply_patch",
+      execution_kind: "filesystem_write",
+      runner_kind: "local_model_coding",
+    });
+    tables.agent_tool_grant = [];
+
+    await applyToolPolicyTemplateToAgent({
+      accessToken,
+      userId,
+      agentId,
+      templateId: "55555555-5555-4555-8555-555555555555",
+      workspaceId,
+    });
+
+    expect(tables.agent_tool_grant).toEqual([
+      expect.objectContaining({
+        agent_id: agentId,
+        workspace_id: workspaceId,
+        tool_id: toolId,
+        mode: "include",
+        source: "template",
         created_by_user_id: userId,
       }),
     ]);
