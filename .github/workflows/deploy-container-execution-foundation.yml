@@ -1,0 +1,147 @@
+name: Deploy Container Execution Foundation
+
+# Applies the container-execution FOUNDATION Terraform stack (ECR repo for the
+# executor image, KMS key, VPC endpoints, S3 artifact bucket, observability).
+# This is the D1 step that was missing: deploy-container-runtime.yml (D2) and
+# the executor-image build both depend on the resources this creates.
+#
+# Like the app deploys, this is a REUSABLE workflow (workflow_call). It cannot
+# authenticate to AWS when run from this public repo (the OpenMacawDeployRole
+# OIDC trust only allows the private kmgrassi/OpenMacaw-kgprod repo). Drive it
+# from the KG-prod repo, which holds the trusted identity, chained:
+#   foundation -> build-container-executor-image -> deploy-container-runtime.
+#
+# Prerequisite: an SSM config param at
+#   /openmacaw/<environment_slug>/container-execution-foundation/deploy/config
+# holding {"terraform_backend": {...}, "terraform_vars": {...}} (same shape the
+# runtime workflow reads).
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use for the deploy."
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      environment_slug:
+        description: "Environment path/name segment used for SSM and Terraform values."
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploy_config_param:
+        description: "Optional full SSM config parameter path. Defaults to /openmacaw/<environment_slug>/container-execution-foundation/deploy/config."
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      deploy_environment:
+        required: false
+        default: production
+        type: string
+      environment_slug:
+        required: false
+        default: prod
+        type: string
+      deploy_config_param:
+        required: false
+        default: ""
+        type: string
+    outputs:
+      ecr_repository_name:
+        description: "Container executor ECR repository name."
+        value: ${{ jobs.deploy.outputs.ecr_repository_name }}
+      ecr_repository_url:
+        description: "Container executor ECR repository URL."
+        value: ${{ jobs.deploy.outputs.ecr_repository_url }}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-container-execution-foundation-${{ inputs.environment_slug || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: infra/terraform/stacks/container-execution-foundation
+  ENVIRONMENT_SLUG: ${{ inputs.environment_slug || 'dev' }}
+  DEPLOY_CONFIG_PARAM_OVERRIDE: ${{ inputs.deploy_config_param || '' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ (inputs.environment_slug == 'prod' || contains(inputs.deploy_config_param || '', '/prod/')) && 'production' || inputs.deploy_environment || 'development' }}
+    timeout-minutes: 30
+    env:
+      TF_IN_AUTOMATION: "true"
+    outputs:
+      ecr_repository_name: ${{ steps.outputs.outputs.ecr_repository_name }}
+      ecr_repository_url: ${{ steps.outputs.outputs.ecr_repository_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve deploy config from SSM
+        id: deploy-config
+        run: |
+          set -euo pipefail
+
+          DEPLOY_CONFIG_PARAM="${DEPLOY_CONFIG_PARAM_OVERRIDE:-/openmacaw/${ENVIRONMENT_SLUG}/container-execution-foundation/deploy/config}"
+          echo "Environment slug: ${ENVIRONMENT_SLUG}"
+          echo "Deploy config parameter: ${DEPLOY_CONFIG_PARAM}"
+
+          CONFIG_JSON="$(aws ssm get-parameter \
+            --name "$DEPLOY_CONFIG_PARAM" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text)"
+
+          echo "$CONFIG_JSON" | jq -e '.terraform_backend and .terraform_vars' >/dev/null
+
+          jq -r '.terraform_backend | to_entries[] |
+            if (.value | type) == "boolean" or (.value | type) == "number" then
+              "\(.key) = \(.value)"
+            else
+              "\(.key) = \"\(.value)\""
+            end' <<<"$CONFIG_JSON" > "$RUNNER_TEMP/foundation.backend.hcl"
+
+          jq -n --argjson cfg "$CONFIG_JSON" '$cfg.terraform_vars' > "$RUNNER_TEMP/foundation.tfvars.json"
+
+          echo "backend_file=$RUNNER_TEMP/foundation.backend.hcl" >> "$GITHUB_OUTPUT"
+          echo "tfvars_file=$RUNNER_TEMP/foundation.tfvars.json" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="${{ steps.deploy-config.outputs.backend_file }}"
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -input=false -auto-approve -var-file="${{ steps.deploy-config.outputs.tfvars_file }}"
+
+      - name: Resolve foundation outputs
+        id: outputs
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          echo "ecr_repository_name=$(terraform output -raw container_executor_ecr_repository_name)" >> "$GITHUB_OUTPUT"
+          echo "ecr_repository_url=$(terraform output -raw container_executor_ecr_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "Artifact bucket: $(terraform output -raw container_artifact_bucket_name)"

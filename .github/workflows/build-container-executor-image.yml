@@ -1,0 +1,120 @@
+name: Build Container Executor Image
+
+# Builds the container coding-executor image
+# (runtime/apps/orchestrator/deploy/Dockerfile.container-executor, build
+# context runtime/) and pushes it to the foundation ECR repository. Tagged
+# with the OpenMacaw commit SHA by default, matching the app-deploy convention.
+#
+# Order: deploy-container-execution-foundation (creates the ECR repo) ->
+# THIS (pushes the image) -> deploy-container-runtime (references the tag).
+#
+# Reusable (workflow_call). Like the other deploys it authenticates with the
+# OpenMacawDeployRole via OIDC, so it must be driven from the trusted KG-prod
+# repo, not run directly from this public repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: "GitHub Environment to use."
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      ecr_repository_name:
+        description: "Container executor ECR repository name (from the foundation deploy output)."
+        required: true
+        type: string
+      image_tag:
+        description: "Image tag. Defaults to the checked-out commit SHA."
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      deploy_environment:
+        required: false
+        default: production
+        type: string
+      ecr_repository_name:
+        required: true
+        type: string
+      image_tag:
+        required: false
+        default: ""
+        type: string
+    outputs:
+      image_tag:
+        description: "The tag the image was pushed with."
+        value: ${{ jobs.build.outputs.image_tag }}
+      image_uri:
+        description: "Full <repo-url>:<tag> of the pushed image."
+        value: ${{ jobs.build.outputs.image_uri }}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: build-container-executor-image-${{ inputs.ecr_repository_name }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  DOCKERFILE: runtime/apps/orchestrator/deploy/Dockerfile.container-executor
+  BUILD_CONTEXT: runtime
+  ECR_REPOSITORY_NAME: ${{ inputs.ecr_repository_name }}
+  IMAGE_TAG_OVERRIDE: ${{ inputs.image_tag || '' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.deploy_environment || 'development' }}
+    timeout-minutes: 30
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_uri: ${{ steps.meta.outputs.image_uri }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          REPO_URL="$(aws ecr describe-repositories \
+            --repository-names "$ECR_REPOSITORY_NAME" \
+            --query 'repositories[0].repositoryUri' \
+            --output text)"
+
+          IMAGE_TAG="${IMAGE_TAG_OVERRIDE:-$GITHUB_SHA}"
+          IMAGE_URI="${REPO_URL}:${IMAGE_TAG}"
+
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "Building ${IMAGE_URI}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push executor image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ env.BUILD_CONTEXT }}
+          file: ${{ env.DOCKERFILE }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.image_uri }}
+          provenance: false
