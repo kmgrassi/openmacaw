@@ -91,6 +91,33 @@ function localRuntimeResolution(): ExecutionProfileResolution {
   });
 }
 
+function localRelayResolution(): ExecutionProfileResolution {
+  return completeResolution({
+    agent: { agentId, workspaceId, role: "manager" },
+    profile: profile({
+      role: "manager",
+      runnerKind: "local_relay",
+      provider: "local",
+      model: "qwen3-coder:30b",
+      credentialRef: null,
+      toolProfile: "manager",
+      capabilities: {
+        streaming: true,
+        toolCalls: false,
+        workspaceWrite: false,
+        structuredOutput: false,
+        interrupt: false,
+      },
+    }),
+    source: {
+      routingRuleId: "rule-local-relay",
+      credentialAlias: null,
+      fallbackUsed: false,
+      legacyGatewayConfigUsed: false,
+    },
+  });
+}
+
 describe("assertRuntimePrepareSupported", () => {
   const originalNodeEnv = process.env.NODE_ENV;
 
@@ -308,6 +335,22 @@ describe("assertRuntimePrepareSupported", () => {
     expect(error).toBeInstanceOf(ApiRouteError);
     expect((error as ApiRouteError).status).toBe(422);
     expect((error as ApiRouteError).code).toBe("local_runtime_not_supported");
+  });
+
+  it("local_relay agent bypasses launcher in production", async () => {
+    process.env.NODE_ENV = "production";
+
+    const resolution = localRelayResolution();
+    resolveExecutionProfile.mockResolvedValue(resolution);
+
+    const result = await assertRuntimePrepareSupported(accessToken, userId, agentId);
+
+    expect(result).toEqual({
+      agentId,
+      agentType: "manager",
+      workspaceId,
+      localRuntime: true,
+    });
   });
 
   it("local_runtime bypass is blocked when NODE_ENV is not development", async () => {
