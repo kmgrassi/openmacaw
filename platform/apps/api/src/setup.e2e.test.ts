@@ -914,6 +914,57 @@ describe("PL-3 setup flow", () => {
     expect(findLatestEngine(agent.id)?.status).toBe("running");
   });
 
+  it("starts a production local relay agent through the launcher path", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const now = new Date().toISOString();
+    const agent: AgentRow = {
+      id: crypto.randomUUID(),
+      workspace_id: TEST_WORKSPACE_ID,
+      created_by_user_id: TEST_USER_ID,
+      name: "Local Relay Manager",
+      model_settings: { primary: "qwen3-coder:30b" },
+      tool_policy: {},
+      type: "manager",
+      status: "active",
+      updated_at: now,
+    };
+    db.agents.push(agent);
+    db.gatewayConfigs.push({
+      id: crypto.randomUUID(),
+      scope_type: "agent",
+      scope_id: agent.id,
+      version: 1,
+      config_hash: "local-relay-hash",
+      config_json: {
+        runners: [{ kind: "local_relay", model: "qwen3-coder:30b", provider: "local" }],
+      },
+      updated_at: now,
+      updated_by: TEST_USER_ID,
+    });
+
+    try {
+      const startResponse = await fetch(`${apiBaseUrl}/api/agents/${agent.id}/start`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${TEST_TOKEN}`,
+        },
+      });
+
+      expect(startResponse.status).toBe(200);
+      await expect(startResponse.json()).resolves.toMatchObject({
+        data: {
+          agent_id: agent.id,
+          workspace_id: TEST_WORKSPACE_ID,
+          status: "running",
+        },
+      });
+      expect(findLatestEngine(agent.id)?.status).toBe("running");
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
   it("returns a clear error for unsupported custom runtime backends", async () => {
     const now = new Date().toISOString();
     const agent: AgentRow = {
