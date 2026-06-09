@@ -7,7 +7,15 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
     request_json: :string,
     workspace_root: :string
   ]
+  @smoke_switches [
+    dry_run: :boolean,
+    metric_namespace: :string,
+    region: :string,
+    force_fail: :string,
+    timeout_ms: :integer
+  ]
 
+  @spec evaluate([String.t()]) :: :ok | {:error, String.t()}
   def evaluate(["coding-executor" | args]) do
     case OptionParser.parse(args, strict: @switches) do
       {opts, [], []} ->
@@ -18,7 +26,16 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
     end
   end
 
-  @spec evaluate([String.t()]) :: :ok | {:error, String.t()}
+  def evaluate(["smoke-catalog" | args]) do
+    case OptionParser.parse(args, strict: @smoke_switches) do
+      {opts, [], []} ->
+        run_smoke_catalog(opts)
+
+      _ ->
+        {:error, usage()}
+    end
+  end
+
   def evaluate(["public-repository" | args]) do
     case OptionParser.parse(args, strict: @switches) do
       {opts, [], []} ->
@@ -30,6 +47,19 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
   end
 
   def evaluate(_args), do: {:error, usage()}
+
+  defp run_smoke_catalog(opts) do
+    with :ok <- ensure_smoke_dependencies(),
+         :ok <- SymphonyElixir.ContainerSmoke.Runner.run(opts) do
+      :ok
+    else
+      {:error, {:container_smoke_failed, failed_ids}} ->
+        {:error, "container smoke failed: #{Enum.join(failed_ids, ", ")}"}
+
+      {:error, reason} ->
+        {:error, "container smoke failed: #{inspect(reason)}"}
+    end
+  end
 
   defp run_coding_executor(opts) do
     with {:ok, request} <- read_request(Keyword.get(opts, :request_json)),
@@ -102,7 +132,16 @@ defmodule SymphonyElixir.CloudExecutor.CLI do
     Keyword.get(opts, :workspace_root) || System.get_env("SYMPHONY_EXECUTOR_WORKSPACE_ROOT") || "/workspace"
   end
 
+  defp ensure_smoke_dependencies do
+    Enum.reduce_while([:jason, :req], :ok, fn app, _acc ->
+      case Application.ensure_all_started(app) do
+        {:ok, _started} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
   defp usage do
-    "Usage: symphony cloud-executor <public-repository|coding-executor> [--request-json <path>] [--workspace-root <path>]"
+    "Usage: symphony cloud-executor <public-repository|coding-executor|smoke-catalog> [--request-json <path>] [--workspace-root <path>] [--dry-run] [--metric-namespace <namespace>] [--region <region>] [--force-fail <test-id|all>] [--timeout-ms <ms>]"
   end
 end

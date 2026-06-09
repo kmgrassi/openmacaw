@@ -25,6 +25,7 @@
     "smoke:local-relay": "node ./scripts/local-relay-smoke.mjs",
     "smoke:local-relay-conversation": "node ./scripts/local-relay-conversation-smoke.mjs",
     "smoke:local-ollama-qwen": "./scripts/local-ollama-qwen-smoke.sh",
+    "smoke:container": "cd apps/orchestrator && mix run -e 'args = Enum.reject(System.argv(), &(&1 == \"--\")); System.halt(case SymphonyElixir.CloudExecutor.CLI.evaluate([\"smoke-catalog\"] ++ args) do :ok -> 0; {:error, message} -> IO.puts(:stderr, message); 1 end)' --",
     "smoke:container-local": "./scripts/smoke-container-local.sh",
     "smoke:local-model-coding": "cd apps/orchestrator && mix local_model.coding_smoke",
     "test:agent-tool-smoke": "node --test ./scripts/test/agent-tool-smoke.test.mjs",

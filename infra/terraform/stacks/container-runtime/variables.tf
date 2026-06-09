@@ -146,3 +146,51 @@ variable "network_policy_json" {
   type        = string
   default     = "{}"
 }
+
+variable "enable_container_smoke_schedule" {
+  description = "Whether to create the scheduled container-execution smoke task and per-test alarms"
+  type        = bool
+  default     = false
+}
+
+variable "container_smoke_schedule_expression" {
+  description = "EventBridge schedule expression for production container-execution smoke tests"
+  type        = string
+  default     = "rate(15 minutes)"
+}
+
+variable "container_smoke_command" {
+  description = "Command override appended to the executor image entrypoint for the scheduled smoke task"
+  type        = list(string)
+  default     = ["smoke-catalog"]
+}
+
+variable "container_smoke_commands" {
+  description = "Per-test shell commands keyed by smoke test id. Required for enabled schedules in each target environment."
+  type        = map(string)
+  default     = {}
+}
+
+variable "container_smoke_timeout_ms" {
+  description = "Timeout in milliseconds for each configured smoke command"
+  type        = number
+  default     = 120000
+}
+
+variable "container_smoke_alarm_actions" {
+  description = "SNS topic ARNs or other CloudWatch alarm actions to invoke when a container smoke test fails"
+  type        = list(string)
+  default     = []
+}
+
+variable "container_smoke_ok_actions" {
+  description = "SNS topic ARNs or other CloudWatch alarm actions to invoke when a container smoke test recovers"
+  type        = list(string)
+  default     = []
+}
+
+variable "container_smoke_insufficient_data_actions" {
+  description = "SNS topic ARNs or other CloudWatch alarm actions to invoke when a container smoke alarm has insufficient data"
+  type        = list(string)
+  default     = []
+}

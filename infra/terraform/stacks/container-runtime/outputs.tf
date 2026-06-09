@@ -52,3 +52,13 @@ output "cloudwatch_log_group_name" {
   description = "CloudWatch log group for executor lifecycle logs"
   value       = aws_cloudwatch_log_group.executor.name
 }
+
+output "container_smoke_alarm_names" {
+  description = "CloudWatch alarm names keyed by container smoke test id"
+  value       = { for key, alarm in aws_cloudwatch_metric_alarm.container_smoke_test_failures : key => alarm.alarm_name }
+}
+
+output "container_smoke_schedule_rule_name" {
+  description = "EventBridge rule name for the scheduled container smoke catalog"
+  value       = var.enable_container_smoke_schedule ? aws_cloudwatch_event_rule.container_smoke_schedule[0].name : null
+}

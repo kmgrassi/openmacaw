@@ -13,3 +13,19 @@ private_subnet_ids = ["subnet_REPLACE_ME"]
 executor_image_tag = "main"
 allowed_secret_arns = []
 egress_cidr_blocks  = ["0.0.0.0/0"]
+
+enable_container_smoke_schedule = false
+container_smoke_schedule_expression = "rate(15 minutes)"
+container_smoke_commands = {
+  task_launch               = "echo configure-task-launch-smoke"
+  log_split                 = "echo configure-log-split-smoke"
+  egress_allow              = "echo configure-egress-allow-smoke"
+  egress_deny               = "echo configure-egress-deny-smoke"
+  secret_injection          = "echo configure-secret-injection-smoke"
+  sts_scope_positive        = "echo configure-sts-positive-smoke"
+  sts_scope_negative        = "echo configure-sts-negative-smoke"
+  vpc_endpoint_reachability = "echo configure-vpc-endpoint-smoke"
+  queue_round_trip          = "echo configure-queue-round-trip-smoke"
+  cancellation              = "echo configure-cancellation-smoke"
+  end_to_end                = "echo configure-end-to-end-smoke"
+}
