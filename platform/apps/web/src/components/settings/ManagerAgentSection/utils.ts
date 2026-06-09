@@ -6,6 +6,10 @@ import type {
 } from "../../../../../../contracts/manager-agent";
 import type { SavedCredential } from "../../../api/credentials";
 import type { PlanRecord } from "../../../api/plans";
+import {
+  formatDisplayLabel,
+  normalizeDisplayLabel,
+} from "../../../lib/display-labels";
 
 export type SchedulerRuntimeProvider = AgentRuntimeProfile["provider"];
 
@@ -93,7 +97,7 @@ export function statusBadgeVariant(
 export function formatStatus(
   status: ManagerRuntimeStatus["status"] | "unknown",
 ) {
-  return status.replace(/_/g, " ");
+  return normalizeDisplayLabel(status);
 }
 
 export function formatCadence(ms: number | null | undefined) {
@@ -110,7 +114,7 @@ export function formatCadence(ms: number | null | undefined) {
 }
 
 export function formatState(state: string) {
-  return state.replace(/_/g, " ");
+  return formatDisplayLabel(state, { fallback: "" }).toLowerCase();
 }
 
 export function formatPlanFilter(
