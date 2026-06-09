@@ -194,6 +194,16 @@ variable "network_firewall_route_destination_cidr_block" {
   default     = "0.0.0.0/0"
 }
 
+variable "network_firewall_return_routes" {
+  description = "Symmetric return routes so response traffic re-enters Network Firewall (AWS NetFW is stateful and requires symmetric routing). Each entry adds a route in route_table_id (the NAT/edge route table) for destination_cidr_block (an executor subnet CIDR) via the firewall endpoint in firewall_subnet_id (same AZ). Without these, return traffic follows the local VPC route and bypasses inspection."
+  type = list(object({
+    route_table_id         = string
+    destination_cidr_block = string
+    firewall_subnet_id     = string
+  }))
+  default = []
+}
+
 variable "network_firewall_allowed_domains" {
   description = "FQDN allowlist enforced by AWS Network Firewall for executor task egress"
   type        = list(string)
