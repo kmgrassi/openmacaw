@@ -79,6 +79,22 @@ defmodule SymphonyElixir.ScheduledTask.RepositoryTest do
                      }}
   end
 
+  test "migrations back the claim_run conflict target with a unique index" do
+    migration_path =
+      Path.expand(
+        "../../../../../../platform/supabase/migrations/20260609112000_add_scheduled_task_run_claim_key.sql",
+        __DIR__
+      )
+
+    migration = File.read!(migration_path)
+
+    assert migration =~
+             "create unique index if not exists scheduled_task_run_claim_key"
+
+    assert migration =~
+             "on public.scheduled_task_run (scheduled_task_id, scheduled_for)"
+  end
+
   test "claim_run accepts atom-keyed task maps" do
     parent = self()
     scheduled_for = ~U[2026-05-15 14:30:00Z]

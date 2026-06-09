@@ -82,11 +82,13 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
   end
 
   @impl true
-  def follow_up_request(_session, response, tool_outputs) do
+  def follow_up_request(session, response, tool_outputs) do
     %{
       "type" => "dispatch",
       "protocol" => ProtocolExtensions.protocol_version(),
       "correlation_id" => response_id(response),
+      "runner_kind" => "local_relay",
+      "target_runner_kind" => target_runner_kind(session),
       "tool_outputs" => tool_outputs,
       "messages" => Enum.map(tool_outputs, &tool_output_message/1),
       "metadata" => %{"local_relay_continuation" => true}
@@ -138,6 +140,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
   defp continuation_frame(request) do
     request
     |> Map.put("type", "dispatch")
+    |> Map.put("runner_kind", "local_relay")
     |> Map.drop(["correlation_id"])
   end
 
@@ -149,10 +152,13 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
   end
 
   defp tool_output_message(%{"call_id" => call_id, "output" => output}) do
-    %{"role" => "tool", "tool_call_id" => call_id, "content" => output}
+    %{"role" => "tool", "tool_call_id" => call_id, "content" => tool_output_content(output)}
   end
 
   defp tool_output_message(output), do: %{"role" => "tool", "content" => Jason.encode!(output)}
+
+  defp tool_output_content(output) when is_binary(output), do: output
+  defp tool_output_content(output), do: Jason.encode!(output)
 
   defp ensure_model_available(%{model: model}, _helper) when model in [nil, ""], do: :ok
 

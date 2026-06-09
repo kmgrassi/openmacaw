@@ -21,6 +21,7 @@
     "smoke:gateway": "node ./scripts/gateway-smoke.mjs",
     "smoke:manager": "node ./scripts/manager-smoke.mjs",
     "smoke:manager-dispatch": "node ./scripts/manager-dispatch-smoke.mjs",
+    "smoke:manager-github-pr": "node ./scripts/manager-github-pr-smoke.mjs",
     "smoke:local-relay": "node ./scripts/local-relay-smoke.mjs",
     "smoke:local-relay-conversation": "node ./scripts/local-relay-conversation-smoke.mjs",
     "smoke:local-ollama-qwen": "./scripts/local-ollama-qwen-smoke.sh",

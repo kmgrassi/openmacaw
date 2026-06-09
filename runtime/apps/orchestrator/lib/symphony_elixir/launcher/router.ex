@@ -21,6 +21,7 @@ defmodule SymphonyElixir.Launcher.Router do
   alias SymphonyElixir.AgentInventory
   alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.Diagnostic.AgentHealth
+  alias SymphonyElixir.LocalRuntime.Diagnostics, as: LocalRuntimeDiagnostics
   alias SymphonyElixir.Launcher.RuntimeProxy
   alias SymphonyElixir.Launcher.Server
   alias SymphonyElixir.Manager.Supervisor, as: ManagerSupervisor
@@ -47,6 +48,15 @@ defmodule SymphonyElixir.Launcher.Router do
       service: "launcher",
       lifecycle: Server.health_summary()
     })
+  end
+
+  get "/local-relay/ws" do
+    SymphonyElixirWeb.LocalRelayController.upgrade(conn, conn.params)
+  end
+
+  get "/api/v1/local-runtime/health" do
+    conn = Plug.Conn.fetch_query_params(conn)
+    json_resp(conn, 200, LocalRuntimeDiagnostics.health_payload(conn.query_params))
   end
 
   post "/orchestrators" do

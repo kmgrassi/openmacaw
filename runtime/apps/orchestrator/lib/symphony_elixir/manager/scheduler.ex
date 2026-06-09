@@ -477,7 +477,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
   end
 
   defp generate_run_id do
-    "mgr_" <> (16 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+    Ecto.UUID.generate()
   end
 
   defp schedule_tick(state, delay_ms) do
@@ -806,7 +806,6 @@ defmodule SymphonyElixir.Manager.Scheduler do
     Process.delete(@tick_phase_key)
     :ok
   end
-
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

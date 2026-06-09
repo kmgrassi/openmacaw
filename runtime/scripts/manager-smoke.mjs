@@ -153,7 +153,7 @@ function managerReadinessError(status, maxTickAgeMs) {
   if (status.last_error) return `last_error=${status.last_error.message || JSON.stringify(status.last_error)}`;
   if (!status.provider) return "provider is missing";
   if (!status.model) return "model is missing";
-  if (!status.credential_id) return "credential_id is missing";
+  if (!status.credential_id && status.provider !== "local") return "credential_id is missing";
   if (!status.last_tick_at) return "last_tick_at is missing";
 
   const tickAgeMs = Date.now() - Date.parse(status.last_tick_at);
