@@ -134,14 +134,16 @@ function isMarketingHost() {
 
 function isProductionAppHost() {
   if (typeof window === "undefined") return false;
-  return ["app.openmacaw.ai", "claw.harper.new"].includes(
-    window.location.hostname,
-  );
+  return window.location.hostname === "app.openmacaw.ai";
+}
+
+function isLegacyAppHost() {
+  if (typeof window === "undefined") return false;
+  return window.location.hostname === "claw.harper.new";
 }
 
 function AppHostRedirect() {
   useEffect(() => {
-    if (!isMarketingHost()) return;
     const target = `${appBaseUrl()}${window.location.pathname}${window.location.search}${window.location.hash}`;
     window.location.replace(target);
   }, []);
@@ -150,7 +152,7 @@ function AppHostRedirect() {
 }
 
 function AppOnlyRoute({ children }: { children: React.ReactNode }) {
-  if (isMarketingHost()) {
+  if (isMarketingHost() || isLegacyAppHost()) {
     return <AppHostRedirect />;
   }
 
@@ -158,6 +160,10 @@ function AppOnlyRoute({ children }: { children: React.ReactNode }) {
 }
 
 function RootRoute() {
+  if (isLegacyAppHost()) {
+    return <AppHostRedirect />;
+  }
+
   if (isProductionAppHost()) {
     return (
       <AuthGate>
