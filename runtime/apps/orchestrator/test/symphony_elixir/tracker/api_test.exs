@@ -9,8 +9,12 @@ defmodule SymphonyElixir.Tracker.APITest do
   setup do
     # Start the API tracker GenServer for each test
     case GenServer.whereis(TrackerAPI) do
-      nil -> start_supervised!(TrackerAPI)
-      pid -> GenServer.stop(pid); start_supervised!(TrackerAPI)
+      nil ->
+        start_supervised!(TrackerAPI)
+
+      pid ->
+        GenServer.stop(pid)
+        start_supervised!(TrackerAPI)
     end
 
     write_workflow_file!(
@@ -55,6 +59,25 @@ defmodule SymphonyElixir.Tracker.APITest do
       assert {:ok, %WorkItem{id: "custom-id", identifier: "TASK-42"}} =
                TrackerAPI.accept_item(payload)
     end
+
+    test "coerces mechanical intake near-misses and records normalized feedback" do
+      assert {:ok, %WorkItem{} = item} =
+               TrackerAPI.accept_item(%{
+                 "title" => "Custom task",
+                 "state" => "Running",
+                 "labels" => %{"name" => "api"},
+                 "metadata" => %{"routing" => %{"runner_kind" => "LOCAL-RELAY"}}
+               })
+
+      assert item.state == "running"
+      assert item.labels == ["api"]
+
+      feedback = item.metadata["normalization_feedback"]
+
+      assert Enum.any?(feedback, &(&1["field"] == "labels" and &1["message"] == "wrapped scalar in list"))
+      assert Enum.any?(feedback, &(&1["field"] == "state" and &1["suggested_default"] == "running"))
+      assert Enum.any?(feedback, &(&1["field"] == "runner_kind" and &1["suggested_default"] == "local_relay"))
+    end
   end
 
   describe "fetch_candidate_issues/0" do
@@ -74,7 +97,7 @@ defmodule SymphonyElixir.Tracker.APITest do
       TrackerAPI.accept_item(%{"title" => "Task B", "state" => "In Progress"})
       TrackerAPI.accept_item(%{"title" => "Task C", "state" => "Done"})
 
-      assert {:ok, items} = TrackerAPI.fetch_issues_by_states(["In Progress"])
+      assert {:ok, items} = TrackerAPI.fetch_issues_by_states(["in_progress"])
       assert length(items) == 1
       assert hd(items).title == "Task B"
     end
