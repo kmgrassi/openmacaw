@@ -10,6 +10,7 @@ defmodule SymphonyElixir.StructuredContextTest do
         id: "wi-1",
         identifier: "MAN-1",
         title: "Check failed run",
+        description: "Inspect the failed run and summarize the blocker.",
         state: "todo",
         url: "https://example.test/work/wi-1",
         metadata: %{"priority" => "high"}
@@ -24,6 +25,7 @@ defmodule SymphonyElixir.StructuredContextTest do
                  "id" => "wi-1",
                  "identifier" => "MAN-1",
                  "title" => "Check failed run",
+                 "description" => "Inspect the failed run and summarize the blocker.",
                  "state" => "todo",
                  "url" => "https://example.test/work/wi-1",
                  "metadata" => %{"priority" => "high"}
@@ -79,6 +81,7 @@ defmodule SymphonyElixir.StructuredContextTest do
              "id" => "wi-1",
              "identifier" => nil,
              "title" => nil,
+             "description" => nil,
              "state" => nil,
              "url" => nil,
              "metadata" => %{}

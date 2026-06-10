@@ -139,6 +139,18 @@ export async function assertRuntimePrepareSupported(accessToken: string, request
     );
   }
 
+  // Manager agents can have a complete routing rule while still missing the
+  // launcher-facing gateway_config row. Ensure it exists before handing off to
+  // Runtime, otherwise the launcher rejects startup with missing_tracker_kind.
+  if (initialResolution.agent?.role === "manager") {
+    await ensureGatewayConfigExists({
+      agentId,
+      role: "manager",
+      provider: initialResolution.profile?.provider,
+      model: initialResolution.profile?.model,
+    });
+  }
+
   // Auto-create a default gateway config if one is missing.
   // This handles agents that were configured via the inline credential save flow
   // (Settings > Agents > Credentials) which does not create a gateway config.

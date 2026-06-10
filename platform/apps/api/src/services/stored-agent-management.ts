@@ -31,6 +31,7 @@ import {
 import { listCredentialAgentIds } from "../repositories/credentials.js";
 import { ApiRouteError } from "../http.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
+import { syncAgentGatewayConfigForExecutionProfile } from "./agent-gateway-config-sync.js";
 import { countCredentialsForAgent } from "./credentials/agent-scope.js";
 import { ensureDefaultAgentToolsForAgent } from "./default-agent-tools.js";
 import { syncModelIntoRoutingRuleForAgent } from "./stored-agent-routing.js";
@@ -433,10 +434,15 @@ export async function updateStoredAgentFromApi(input: {
         newModel: nextModel,
         userId: input.userId,
       });
+      await syncAgentGatewayConfigForExecutionProfile({
+        accessToken: input.accessToken,
+        userId: input.userId,
+        agentId: updated.id,
+      });
     } catch (syncError) {
       // Don't fail the agent update on a sync error — log it and let
       // the user retry. The agent row is already persisted.
-      console.error("[stored-agent-update] Failed to sync routing rule:", syncError);
+      console.error("[stored-agent-update] Failed to sync runtime config:", syncError);
     }
   }
 

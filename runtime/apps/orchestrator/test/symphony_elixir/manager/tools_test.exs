@@ -96,6 +96,8 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
     runner_kinds = spec["inputSchema"]["properties"]["runner_kind"]["enum"]
 
+    assert spec["inputSchema"]["required"] == ["runner_kind", "intent"]
+    assert spec["inputSchema"]["properties"]["work_item"]["required"] == ["instructions"]
     assert runner_kinds == ExecutionProfile.supported_runner_kinds()
     assert "openclaw_ws" in runner_kinds
     refute "llm_tool_runner" in runner_kinds
@@ -315,6 +317,96 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
              Jason.decode!(output)
 
     refute_received {:dispatched, _, _, _}
+  end
+
+  test "dispatch_runner creates inline work once and dispatches it" do
+    {:ok, metadata_agent} = Agent.start_link(fn -> %{} end)
+    {:ok, inserted_count} = Agent.start_link(fn -> 0 end)
+    parent = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case {conn.method, conn.request_path} do
+        {"GET", "/rest/v1/work_items"} ->
+          if Map.has_key?(conn.query_params, "metadata->>manager_inline_dispatch_hash") do
+            rows =
+              case Agent.get(inserted_count, & &1) do
+                0 -> []
+                _ -> [work_item_row(Agent.get(metadata_agent, & &1))]
+              end
+
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(200, Jason.encode!(rows))
+          else
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(200, Jason.encode!([work_item_row(Agent.get(metadata_agent, & &1))]))
+          end
+
+        {"POST", "/rest/v1/work_items"} ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+
+          assert payload["workspace_id"] == "workspace-1"
+          assert payload["title"] == "Fix failing specs"
+          assert payload["description"] == "Fix failing specs and add coverage."
+          assert payload["instructions"] == "Fix failing specs and add coverage."
+          assert payload["state"] == "running"
+          assert payload["source"] == "manager"
+          assert payload["runner_kind"] == "codex"
+          assert payload["metadata"]["created_via"] == "manager_dispatch_runner"
+          assert payload["metadata"]["intent"] == "implement"
+          assert is_binary(payload["metadata"]["manager_inline_dispatch_hash"])
+
+          Agent.update(inserted_count, &(&1 + 1))
+          Agent.update(metadata_agent, fn _ -> payload["metadata"] end)
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(201, Jason.encode!([Map.merge(work_item_row(payload["metadata"]), payload)]))
+
+        {"GET", "/rest/v1/gateway_config"} ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!([gateway_config_row()]))
+
+        {"PATCH", "/rest/v1/work_items"} ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          %{"metadata" => metadata} = Jason.decode!(body)
+          Agent.update(metadata_agent, fn _ -> metadata end)
+          Plug.Conn.send_resp(conn, 204, "")
+      end
+    end)
+
+    dispatcher = fn work_item, route, dispatch ->
+      send(parent, {:inline_dispatched, work_item.id, work_item.runner_type, work_item.description, route, dispatch})
+      :ok
+    end
+
+    args = %{
+      "runner_kind" => "codex",
+      "intent" => "implement",
+      "work_item" => %{
+        "title" => "Fix failing specs",
+        "instructions" => "Fix failing specs and add coverage."
+      }
+    }
+
+    assert %{"success" => true, "output" => output} =
+             execute_tool("dispatch_runner", args, %{dispatcher: dispatcher, session: %{workspace_id: "workspace-1"}})
+
+    assert %{"runner_session_id" => first_session_id, "idempotent" => false} = Jason.decode!(output)
+    assert_received {:inline_dispatched, "wi-1", "codex", "Fix failing specs and add coverage.", route, dispatch}
+    assert route["credential_id"] == "cred-1"
+    assert dispatch["context"] == %{}
+    assert dispatch["runner_session_id"] == first_session_id
+
+    assert %{"success" => true, "output" => output} =
+             execute_tool("dispatch_runner", args, %{dispatcher: dispatcher, session: %{workspace_id: "workspace-1"}})
+
+    assert %{"runner_session_id" => ^first_session_id, "idempotent" => true} = Jason.decode!(output)
+    assert Agent.get(inserted_count, & &1) == 1
+    refute_received {:inline_dispatched, _, _, _, _, _}
   end
 
   test "dispatch_runner does not persist in-flight metadata when startup fails" do

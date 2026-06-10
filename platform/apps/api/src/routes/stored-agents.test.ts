@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoredAgent } from "../../../../contracts/agents.js";
 import type { ExecutionProfileResolution } from "../../../../contracts/execution-profile.js";
-import { ensureGatewayConfigExists } from "../services/ensure-gateway-config.js";
+import { syncAgentGatewayConfigForExecutionProfile } from "../services/agent-gateway-config-sync.js";
 import { ensureDefaultAgentToolsForAgent } from "../services/default-agent-tools.js";
 import { resolveExecutionProfile } from "../services/execution-profile-resolver.js";
 import { listStoredAgentsFromSupabase } from "../services/stored-agent-management.js";
@@ -50,8 +50,8 @@ vi.mock("../repositories/credentials.js", () => ({
   upsertCredentialAlias: vi.fn(),
 }));
 
-vi.mock("../services/ensure-gateway-config.js", () => ({
-  ensureGatewayConfigExists: vi.fn(),
+vi.mock("../services/agent-gateway-config-sync.js", () => ({
+  syncAgentGatewayConfigForExecutionProfile: vi.fn(),
 }));
 
 vi.mock("../services/default-agent-tools.js", () => ({
@@ -121,6 +121,10 @@ describe("stored agent default routing", () => {
       assignedToolSlugs: [],
       missingToolSlugs: [],
     });
+    vi.mocked(syncAgentGatewayConfigForExecutionProfile).mockResolvedValue({
+      changed: true,
+      resolution: resolution("rule-1"),
+    });
   });
 
   it("repairs an existing named rule when no routing rule matched", async () => {
@@ -157,11 +161,10 @@ describe("stored agent default routing", () => {
       model: "gpt-5",
       credentialRef: { type: "alias", value: "default-openai" },
     });
-    expect(ensureGatewayConfigExists).toHaveBeenCalledWith({
+    expect(syncAgentGatewayConfigForExecutionProfile).toHaveBeenCalledWith({
+      accessToken: "token-1",
+      userId: "user-1",
       agentId: "33333333-3333-4333-8333-333333333333",
-      role: "coding",
-      provider: "openai",
-      model: "gpt-5",
     });
     expect(ensureDefaultAgentToolsForAgent).toHaveBeenCalledWith({
       agentId: "33333333-3333-4333-8333-333333333333",
@@ -190,7 +193,7 @@ describe("stored agent default routing", () => {
     ).resolves.toMatchObject({ changed: true, resolution: { source: { routingRuleId: "rule-1" } } });
 
     expect(upsertAgentCredentialReferenceRule).not.toHaveBeenCalled();
-    expect(ensureGatewayConfigExists).not.toHaveBeenCalled();
+    expect(syncAgentGatewayConfigForExecutionProfile).not.toHaveBeenCalled();
     expect(ensureDefaultAgentToolsForAgent).toHaveBeenCalledWith({
       agentId: "33333333-3333-4333-8333-333333333333",
       workspaceId: "22222222-2222-4222-8222-222222222222",

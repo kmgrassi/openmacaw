@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     "plan.create",
     "plan.update",
     "plan.delete",
+    "delegate",
     "task.create",
     "task.update",
     "task.schedule",
@@ -80,6 +81,31 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
           "properties" => %{
             "workspace_id" => string_schema("Workspace database UUID."),
             "plan_id" => string_schema("Plan database UUID.")
+          }
+        }
+      },
+      %{
+        "name" => "delegate",
+        "description" =>
+          "Hand work to the orchestrator with minimal routing detail. Provide what needs to happen in instructions; use when=now to make it manager-runnable immediately, an ISO timestamp to schedule pickup, or omit when for plan-only todo work. Optional intent describes the desired capability while the orchestrator keeps canonical routing fields.",
+        "inputSchema" => %{
+          "type" => "object",
+          "additionalProperties" => false,
+          "required" => ["instructions"],
+          "properties" => %{
+            "workspace_id" => string_schema("Workspace database UUID."),
+            "plan_id" => nullable_string_schema("Optional plan database UUID in the same workspace."),
+            "instructions" => string_schema("Work instructions for the next runner or manager."),
+            "title" => nullable_string_schema("Optional short title. If omitted, the runtime derives one from instructions."),
+            "priority" => nullable_string_schema("Optional task priority."),
+            "intent" => nullable_string_schema("Optional intent such as implement, review, test, browse, or remediate."),
+            "depends_on" => %{"type" => ["array", "null"], "items" => %{"type" => "string"}},
+            "repository" => nullable_string_schema("Optional repository identifier using the same shape as repository tools and RepositoryIndex."),
+            "when" => %{
+              "type" => ["string", "null"],
+              "description" => "Use now for immediate manager pickup, an ISO-8601 timestamp for scheduled pickup, or omit/null for plan-only todo work."
+            },
+            "metadata" => metadata_schema("Optional metadata. The runtime adds delegate provenance and intent metadata.")
           }
         }
       },

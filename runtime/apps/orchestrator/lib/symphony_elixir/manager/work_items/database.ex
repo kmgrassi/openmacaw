@@ -21,7 +21,7 @@ defmodule SymphonyElixir.Manager.WorkItems.Database do
   @table "work_items"
   @select Enum.join(
             ~w(
-              id identifier title description priority state workspace_id
+              id identifier title description instructions priority state workspace_id
               plan_id task_id labels metadata next_poll_at last_polled_at
               poll_cadence_seconds manager_runner_id created_at updated_at
             ),
@@ -121,7 +121,7 @@ defmodule SymphonyElixir.Manager.WorkItems.Database do
       id: row["id"],
       identifier: row["identifier"],
       title: row["title"],
-      description: row["description"],
+      description: row["description"] || row["instructions"],
       priority: row["priority"],
       state: row["state"],
       url: Map.get(metadata, "url") || Map.get(metadata, :url),

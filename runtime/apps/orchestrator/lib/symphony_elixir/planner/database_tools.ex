@@ -82,7 +82,24 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
          {:ok, name} <- Arguments.required_string(defaulted_args, "name"),
          {:ok, resolved_args} <- resolve_author_dependencies(defaulted_args, opts),
          {:ok, payload} <- Payloads.task_create_payload(resolved_args, workspace_id, name, plan_row, opts) do
-      with {:ok, row} <- create_task_row(payload, opts, resolved_args, normalization_feedback ++ validation_feedback) do
+      with {:ok, row} <- create_task_row(payload, opts, resolved_args, normalization_feedback ++ validation_feedback, "task.create") do
+        remember_author_task_id(resolved_args, row, opts)
+        {:ok, row}
+      end
+    end
+  end
+
+  def execute("delegate", arguments, opts) do
+    with {:ok, raw_args} <- Arguments.normalize_arguments(arguments),
+         {:ok, args} <- delegate_task_args(raw_args),
+         {:ok, args, normalization_feedback} <- WorkItemMapper.normalize_intake_payload(args),
+         {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
+         {:ok, plan_row} <- optional_plan_row(args, workspace_id, opts),
+         {:ok, defaulted_args, validation_feedback} <- Payloads.default_task_create_args(args, plan_row, opts),
+         {:ok, name} <- Arguments.required_string(defaulted_args, "name"),
+         {:ok, resolved_args} <- resolve_author_dependencies(defaulted_args, opts),
+         {:ok, payload} <- Payloads.task_create_payload(resolved_args, workspace_id, name, plan_row, opts, "delegate") do
+      with {:ok, row} <- create_task_row(payload, opts, resolved_args, normalization_feedback ++ validation_feedback, "delegate") do
         remember_author_task_id(resolved_args, row, opts)
         {:ok, row}
       end
@@ -201,7 +218,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
     end
   end
 
-  defp create_task_row(payload, opts, args, validation_feedback) do
+  defp create_task_row(payload, opts, args, validation_feedback, tool) do
     with {:ok, client} <- client(opts) do
       case PostgRESTClient.post(client, @work_item_table, payload, prefer: "return=representation") do
         {:ok, rows} ->
@@ -209,7 +226,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
             rows
             |> row_result()
             |> with_task_create_feedback(payload, validation_feedback)
-            |> with_review_event("task.create", args)
+            |> with_review_event(tool, args)
 
           {:ok, row}
 
@@ -358,6 +375,65 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
       _ ->
         {:error, {:invalid_argument, "plan_id", "must be a string"}}
     end
+  end
+
+  defp delegate_task_args(args) do
+    with {:ok, instructions} <- Arguments.required_string(args, "instructions"),
+         {:ok, when_value} <- delegate_when(args),
+         {:ok, metadata} <- delegate_input_metadata(args) do
+      task_args =
+        args
+        |> Map.drop(["when"])
+        |> Map.put("instructions", instructions)
+        |> Map.put("description", Arguments.optional_value(args, "description") || instructions)
+        |> Map.put("metadata", delegate_metadata(metadata, args))
+        |> Arguments.maybe_put_optional("name", Arguments.optional_value(args, "title"))
+        |> maybe_apply_delegate_when(when_value)
+
+      {:ok, task_args}
+    end
+  end
+
+  defp delegate_input_metadata(args) do
+    case Arguments.optional_value(args, "metadata") do
+      nil -> {:ok, %{}}
+      metadata when is_map(metadata) -> {:ok, metadata}
+      _ -> {:error, {:invalid_argument, "metadata", "must be an object"}}
+    end
+  end
+
+  defp delegate_when(args) do
+    case Arguments.optional_value(args, "when") do
+      nil ->
+        {:ok, nil}
+
+      "now" ->
+        {:ok, DateTime.utc_now() |> DateTime.to_iso8601()}
+
+      value when is_binary(value) ->
+        case DateTime.from_iso8601(value) do
+          {:ok, datetime, _offset} -> {:ok, DateTime.to_iso8601(datetime)}
+          {:error, _reason} -> {:error, {:invalid_argument, "when", "must be now, ISO-8601, or null"}}
+        end
+
+      _ ->
+        {:error, {:invalid_argument, "when", "must be now, ISO-8601, or null"}}
+    end
+  end
+
+  defp delegate_metadata(metadata, args) do
+    metadata
+    |> Map.put("created_via", "planner_delegate_tool")
+    |> Map.put("planner_tool", "delegate")
+    |> Arguments.maybe_put_optional("intent", Arguments.optional_value(args, "intent"))
+  end
+
+  defp maybe_apply_delegate_when(args, nil), do: args
+
+  defp maybe_apply_delegate_when(args, next_poll_at) do
+    args
+    |> Map.put("state", "running")
+    |> Map.put("next_poll_at", next_poll_at)
   end
 
   defp resolve_author_dependencies(args, opts) do

@@ -58,6 +58,18 @@ defmodule SymphonyElixir.WorkItem.MapperTest do
       assert item.source == "database"
     end
 
+    test "uses instructions as a description fallback for inline delegated rows" do
+      item =
+        Mapper.from_database_row(%{
+          "id" => "wi-1",
+          "title" => "Fix failing specs",
+          "instructions" => "Fix failing specs and add coverage.",
+          "metadata" => %{}
+        })
+
+      assert item.description == "Fix failing specs and add coverage."
+    end
+
     test "maps depends_on rows into dispatch blockers" do
       item =
         Mapper.from_database_row(%{

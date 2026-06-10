@@ -10,7 +10,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
 
   @impl true
   def description do
-    "Dispatch an author, reviewer, or other runner turn for a work item and intent. #{IntentVocabulary.tool_description()}"
+    "Dispatch an author, reviewer, or other runner turn for an existing or inline work item and intent. #{IntentVocabulary.tool_description()}"
   end
 
   @impl true
@@ -18,9 +18,28 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
     %{
       "type" => "object",
       "additionalProperties" => false,
-      "required" => ["work_item_id", "runner_kind", "intent"],
+      "required" => ["runner_kind", "intent"],
       "properties" => %{
-        "work_item_id" => ToolSupport.string_schema("Work item database UUID."),
+        "work_item_id" => ToolSupport.nullable_string_schema("Existing work item database UUID."),
+        "work_item" => %{
+          "type" => ["object", "null"],
+          "description" => "Inline work to create before dispatch when no work_item_id exists.",
+          "additionalProperties" => false,
+          "required" => ["instructions"],
+          "properties" => %{
+            "workspace_id" => ToolSupport.nullable_string_schema("Must match the manager session workspace when present."),
+            "title" => ToolSupport.nullable_string_schema("Optional short title. Defaults from instructions."),
+            "instructions" => ToolSupport.string_schema("Work instructions for the dispatched runner."),
+            "priority" => ToolSupport.nullable_string_schema("Optional priority."),
+            "repository" => ToolSupport.nullable_string_schema("Optional repository identifier."),
+            "depends_on" => %{"type" => ["array", "null"], "items" => %{"type" => "string"}},
+            "metadata" => %{
+              "type" => ["object", "null"],
+              "description" => "Optional metadata to merge into the created work item.",
+              "additionalProperties" => true
+            }
+          }
+        },
         "runner_kind" =>
           ToolSupport.enum_schema(
             ExecutionProfile.supported_runner_kinds(),

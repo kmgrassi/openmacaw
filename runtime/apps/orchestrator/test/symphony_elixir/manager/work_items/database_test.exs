@@ -15,9 +15,7 @@ defmodule SymphonyElixir.Manager.WorkItems.DatabaseTest do
       table: "work_items"
     )
 
-    Application.put_env(:symphony_elixir, :manager_due_work_items_req_options,
-      plug: {Req.Test, __MODULE__}
-    )
+    Application.put_env(:symphony_elixir, :manager_due_work_items_req_options, plug: {Req.Test, __MODULE__})
 
     on_exit(fn ->
       Application.delete_env(:symphony_elixir, Database)
@@ -50,6 +48,7 @@ defmodule SymphonyElixir.Manager.WorkItems.DatabaseTest do
       assert params["order"] == "next_poll_at.asc"
       assert params["limit"] == "25"
       assert params["select"] =~ "id,identifier"
+      assert params["select"] =~ "instructions"
       refute Map.has_key?(params, "state")
       refute Map.has_key?(params, "plan_id")
     end)
@@ -187,6 +186,31 @@ defmodule SymphonyElixir.Manager.WorkItems.DatabaseTest do
     assert item.url == nil
     assert item.runner_type == nil
     assert item.created_at == nil
+  end
+
+  test "uses instructions as description fallback for manager-runnable delegated rows" do
+    row = %{
+      "id" => "00000000-0000-0000-0000-000000000003",
+      "identifier" => "WI-3",
+      "title" => "Delegated work",
+      "description" => nil,
+      "instructions" => "Carry out the delegated request.",
+      "state" => "running",
+      "workspace_id" => @workspace_id,
+      "labels" => [],
+      "metadata" => %{},
+      "created_at" => nil,
+      "updated_at" => nil
+    }
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!([row]))
+    end)
+
+    assert {:ok, [item]} = Database.due_work_items(@workspace_id, @agent_id, @now)
+    assert item.description == "Carry out the delegated request."
   end
 
   test "returns a {:missing_supabase_config, _} error when no endpoint is configured" do
