@@ -7,6 +7,8 @@ import {
   formatPersistedToolCalls,
   type ToolCallDisplay,
 } from "../lib/tool-call-rendering";
+import { Badge } from "./ui/Badge";
+import { Card } from "./ui/Card";
 
 type Props = {
   role: string;
@@ -44,16 +46,22 @@ function ToolCallList({ toolCalls }: { toolCalls: ToolCallDisplay[] }) {
   return (
     <div className="mt-2 space-y-1.5">
       {toolCalls.map((toolCall, index) => (
-        <div
+        <Card
           key={`${toolCall.label}-${index}`}
-          className="rounded border border-cyan-900/60 bg-cyan-950/25 px-2 py-1.5 text-xs text-cyan-50"
+          padding="sm"
+          tone="info"
+          className="px-2 py-1.5 text-xs text-cyan-50"
         >
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-medium">{toolCall.label}</span>
             {toolCall.status && (
-              <span className="rounded border border-cyan-800/60 px-1.5 py-0.5 text-[10px] uppercase text-cyan-200">
+              <Badge
+                value={toolCall.status}
+                variant="info"
+                className="px-1.5 py-0.5 text-[10px] uppercase"
+              >
                 {toolCall.status}
-              </span>
+              </Badge>
             )}
           </div>
           {toolCall.inputSummary && (
@@ -66,7 +74,7 @@ function ToolCallList({ toolCalls }: { toolCalls: ToolCallDisplay[] }) {
               Output: {toolCall.outputSummary}
             </div>
           )}
-        </div>
+        </Card>
       ))}
     </div>
   );
@@ -127,12 +135,9 @@ export function ChatMessage({
             {managerDisplay.workItemIds.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {managerDisplay.workItemIds.map((workItemId) => (
-                  <span
-                    key={workItemId}
-                    className="rounded border border-slate-700 bg-slate-900/60 px-1.5 py-0.5 font-mono text-[11px] text-slate-300"
-                  >
+                  <Badge key={workItemId} className="font-mono text-[11px]">
                     {workItemId}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             )}

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
 import { formatStatusLabel } from "../../lib/status-labels";
-import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
+import { StatusBadge } from "../ui/StatusBadge";
 import type { DashboardAgentHealth, DashboardSetup } from "./dashboardTypes";
 
 type EngineInstanceCardProps = {
@@ -28,22 +28,6 @@ function formatUptime(startedAt: string | null | undefined) {
   const hours = Math.floor(minutes / 60);
   if (hours < 1) return `${minutes}m`;
   return `${hours}h ${minutes % 60}m`;
-}
-
-function StatusBadge({ status }: { status: string | null | undefined }) {
-  const variant =
-    status === "running" || status === "healthy" || status === "connected"
-      ? "success"
-      : status === "failed" ||
-          status === "unhealthy" ||
-          status === "connection_failed"
-        ? "error"
-        : status === "starting" ||
-            status === "draining" ||
-            status === "not_started"
-          ? "warning"
-          : "default";
-  return <Badge variant={variant}>{formatStatusLabel(status)}</Badge>;
 }
 
 function getEngineStatusMeta(status: string | null | undefined) {
@@ -253,7 +237,7 @@ export function EngineInstanceCard({
   );
 
   return (
-    <Card className="border-slate-800/70 bg-slate-900/55 p-0">
+    <Card padding="none" className="border-slate-800/70 bg-slate-900/55">
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
         {detailsEnabled ? (
           <button
@@ -345,17 +329,24 @@ export function EngineInstanceCard({
               label="Config sync"
               value={
                 <StatusBadge
-                  status={
+                  value={
                     setup?.gatewayConfigState?.lastApplyStatus ??
                     setup?.gatewayConfigState?.syncStatus
                   }
-                />
+                >
+                  {formatStatusLabel(
+                    setup?.gatewayConfigState?.lastApplyStatus ??
+                      setup?.gatewayConfigState?.syncStatus,
+                  )}
+                </StatusBadge>
               }
             />
             <EngineMetric
               label="Launcher"
               value={
-                <StatusBadge status={health?.launcher.status ?? "unknown"} />
+                <StatusBadge value={health?.launcher.status ?? "unknown"}>
+                  {formatStatusLabel(health?.launcher.status ?? "unknown")}
+                </StatusBadge>
               }
               title={
                 health?.launcher.lastError?.message ??
@@ -365,7 +356,11 @@ export function EngineInstanceCard({
             />
             <EngineMetric
               label="Database"
-              value={<StatusBadge status={databaseStatus} />}
+              value={
+                <StatusBadge value={databaseStatus}>
+                  {formatStatusLabel(databaseStatus)}
+                </StatusBadge>
+              }
               title={databaseTitle}
             />
             <EngineMetric
