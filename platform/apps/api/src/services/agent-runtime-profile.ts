@@ -349,3 +349,23 @@ export async function updateAgentRuntimeProfile(input: {
     workspaceId: agent.workspace_id,
   });
 }
+
+export async function updateAgentRuntimeProfileForAuthenticatedUser(input: {
+  auth: {
+    accessToken: string;
+    userId: string;
+  };
+  agentId: string;
+  body: AgentRuntimeProfileUpdateRequest;
+}): Promise<AgentRuntimeProfile> {
+  if (!input.auth.accessToken.trim() || !input.auth.userId.trim()) {
+    throw new ApiRouteError(401, "unauthorized", "Authenticated user context is required");
+  }
+
+  return updateAgentRuntimeProfile({
+    accessToken: input.auth.accessToken,
+    userId: input.auth.userId,
+    agentId: input.agentId,
+    body: input.body,
+  });
+}
