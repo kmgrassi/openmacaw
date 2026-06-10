@@ -44,6 +44,7 @@ defmodule SymphonyElixir.StructuredContext do
       "id" => item.id,
       "identifier" => item.identifier,
       "title" => item.title,
+      "description" => item.description,
       "state" => item.state,
       "url" => item.url,
       "metadata" => item.metadata

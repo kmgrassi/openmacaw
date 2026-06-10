@@ -34,17 +34,23 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
     assert session.instructions =~ "Planning profile scope: global / global"
     assert session.instructions =~ "Work item table guidance:"
     assert session.instructions =~ "state \"todo\" is planned but not manager-runnable"
+    assert session.instructions =~ "delegate.when \"now\""
     assert session.instructions =~ "set state to \"running\" or \"awaiting_review\""
     assert session.instructions =~ "Do not set poll_cadence_seconds for one-shot manager tests"
-    assert session.instructions =~ "routing runner_family \"tool_calling_llm\""
+    assert session.instructions =~ "intent \"implement\""
     assert session.instructions =~ "Work item routing guidance:"
+    assert session.instructions =~ "Use intent instead of concrete routing fields"
     assert session.instructions =~ "task.create accepts optional top-level repository and runner_kind fields"
     assert session.instructions =~ "inspect available repository context with repo.list"
     assert session.instructions =~ "repo.search"
     assert session.instructions =~ "repo.read_file"
     assert session.instructions =~ "repo.read_symbols"
     assert session.instructions =~ "Use only canonical runtime runner_kind values"
-    assert session.instructions =~ "codex, claude_code, openclaw, computer_use, manager, planner, local_relay, local_model_coding"
+
+    for runner_kind <- ~w(codex openclaw computer_use manager planner local_relay local_model_coding) do
+      assert session.instructions =~ runner_kind
+    end
+
     assert session.instructions =~ "Do not invent aliases"
   end
 
