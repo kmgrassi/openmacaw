@@ -602,13 +602,14 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
     Work item routing guidance:
     - For multi-task plans, give each task.create call a stable author_task_id such as "A" or "implement-api". When a later task depends on earlier tasks created in the same planner session, pass depends_on_author_ids instead of guessing database ids.
     - Use intent instead of concrete routing fields when possible: implement for coding changes, review for code or PR review, test for validation work, browse for browser/desktop UI work, and remediate for fixing known failures.
-    - task.create accepts optional top-level repository and runner_kind fields. Use runner_kind only when the request needs a specific execution backend.
+    - task.create routing.intent is the primary dispatch hint. Use one of: #{Enum.join(SymphonyElixir.Orchestrator.IntentVocabulary.names(), ", ")}.
+    - task.create accepts optional top-level repository and runner_kind fields. Use repository when the user names a repository or the request spans multiple repositories. Use runner_kind only when the user, agent context, or repository routing explicitly names a backend.
     - delegate and task.create return validation_feedback when the runtime applied a smart default and dispatch.eligible/reason to summarize whether the created row is ready for orchestrator polling. Treat this as advisory feedback; the orchestrator re-checks policy at poll time.
     - If a tool failure includes validation_feedback with recoverable true and ask_user false, retry once with the suggested_default. If ask_user is true, ask exactly one concise question before retrying.
     #{repository_routing_guidance(tool_names)}
     - Set repository to the stable repository identifier visible in the user request, agent context, or repository tool results. Do not invent aliases.
     - Use only canonical runtime runner_kind values: #{Enum.join(ExecutionProfile.supported_runner_kinds(), ", ")}.
-    - Use runner_kind "codex" for normal cloud coding work, "local_model_coding" when the user asks for a local model/local workspace coding runner, "manager" for follow-up orchestration or polling work, "planner" for additional planning work, "computer_use" for browser/desktop UI work, "openclaw" for OpenClaw work, and "local_relay" only when the requested backend is specifically the relay adapter.
+    - Prefer routing.intent over runner_kind. Use runner_kind "codex" for normal cloud coding work, "local_model_coding" when the user asks for a local model/local workspace coding runner, "manager" for follow-up orchestration or polling work, "planner" for additional planning work, "computer_use" for browser/desktop UI work, "openclaw" for OpenClaw work, and "local_relay" only when the requested backend is specifically the relay adapter.
     - If the correct repository or runner is unclear, create the plan and ask a concise clarifying question before creating routed work items.
 
     Stored agent type: #{settings.stored_agent.type || "planning"}

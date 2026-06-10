@@ -12,21 +12,10 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
   alias SymphonyElixir.{Config, WorkItem}
   alias SymphonyElixir.Manager.SchedulerConfig
   alias SymphonyElixir.Orchestrator.State
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
 
   @max_created_at_sort_key 9_223_372_036_854_775_807
-  @intent_runner_kinds %{
-    "browse" => "computer_use",
-    "computer_use" => "computer_use",
-    "coordinate" => "manager",
-    "delegate" => "manager",
-    "implement" => "codex",
-    "manage" => "manager",
-    "plan" => "planner",
-    "remediate" => "codex",
-    "review" => "codex",
-    "test" => "codex"
-  }
 
   @spec dispatch_eligible?(WorkItem.t(), State.t()) :: boolean()
   def dispatch_eligible?(%WorkItem{} = issue, %State{} = state) do
@@ -77,8 +66,8 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
         supported_runner_kind_or_nil("local_model_coding")
 
       true ->
-        @intent_runner_kinds
-        |> Map.get(intent)
+        intent
+        |> IntentVocabulary.runner_kind_for_intent()
         |> supported_runner_kind_or_nil()
     end
   end

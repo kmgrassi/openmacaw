@@ -112,7 +112,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
       %{
         "name" => "task.create",
         "description" =>
-          "Create a work item row in the platform database, optionally linked to a plan. The returned id is the work item id used for plan review, coding handoff, and runtime routing. When the task should be handled by another agent, add a routing hint that explains the capability loop or intent and any concrete runner preference only when known. For manager-agent pickup, set state to running or awaiting_review and set next_poll_at to an absolute ISO timestamp; todo items are planned but not manager-runnable. #{IntentVocabulary.tool_description()}",
+          "Create a work item row in the platform database, optionally linked to a plan. The returned id is the work item id used for plan review, coding handoff, and runtime routing. Choose routing.intent from the work to be done; runtime routing maps intent to concrete runners. For manager-agent pickup, set when to {mode: now} or {mode: at, at: <absolute ISO timestamp>} so state and next_poll_at are written atomically. Items without when remain planned todo work and are not manager-runnable. #{IntentVocabulary.tool_description()}",
         "inputSchema" => %{
           "type" => "object",
           "additionalProperties" => false,
@@ -150,11 +150,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
                 "Optional repository identifier for this work item, using the same shape as repository tools and RepositoryIndex. Stored in work_items.repository and mirrored into metadata.repository for routing context."
               ),
             "routing" => routing_hint_schema(),
+            "when" => task_when_schema(),
             "metadata" => metadata_schema("Optional task metadata. Use routing for dispatch guidance instead of inventing ad hoc routing keys here."),
             "depends_on" => %{"type" => ["array", "null"], "items" => %{"type" => "string"}},
             "completion_gates" => %{"type" => ["array", "null"], "items" => %{"type" => "string"}},
             "next_poll_at" =>
-              nullable_date_time_schema("Optional ISO-8601 time when manager polling should first address this work item. Manager pickup also requires state running or awaiting_review."),
+              nullable_date_time_schema(
+                "Optional low-level ISO-8601 time when manager polling should first address this work item. Prefer when.mode for new planner calls so pickup state and next_poll_at stay atomic."
+              ),
             "poll_cadence_seconds" =>
               positive_integer_schema("Optional recurring manager poll cadence in seconds. Omit for one-shot manager scheduling unless the user explicitly asks for recurring follow-up."),
             "state" => nullable_string_schema("Optional work item state. Defaults to todo. Use running or awaiting_review when next_poll_at should make the item available to the manager agent."),
@@ -292,9 +295,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     %{
       "type" => ["object", "null"],
       "description" =>
-        "Optional routing guidance for the manager/router. Choose runner_family first from the work needed, then execution_location, then transport, then runner_kind only when a concrete backend is known.",
+        "Optional routing guidance for the manager/router. Set intent from the work needed. Leave runner_family, execution_location, transport, and runner_kind unset unless an upstream system or human explicitly supplied those infrastructure details.",
       "additionalProperties" => false,
       "properties" => %{
+        "intent" => %{
+          "type" => ["string", "null"],
+          "enum" => IntentVocabulary.names() ++ [nil],
+          "description" => IntentVocabulary.tool_description()
+        },
         "runner_family" => %{
           "type" => ["string", "null"],
           "enum" => [
@@ -305,28 +313,45 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
             "custom_runtime",
             nil
           ],
-          "description" =>
-            "Who should handle it: workspace_coding for repo edits/tests, tool_calling_llm for planner/manager reasoning, model_chat for simple local model turns, computer_use for browser/desktop interaction, custom_runtime for an external/custom service."
+          "description" => "Advanced route metadata supplied by routing config, not a planner decision. Omit unless explicitly provided."
         },
         "execution_location" => %{
           "type" => ["string", "null"],
           "enum" => ["cloud", "local", "external", nil],
-          "description" => "Where it should run: cloud for hosted agents, local for the user's machine or local relay, external for an explicitly reachable outside runtime."
+          "description" => "Advanced route metadata supplied by routing config, not a planner decision. Omit unless explicitly provided."
         },
         "transport" => %{
           "type" => ["string", "null"],
           "enum" => ["launcher", "local_direct", "local_relay", "websocket", "http_sse", nil],
-          "description" =>
-            "How to reach it: launcher for normal hosted runtime launch, local_relay for local model/tool execution through the relay, websocket or http_sse for custom external runtimes, local_direct for same-machine local runtime."
+          "description" => "Advanced route metadata supplied by routing config, not a planner decision. Omit unless explicitly provided."
         },
         "runner_kind" => %{
           "type" => ["string", "null"],
           "enum" => ExecutionProfile.supported_runner_kinds() ++ [nil],
-          "description" =>
-            "Concrete backend preference when known. Use codex/local_model_coding for coding work, manager/planner for orchestration, computer_use for browser/desktop tasks, openclaw for OpenClaw work, and local_relay for local relay dispatch."
+          "description" => "Advanced concrete backend preference. Omit unless the user, agent context, or repository routing explicitly names a backend."
         },
-        "intent" => nullable_string_schema("Machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"),
         "rationale" => nullable_string_schema("Brief reason this route is appropriate.")
+      }
+    }
+  end
+
+  defp task_when_schema do
+    %{
+      "type" => ["object", "null"],
+      "description" => "Atomic manager pickup timing. Use {mode: planned} or omit for non-runnable plan items, {mode: now} for immediate pickup, or {mode: at, at: <ISO-8601>} for scheduled pickup.",
+      "additionalProperties" => false,
+      "properties" => %{
+        "mode" => %{
+          "type" => "string",
+          "enum" => ["planned", "now", "at"],
+          "description" => "planned leaves the item todo; now or at makes it manager-runnable."
+        },
+        "at" => nullable_date_time_schema("Required when mode is at. Absolute ISO-8601 timestamp."),
+        "state" => %{
+          "type" => ["string", "null"],
+          "enum" => ["running", "awaiting_review", nil],
+          "description" => "Optional pickup state for mode now or at. Defaults to running."
+        }
       }
     }
   end

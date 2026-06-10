@@ -52,6 +52,17 @@ defmodule SymphonyElixir.WorkItem.MapperTest do
       assert item.metadata["runner_type"] == "planner"
     end
 
+    test "derives runner_type from routing intent when no runner kind is stored" do
+      item =
+        Mapper.from_database_row(%{
+          "id" => "wi-1",
+          "source" => "planner",
+          "metadata" => %{"routing" => %{"intent" => "follow_up"}}
+        })
+
+      assert item.runner_type == "planner"
+    end
+
     test "defaults database tracker rows to database source" do
       item = Mapper.from_database_row(%{"id" => "wi-1", "source" => "github"})
 

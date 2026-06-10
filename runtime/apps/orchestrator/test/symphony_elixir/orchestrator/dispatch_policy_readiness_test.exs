@@ -67,6 +67,21 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicyReadinessTest do
              })
   end
 
+  test "dispatch summary resolves runner from routing intent" do
+    assert %{
+             "eligible" => true,
+             "reason" => "ready",
+             "runner_kind" => "planner",
+             "intent" => "follow_up"
+           } =
+             DispatchPolicy.dispatch_summary_for_row(%{
+               "id" => "work-1",
+               "title" => "Follow up",
+               "state" => "running",
+               "metadata" => %{"routing" => %{"intent" => "follow_up"}}
+             })
+  end
+
   test "dispatch summary resolves runner kind from routing intent" do
     assert %{
              "eligible" => true,

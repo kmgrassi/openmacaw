@@ -92,14 +92,16 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     assert properties["candidate_options"]["items"]["required"] == ["id", "label"]
   end
 
-  test "dispatch_runner advertises the canonical execution profile runner kinds" do
+  test "dispatch_runner advertises intent-first routing with optional canonical runner override" do
     spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
-    runner_kinds = spec["inputSchema"]["properties"]["runner_kind"]["enum"]
+    schema = spec["inputSchema"]
+    runner_kinds = schema["properties"]["runner_kind"]["enum"]
+    intents = schema["properties"]["intent"]["enum"]
 
-    assert spec["inputSchema"]["required"] == ["runner_kind", "intent"]
-    assert spec["inputSchema"]["properties"]["work_item"]["required"] == ["instructions"]
-    assert runner_kinds == ExecutionProfile.supported_runner_kinds()
-    assert "openclaw_ws" in runner_kinds
+    assert schema["required"] == ["intent"]
+    assert schema["properties"]["work_item"]["required"] == ["instructions"]
+    assert intents == IntentVocabulary.names()
+    assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
     refute "llm_tool_runner" in runner_kinds
     assert "local_model_coding" in runner_kinds
   end
@@ -292,7 +294,6 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
 
     args = %{
       "work_item_id" => "wi-1",
-      "runner_kind" => "codex",
       "intent" => "address_review",
       "context" => %{"review_id" => "review-1"}
     }
