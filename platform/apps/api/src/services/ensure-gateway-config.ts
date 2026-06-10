@@ -2,11 +2,18 @@ import { deriveProviderFromModel, extractPrimaryModel } from "../../../../contra
 import { ModelSettingsSchema } from "../../../../contracts/agents.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
-import { buildExecutionProfileBlock, defaultAgentGatewayConfig, hashConfig, asJson } from "./setup/builders.js";
+import {
+  buildExecutionProfileBlock,
+  defaultAgentGatewayConfig,
+  hashConfig,
+  asJson,
+  repairManagerGatewayConfig,
+} from "./setup/builders.js";
 import type { DefaultAgentRole } from "../../../../contracts/setup.js";
 import type { Tables } from "@kmgrassi/supabase-schema";
 
 type AgentGatewayConfigFields = Pick<Tables<"agent">, "model_settings">;
+type GatewayConfigRole = DefaultAgentRole | "manager";
 
 /**
  * Ensures a gateway_config row exists for the given agent.
@@ -18,7 +25,7 @@ type AgentGatewayConfigFields = Pick<Tables<"agent">, "model_settings">;
  */
 export async function ensureGatewayConfigExists(input: {
   agentId: string;
-  role: DefaultAgentRole;
+  role: GatewayConfigRole;
   provider?: string | null;
   model?: string | null;
 }): Promise<void> {
@@ -63,7 +70,16 @@ export async function ensureGatewayConfigExists(input: {
     return null;
   });
   const executionProfile = buildExecutionProfileBlock(resolution);
-  const configJson = defaultAgentGatewayConfig(input.role, provider, model, undefined, executionProfile);
+  const configJson =
+    input.role === "manager"
+      ? repairManagerGatewayConfig({
+          configJson: null,
+          provider,
+          model,
+          runnerKind: "llm_tool_runner",
+          executionProfile,
+        })
+      : defaultAgentGatewayConfig(input.role, provider, model, undefined, executionProfile);
   const configHash = hashConfig(configJson);
 
   const { error: insertError } = await supabase.from("gateway_config").insert({

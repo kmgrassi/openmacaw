@@ -9,6 +9,7 @@ import type { CredentialReference } from "../../../../contracts/credentials.js";
 import type { KnownExecutionProvider } from "../../../../contracts/execution-profile.js";
 import { ApiRouteError } from "../http.js";
 import { findStoredAgentRowById, getStoredAgentGatewayConfig, updateStoredAgentRow } from "../repositories/agents.js";
+import type { SetupAgentRow } from "../repositories/agents.js";
 import {
   credentialRefFromRoutingRule,
   getAgentCredentialReferenceRule,
@@ -20,6 +21,7 @@ import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-clie
 import { ensureGatewayConfigExists } from "./ensure-gateway-config.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
 import { asJson, buildChangeSummary, hashConfig } from "./setup/builders.js";
+import { writeGatewayConfigForManagerAgent } from "./setup/store/gateway-config-writer.js";
 import { createStoredAgentGatewayConfigVersion, updateStoredAgentGatewayConfig } from "../repositories/agents.js";
 import { defaultRunnerKindForAgentType } from "../../../../contracts/agent-runner-defaults.js";
 import { ModelSettingsSchema, ToolPolicySchema, normalizeAgentType } from "../../../../contracts/agents.js";
@@ -313,7 +315,23 @@ export async function updateAgentRuntimeProfile(input: {
     localEndpointUrl: input.body.localEndpointUrl ?? null,
   });
 
-  if (agentType === "planning" || agentType === "coding") {
+  if (agentType === "manager") {
+    const managerAgent = {
+      ...agent,
+      status: "active",
+      created_by_user_id: null,
+      updated_at: null,
+    } satisfies SetupAgentRow;
+
+    await writeGatewayConfigForManagerAgent({
+      accessToken: input.accessToken,
+      userId: input.userId,
+      agent: managerAgent,
+      provider: input.body.provider,
+      model: input.body.model,
+      runnerKind: "llm_tool_runner",
+    });
+  } else if (agentType === "planning" || agentType === "coding") {
     await persistAgentGatewayRuntimeConfig({
       accessToken: input.accessToken,
       userId: input.userId,

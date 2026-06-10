@@ -67,12 +67,12 @@ defmodule SymphonyElixir.Manager.ToolSupport do
 
   def dispatch_runner(arguments, context) do
     with {:ok, args} <- normalize_arguments(arguments),
-         {:ok, work_item_id} <- required_string(args, "work_item_id"),
          {:ok, intent} <- required_string(args, "intent"),
          {:ok, runner_kind} <- dispatch_runner_kind(args, intent),
          {:ok, dispatch_context} <- optional_map(args, "context"),
          {:ok, client} <- client(context),
-         {:ok, row} <- read_work_item(client, work_item_id),
+         {:ok, row} <- resolve_dispatch_work_item(client, args, context, runner_kind, intent),
+         {:ok, work_item_id} <- row_id(row),
          {:ok, workspace_id} <- workspace_id(row),
          {:ok, route} <- fetch_runner_route(workspace_id, runner_kind) do
       row_metadata = metadata(row)
@@ -218,6 +218,124 @@ defmodule SymphonyElixir.Manager.ToolSupport do
     end
   end
 
+  defp resolve_dispatch_work_item(client, args, context, runner_kind, intent) do
+    case optional_string(args, "work_item_id") do
+      work_item_id when is_binary(work_item_id) ->
+        read_work_item(client, work_item_id)
+
+      nil ->
+        create_or_find_inline_work_item(client, args, context, runner_kind, intent)
+    end
+  end
+
+  defp create_or_find_inline_work_item(client, args, context, runner_kind, intent) do
+    with {:ok, inline_work_item} <- optional_map(args, "work_item"),
+         :ok <- require_inline_work_item(inline_work_item),
+         {:ok, session_workspace_id} <- session_workspace_id(context),
+         :ok <- reject_workspace_override(inline_work_item, session_workspace_id),
+         {:ok, instructions} <- required_string(inline_work_item, "instructions"),
+         {:ok, metadata} <- optional_map(inline_work_item, "metadata"),
+         {:ok, depends_on} <- optional_string_list(inline_work_item, "depends_on") do
+      title = inline_title(inline_work_item, instructions)
+      repository = optional_string(inline_work_item, "repository")
+      hash = inline_dispatch_hash(session_workspace_id, runner_kind, intent, title, instructions, repository, depends_on)
+
+      case find_inline_work_item(client, session_workspace_id, hash) do
+        {:ok, %{} = row} ->
+          {:ok, row}
+
+        {:ok, nil} ->
+          payload =
+            inline_work_item
+            |> Map.take(["priority"])
+            |> Map.merge(%{
+              "workspace_id" => session_workspace_id,
+              "title" => title,
+              "description" => instructions,
+              "instructions" => instructions,
+              "state" => "running",
+              "source" => "manager",
+              "runner_kind" => runner_kind,
+              "metadata" => inline_metadata(metadata, hash, runner_kind, intent, repository)
+            })
+            |> maybe_put("repository", repository)
+            |> maybe_put("depends_on", depends_on_or_nil(depends_on))
+
+          insert_inline_work_item(client, payload)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  defp require_inline_work_item(work_item) when map_size(work_item) > 0, do: :ok
+  defp require_inline_work_item(_work_item), do: {:error, {:missing_argument, "work_item_id or work_item"}}
+
+  defp find_inline_work_item(client, workspace_id, hash) do
+    query = %{
+      "workspace_id" => "eq.#{workspace_id}",
+      "metadata->>manager_inline_dispatch_hash" => "eq.#{hash}",
+      "order" => "created_at.asc.nullslast",
+      "limit" => "1"
+    }
+
+    case PostgRESTClient.get(client, @work_items_table, query) do
+      {:ok, [row | _]} when is_map(row) -> {:ok, row}
+      {:ok, []} -> {:ok, nil}
+      {:ok, row} when is_map(row) -> {:ok, row}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_inline_work_item(client, payload) do
+    case PostgRESTClient.post(client, @work_items_table, payload, prefer: "return=representation") do
+      {:ok, [row | _]} when is_map(row) -> {:ok, row}
+      {:ok, row} when is_map(row) -> {:ok, row}
+      {:ok, _body} -> {:error, :invalid_inline_work_item_response}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp inline_metadata(metadata, hash, runner_kind, intent, repository) do
+    metadata
+    |> Map.put("created_via", "manager_dispatch_runner")
+    |> Map.put("manager_inline_dispatch_hash", hash)
+    |> Map.put("runner_kind", runner_kind)
+    |> Map.put("intent", intent)
+    |> maybe_put("repository", repository)
+  end
+
+  defp inline_dispatch_hash(workspace_id, runner_kind, intent, title, instructions, repository, depends_on) do
+    :crypto.hash(:sha256, :erlang.term_to_binary({workspace_id, runner_kind, intent, title, instructions, repository, depends_on}))
+    |> Base.encode16(case: :lower)
+  end
+
+  defp inline_title(args, instructions) do
+    case optional_string(args, "title") do
+      nil ->
+        instructions
+        |> String.split(~r/[\.\n]/, parts: 2)
+        |> List.first()
+        |> String.trim()
+        |> String.slice(0, 80)
+        |> case do
+          "" -> "Delegated work"
+          title -> title
+        end
+
+      title ->
+        title
+    end
+  end
+
+  defp row_id(row) do
+    case Map.get(row, "id") do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> {:error, :missing_work_item_id}
+    end
+  end
+
   defp update_work_item_metadata(client, work_item_id, metadata) when is_map(metadata) do
     case PostgRESTClient.patch(
            client,
@@ -280,6 +398,23 @@ defmodule SymphonyElixir.Manager.ToolSupport do
       nil -> {:ok, %{}}
       value when is_map(value) -> {:ok, value}
       _ -> {:error, {:invalid_argument, key, "must be an object"}}
+    end
+  end
+
+  defp optional_string_list(args, key) do
+    case Map.get(args, key) do
+      nil ->
+        {:ok, []}
+
+      values when is_list(values) ->
+        if Enum.all?(values, &is_binary/1) do
+          {:ok, values}
+        else
+          {:error, {:invalid_argument, key, "must be an array of strings"}}
+        end
+
+      _ ->
+        {:error, {:invalid_argument, key, "must be an array of strings"}}
     end
   end
 
@@ -466,6 +601,9 @@ defmodule SymphonyElixir.Manager.ToolSupport do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp depends_on_or_nil([]), do: nil
+  defp depends_on_or_nil(depends_on), do: depends_on
 
   defp dispatcher(context) do
     Map.get(context, :dispatcher) || Map.get(context, "dispatcher") || (&default_dispatch/3)

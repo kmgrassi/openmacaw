@@ -34,7 +34,7 @@ defmodule SymphonyElixir.WorkItem.Mapper do
       id: Map.get(row, "id"),
       identifier: Map.get(row, "identifier"),
       title: Map.get(row, "title"),
-      description: Map.get(row, "description"),
+      description: Map.get(row, "description") || Map.get(row, "instructions"),
       priority: Map.get(row, "priority"),
       state: Map.get(row, "state"),
       url: Map.get(row, "url") || metadata_url(metadata),

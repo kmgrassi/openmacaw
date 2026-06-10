@@ -589,21 +589,22 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
     Inspect the request, create or update structured plan/task records with the provided planner tools, and stop after planning.
     After a successful tool call, always return a concise user-facing confirmation that names what changed and includes relevant plan or task IDs/links from the tool result.
     You cannot write code, mutate a workspace, create commits, create pull requests, run shell commands, install packages, use Code Interpreter, or use Computer Use.
-    Current time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to schedule, pause, or defer a work item to a specific time, call task.schedule with next_poll_at set to the resolved absolute ISO timestamp.
+    Current time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to schedule, pause, or defer an existing work item to a specific time, call task.schedule with next_poll_at set to the resolved absolute ISO timestamp.
 
     Work item table guidance:
     - A work item with state "todo" is planned but not manager-runnable.
-    - To make a new work item available to the manager agent, set task.create when to {"mode":"now"} for immediate pickup or {"mode":"at","at":"<absolute ISO timestamp>"} for scheduled pickup. This writes state and next_poll_at together.
-    - Use when state "awaiting_review" only when the manager should review completed work; otherwise omit state and let it default to "running".
+    - Prefer delegate for new work that should be handed to the orchestrator. Use delegate.when "now" for immediate manager pickup, an absolute ISO timestamp for scheduled pickup, or omit when for plan-only todo work.
+    - task.create remains the full power surface. To make a task.create item available to the manager agent, set state to "running" or "awaiting_review" and set next_poll_at to an absolute ISO timestamp.
     - Do not set poll_cadence_seconds for one-shot manager tests. Only set it when the user explicitly asks for recurring follow-up.
-    - Example: create a manager-runnable item for now with task.create using when {"mode":"now"} and routing intent "follow_up".
+    - Example: create a manager-runnable item for now with delegate using instructions, optional title, intent "implement", and when "now".
     - Example: make an existing item manager-runnable by calling task.update with state "running", then task.schedule with the resolved next_poll_at.
 
     Work item routing guidance:
     - For multi-task plans, give each task.create call a stable author_task_id such as "A" or "implement-api". When a later task depends on earlier tasks created in the same planner session, pass depends_on_author_ids instead of guessing database ids.
+    - Use intent instead of concrete routing fields when possible: implement for coding changes, review for code or PR review, test for validation work, browse for browser/desktop UI work, and remediate for fixing known failures.
     - task.create routing.intent is the primary dispatch hint. Use one of: #{Enum.join(SymphonyElixir.Orchestrator.IntentVocabulary.names(), ", ")}.
     - task.create accepts optional top-level repository and runner_kind fields. Use repository when the user names a repository or the request spans multiple repositories. Use runner_kind only when the user, agent context, or repository routing explicitly names a backend.
-    - task.create returns validation_feedback when the runtime applied a smart default and dispatch.eligible/reason to summarize whether the created row is ready for orchestrator polling. Treat this as advisory feedback; the orchestrator re-checks policy at poll time.
+    - delegate and task.create return validation_feedback when the runtime applied a smart default and dispatch.eligible/reason to summarize whether the created row is ready for orchestrator polling. Treat this as advisory feedback; the orchestrator re-checks policy at poll time.
     - If a tool failure includes validation_feedback with recoverable true and ask_user false, retry once with the suggested_default. If ask_user is true, ask exactly one concise question before retrying.
     #{repository_routing_guidance(tool_names)}
     - Set repository to the stable repository identifier visible in the user request, agent context, or repository tool results. Do not invent aliases.

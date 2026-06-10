@@ -35,6 +35,10 @@ async function resolveExecutionProfileBlock(agentId: string, accessToken: string
   }
 }
 
+function isUniqueConstraintViolation(error: { code?: string | null } | null | undefined) {
+  return error?.code === "23505";
+}
+
 export async function writeGatewayConfigForDefaultAgent(
   accessToken: string,
   userId: string,
@@ -43,6 +47,7 @@ export async function writeGatewayConfigForDefaultAgent(
   provider: string,
   model: string,
   runnerKind?: Parameters<typeof defaultAgentGatewayConfig>[3],
+  retryAfterCreateConflict = true,
 ) {
   const existingGatewayConfig = await getGatewayConfig(accessToken, agent.id);
   const executionProfile = await resolveExecutionProfileBlock(agent.id, accessToken);
@@ -64,7 +69,12 @@ export async function writeGatewayConfigForDefaultAgent(
       })
       .select(GATEWAY_CONFIG_SELECT);
 
-    if (error) throw normalizeSupabaseError("gateway_config insert", error);
+    if (error) {
+      if (retryAfterCreateConflict && isUniqueConstraintViolation(error)) {
+        return writeGatewayConfigForDefaultAgent(accessToken, userId, agent, role, provider, model, runnerKind, false);
+      }
+      throw normalizeSupabaseError("gateway_config insert", error);
+    }
     const createdGatewayConfig = data[0] as GatewayConfigRow | undefined;
     if (!createdGatewayConfig) {
       throw new ApiRouteError(502, "gateway_config_create_failed", "Gateway config creation returned no row");
@@ -115,15 +125,18 @@ export async function writeGatewayConfigForDefaultAgent(
   if (versionError) throw normalizeSupabaseError("gateway_config_versions insert", versionError);
 }
 
-export async function writeGatewayConfigForManagerAgent(input: {
-  accessToken: string;
-  userId: string;
-  agent: AgentRow;
-  provider: string;
-  model: string;
-  runnerKind: "llm_tool_runner";
-  cadenceMs?: number;
-}) {
+export async function writeGatewayConfigForManagerAgent(
+  input: {
+    accessToken: string;
+    userId: string;
+    agent: AgentRow;
+    provider: string;
+    model: string;
+    runnerKind: "llm_tool_runner";
+    cadenceMs?: number;
+  },
+  retryAfterCreateConflict = true,
+) {
   const existingGatewayConfig = await getGatewayConfig(input.accessToken, input.agent.id);
   const executionProfile = await resolveExecutionProfileBlock(input.agent.id, input.accessToken);
   const nextConfigJson = repairManagerGatewayConfig({
@@ -149,7 +162,12 @@ export async function writeGatewayConfigForManagerAgent(input: {
       })
       .select(GATEWAY_CONFIG_SELECT);
 
-    if (error) throw normalizeSupabaseError("gateway_config insert", error);
+    if (error) {
+      if (retryAfterCreateConflict && isUniqueConstraintViolation(error)) {
+        return writeGatewayConfigForManagerAgent(input, false);
+      }
+      throw normalizeSupabaseError("gateway_config insert", error);
+    }
     const createdGatewayConfig = data[0] as GatewayConfigRow | undefined;
     if (!createdGatewayConfig) {
       throw new ApiRouteError(502, "gateway_config_create_failed", "Gateway config creation returned no row");

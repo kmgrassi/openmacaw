@@ -8,7 +8,6 @@ import {
   type UpsertAgentCredentialReferenceRequest,
 } from "../../../../../contracts/credentials.js";
 import { ModelProviderSchema } from "../../../../../contracts/model-catalog.js";
-import type { DefaultAgentRole } from "../../../../../contracts/setup.js";
 import { ApiRouteError, errorPayload, handleApiRouteError, requestAccessToken, requireRouteParam } from "../../http.js";
 import {
   getAgentCredentialReferenceRule,
@@ -17,7 +16,7 @@ import {
 } from "../../repositories/routing-rules.js";
 import { validateCredentialRecord } from "../../services/credential-validation.js";
 import { ensureDefaultAgentToolsForAgent } from "../../services/default-agent-tools.js";
-import { ensureGatewayConfigExists } from "../../services/ensure-gateway-config.js";
+import { syncAgentGatewayConfigForExecutionProfile } from "../../services/agent-gateway-config-sync.js";
 import { resolveExecutionProfile } from "../../services/execution-profile-resolver.js";
 import {
   listSavedCredentialsForAgentFromSupabase,
@@ -174,6 +173,11 @@ async function upsertCredentialReference(req: Request, request: UpsertAgentCrede
       userId: req.userId ?? "",
     });
   }
+  await syncAgentGatewayConfigForExecutionProfile({
+    accessToken,
+    userId: req.userId ?? null,
+    agentId: agent.id,
+  });
   const state = await listWorkspaceCredentialReferenceState(request.workspaceId, req.userId);
   const localEndpointUrl =
     localModelRule?.endpointUrl ??
@@ -240,28 +244,6 @@ async function syncSavedCredentialIntoRouting(
   });
 }
 
-async function ensureGatewayConfigForSavedCredential(input: { agentId: string; provider: string }) {
-  try {
-    const profile = await resolveExecutionProfile({
-      agentId: input.agentId,
-      skipCredentialCheck: true,
-    });
-    if (
-      profile.missing.includes("gateway_config") &&
-      profile.agent &&
-      (profile.agent.role === "planning" || profile.agent.role === "coding")
-    ) {
-      await ensureGatewayConfigExists({
-        agentId: input.agentId,
-        role: profile.agent.role as DefaultAgentRole,
-        provider: input.provider,
-      });
-    }
-  } catch (gatewayError) {
-    console.error("[credential-save] Failed to auto-create gateway config:", gatewayError);
-  }
-}
-
 export async function saveStoredAgentCredential(req: Request, res: Response) {
   try {
     const request = parseSaveCredentialRequest(req);
@@ -312,9 +294,10 @@ export async function saveStoredAgentCredential(req: Request, res: Response) {
       credentialRowId: saved.credentialRowId,
       userId: req.userId ?? null,
     });
-    await ensureGatewayConfigForSavedCredential({
+    await syncAgentGatewayConfigForExecutionProfile({
+      accessToken,
+      userId: req.userId ?? null,
       agentId,
-      provider: saved.provider ?? request.provider,
     });
 
     return res.status(200).json(buildSaveCredentialResponse(saved));
