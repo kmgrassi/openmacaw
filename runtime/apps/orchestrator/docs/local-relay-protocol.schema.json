@@ -19,6 +19,12 @@
       "$ref": "#/$defs/error"
     },
     {
+      "$ref": "#/$defs/helper_error"
+    },
+    {
+      "$ref": "#/$defs/cancel_ack"
+    },
+    {
       "$ref": "#/$defs/reserved_dispatch_frame"
     }
   ],
@@ -197,6 +203,77 @@
         }
       },
       "additionalProperties": false
+    },
+    "helper_error": {
+      "type": "object",
+      "required": ["type", "code", "message"],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "schema_version": {
+          "const": "1"
+        },
+        "correlation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "detail": {
+          "$ref": "#/$defs/error_detail"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cancel_ack": {
+      "type": "object",
+      "required": ["type", "correlation_id", "outcome"],
+      "properties": {
+        "type": {
+          "const": "cancel_ack"
+        },
+        "schema_version": {
+          "const": "1"
+        },
+        "correlation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "error_detail": {
+      "type": "object",
+      "properties": {
+        "http_status": {
+          "type": "integer",
+          "minimum": 100
+        },
+        "dial_error": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "raw_message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
     },
     "reserved_dispatch_frame": {
       "type": "object",

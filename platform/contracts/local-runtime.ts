@@ -81,9 +81,50 @@ export const LOCAL_RUNTIME_REGISTRATION_RUNNER_KINDS = [
 export type LocalRuntimeRegistrationRunnerKind =
   (typeof LOCAL_RUNTIME_REGISTRATION_RUNNER_KINDS)[number];
 
+export const LocalRuntimeMachineStatusSchema = z.enum([
+  "online",
+  "offline",
+  "degraded",
+]);
+export type LocalRuntimeMachineStatus = z.infer<
+  typeof LocalRuntimeMachineStatusSchema
+>;
+
+export const LocalRuntimeErrorDetailSchema = z.object({
+  httpStatus: z.number().int().positive().optional(),
+  dialError: z.string().min(1).optional(),
+  endpoint: z.string().min(1).optional(),
+  rawMessage: z.string().min(1).optional(),
+});
+export type LocalRuntimeErrorDetail = z.infer<
+  typeof LocalRuntimeErrorDetailSchema
+>;
+
+export const LocalRuntimeModelSchema = z.object({
+  id: z.string(),
+  machineId: z.string(),
+  runnerKind: z.string().min(1),
+  model: z.string().min(1),
+  provider: z.string().nullable(),
+  capabilities: z.record(z.string(), z.unknown()).default({}),
+  lastAdvertisedAt: z.string(),
+});
+export type LocalRuntimeModel = z.infer<typeof LocalRuntimeModelSchema>;
+
+export const LocalRuntimeEventSchema = z.object({
+  id: z.string(),
+  machineId: z.string(),
+  workspaceId: z.string(),
+  kind: z.string().min(1),
+  detail: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.string(),
+});
+export type LocalRuntimeEvent = z.infer<typeof LocalRuntimeEventSchema>;
+
 export const LocalExecutionTargetSchema = z.object({
   machineId: z.string().nullable(),
   machineDisplayName: z.string().nullable(),
+  status: LocalRuntimeMachineStatusSchema.default("offline"),
   helperOnline: z.boolean(),
   lastSeenAt: z.string().nullable(),
   workspaceRoot: z.string().nullable(),
@@ -92,6 +133,8 @@ export const LocalExecutionTargetSchema = z.object({
   advertisedRunnerKinds: z.array(z.string()).default([]),
   advertisedModels: z.array(z.string()).default([]),
   runtimeManagedTools: z.boolean().nullable().default(null),
+  lastError: z.string().nullable().default(null),
+  lastErrorAt: z.string().nullable().default(null),
 });
 export type LocalExecutionTarget = z.infer<typeof LocalExecutionTargetSchema>;
 
@@ -157,6 +200,8 @@ export const LocalRuntimeRunnerSchema = z.object({
   /** Empty string for runtimes that don't carry a model (e.g. openclaw). */
   model: z.string(),
   provider: z.string(),
+  /** Live model rows advertised by this machine for this runner kind. */
+  models: z.array(LocalRuntimeModelSchema).default([]),
   /** Null for runtimes whose tool loop is internal (e.g. openclaw). */
   toolCallCapability: LocalToolCallCapabilitySchema.nullable(),
   agents: z
@@ -238,6 +283,30 @@ export type LocalRuntimeListResponse = z.infer<
   typeof LocalRuntimeListResponseSchema
 >;
 
+export const LocalRuntimeEventsResponseSchema = z.object({
+  events: z.array(LocalRuntimeEventSchema),
+});
+export type LocalRuntimeEventsResponse = z.infer<
+  typeof LocalRuntimeEventsResponseSchema
+>;
+
+export const LocalRuntimeTestDispatchResponseSchema = z.object({
+  helperConnected: z.boolean(),
+  modelAdvertised: z.boolean(),
+  dispatchSucceeded: z.boolean(),
+  error: z
+    .object({
+      code: z.string().min(1),
+      message: z.string().min(1),
+      detail: LocalRuntimeErrorDetailSchema.nullable().default(null),
+    })
+    .nullable()
+    .default(null),
+});
+export type LocalRuntimeTestDispatchResponse = z.infer<
+  typeof LocalRuntimeTestDispatchResponseSchema
+>;
+
 export const AgentLocalRuntimeAssignRequestSchema = z.object({
   agentId: z.string().min(1, "agentId is required"),
   localRuntimeId: z.string().min(1, "localRuntimeId is required"),
@@ -253,4 +322,27 @@ export const AgentLocalRuntimeAssignResponseSchema = z.object({
 });
 export type AgentLocalRuntimeAssignResponse = z.infer<
   typeof AgentLocalRuntimeAssignResponseSchema
+>;
+
+export const AgentLocalModelAssignRequestSchema = z.object({
+  agentId: z.string().min(1, "agentId is required"),
+  machineId: z.string().min(1, "machineId is required"),
+  runnerKind: z.string().min(1, "runnerKind is required"),
+  model: z.string().min(1, "model is required"),
+  provider: KnownExecutionProviderSchema.default("openai_compatible"),
+});
+export type AgentLocalModelAssignRequest = z.infer<
+  typeof AgentLocalModelAssignRequestSchema
+>;
+
+export const AgentLocalModelAssignResponseSchema = z.object({
+  routingRuleId: z.string(),
+  agentId: z.string(),
+  machineId: z.string(),
+  runnerKind: z.string(),
+  model: z.string(),
+  provider: z.string(),
+});
+export type AgentLocalModelAssignResponse = z.infer<
+  typeof AgentLocalModelAssignResponseSchema
 >;
