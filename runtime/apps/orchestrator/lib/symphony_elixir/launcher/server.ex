@@ -83,9 +83,10 @@ defmodule SymphonyElixir.Launcher.Server do
     GenServer.call(__MODULE__, :list_orchestrators)
   end
 
-  @spec workspace_active_agents_count(String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
-  def workspace_active_agents_count(workspace_id) when is_binary(workspace_id) and workspace_id != "" do
-    GenServer.call(__MODULE__, {:workspace_active_agents_count, workspace_id}, 15_000)
+  @spec workspace_active_agents_count(String.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def workspace_active_agents_count(workspace_id, opts \\ []) when is_binary(workspace_id) and workspace_id != "" do
+    exclude_pid = Keyword.get(opts, :exclude_pid)
+    GenServer.call(__MODULE__, {:workspace_active_agents_count, workspace_id, exclude_pid}, 15_000)
   catch
     :exit, _reason -> {:error, :launcher_unavailable}
   end
@@ -232,8 +233,8 @@ defmodule SymphonyElixir.Launcher.Server do
   end
 
   @impl true
-  def handle_call({:workspace_active_agents_count, workspace_id}, _from, state) do
-    {:reply, do_workspace_active_agents_count(state, workspace_id), state}
+  def handle_call({:workspace_active_agents_count, workspace_id, exclude_pid}, _from, state) do
+    {:reply, do_workspace_active_agents_count(state, workspace_id, exclude_pid), state}
   end
 
   @impl true
@@ -736,10 +737,10 @@ defmodule SymphonyElixir.Launcher.Server do
   defp format_error({:invalid_agent_config, message, _details}) when is_binary(message), do: message
   defp format_error(reason), do: inspect(reason)
 
-  defp do_workspace_active_agents_count(state, workspace_id) when is_binary(workspace_id) do
+  defp do_workspace_active_agents_count(state, workspace_id, exclude_pid) when is_binary(workspace_id) do
     state.orchestrators
     |> Map.values()
-    |> Enum.filter(&(Map.get(&1, :workspace_id) == workspace_id and Map.get(&1, :status) == :running))
+    |> Enum.filter(&workspace_count_entry?(&1, workspace_id, exclude_pid))
     |> Enum.reduce_while({:ok, 0}, fn entry, {:ok, count} ->
       case running_agents_for_entry(entry, state.snapshotter) do
         {:ok, running_count} ->
@@ -751,7 +752,12 @@ defmodule SymphonyElixir.Launcher.Server do
     end)
   end
 
-  defp do_workspace_active_agents_count(_state, _workspace_id), do: {:error, :invalid_workspace_id}
+  defp do_workspace_active_agents_count(_state, _workspace_id, _exclude_pid), do: {:error, :invalid_workspace_id}
+
+  defp workspace_count_entry?(entry, workspace_id, exclude_pid) do
+    Map.get(entry, :workspace_id) == workspace_id and Map.get(entry, :status) == :running and
+      Map.get(entry, :pid) != exclude_pid
+  end
 
   defp running_agents_for_entry(%{pid: pid}, _snapshotter) when not is_pid(pid),
     do: {:error, :runtime_unavailable}

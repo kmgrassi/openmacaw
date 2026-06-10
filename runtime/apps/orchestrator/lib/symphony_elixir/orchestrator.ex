@@ -951,7 +951,10 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp workspace_active_agents_count(workspace_id, %State{} = state) do
     if Process.whereis(LauncherServer) do
-      LauncherServer.workspace_active_agents_count(workspace_id)
+      case LauncherServer.workspace_active_agents_count(workspace_id, exclude_pid: self()) do
+        {:ok, count} -> {:ok, count + map_size(state.running)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       {:ok, map_size(state.running)}
     end
