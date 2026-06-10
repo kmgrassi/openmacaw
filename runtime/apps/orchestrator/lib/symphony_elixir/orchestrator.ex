@@ -864,7 +864,6 @@ defmodule SymphonyElixir.Orchestrator do
 
   @impl true
   def handle_call(:snapshot, _from, state) do
-    state = refresh_runtime_config(state)
     {:reply, SnapshotBuilder.build(state), state}
   end
 
