@@ -92,6 +92,23 @@ resource "aws_route" "executor_egress_to_firewall" {
   depends_on = [aws_networkfirewall_firewall.executor_egress]
 }
 
+# Symmetric return path. AWS Network Firewall is stateful and requires response
+# traffic to re-enter the same endpoint. Each entry adds a route in the
+# NAT/edge route table for an executor CIDR back through the same-AZ firewall
+# endpoint, so return traffic doesn't bypass inspection via the local VPC route.
+resource "aws_route" "executor_return_to_firewall" {
+  for_each = {
+    for r in var.network_firewall_return_routes :
+    "${r.route_table_id}-${r.destination_cidr_block}" => r
+  }
+
+  route_table_id         = each.value.route_table_id
+  destination_cidr_block = each.value.destination_cidr_block
+  vpc_endpoint_id        = local.network_firewall_endpoint_ids_by_subnet_id[each.value.firewall_subnet_id]
+
+  depends_on = [aws_networkfirewall_firewall.executor_egress]
+}
+
 check "network_firewall_routes_configured" {
   assert {
     condition     = !contains(var.egress_cidr_blocks, "0.0.0.0/0") || length(var.network_firewall_protected_route_table_map) > 0
@@ -104,5 +121,13 @@ check "network_firewall_routes_configured" {
       contains(local.network_firewall_subnet_ids, subnet_id)
     ])
     error_message = "Every network_firewall_protected_route_table_map value must be one of the configured Network Firewall subnet IDs."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in var.network_firewall_return_routes :
+      contains(local.network_firewall_subnet_ids, r.firewall_subnet_id)
+    ])
+    error_message = "Every network_firewall_return_routes firewall_subnet_id must be one of the configured Network Firewall subnet IDs."
   }
 }
