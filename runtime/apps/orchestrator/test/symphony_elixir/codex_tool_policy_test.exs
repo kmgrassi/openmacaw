@@ -25,7 +25,8 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
     "scheduled_task.list",
     "scheduled_task.delete",
     "plan.read",
-    "task.read"
+    "task.read",
+    "task.status"
   ]
   @planning_profile_tools ["planning_profile.create_update", "planning_profile.delete"]
   @workspace_settings_tools ["workspace_settings.manage", "workspace_settings.update_tracker_kind"]

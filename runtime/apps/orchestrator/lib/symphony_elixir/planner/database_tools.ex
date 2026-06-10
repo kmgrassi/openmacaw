@@ -175,6 +175,15 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
     end
   end
 
+  def execute("task.status", arguments, opts) do
+    with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
+         {:ok, task_id} <- Arguments.required_string(args, "task_id"),
+         {:ok, row} <- read_scoped_row(@work_item_table, task_id, workspace_id, opts) do
+      {:ok, with_dispatch_status(row)}
+    end
+  end
+
   def execute(tool, _arguments, _opts), do: {:error, {:unsupported_planner_tool, tool, @tools}}
 
   @spec tool_specs() :: [map()]
@@ -222,6 +231,12 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
 
   defp maybe_put_validation_feedback(row, []), do: row
   defp maybe_put_validation_feedback(row, feedback), do: Map.put(row, "validation_feedback", feedback)
+
+  defp with_dispatch_status(row) when is_map(row) do
+    Map.put(row, "dispatch", DispatchPolicy.dispatch_summary_for_row(row))
+  end
+
+  defp with_dispatch_status(row), do: row
 
   defp with_review_event(row, tool, args) when is_map(row) do
     case PlanHandoff.review_event(tool, row, args) do

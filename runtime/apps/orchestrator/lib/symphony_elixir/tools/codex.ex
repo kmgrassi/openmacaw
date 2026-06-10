@@ -216,6 +216,13 @@ defmodule SymphonyElixir.Tools.Codex.TaskRead do
     bundle: :planner
 end
 
+defmodule SymphonyElixir.Tools.Codex.TaskStatus do
+  use SymphonyElixir.Tools.Codex.WrappedTool,
+    name: "task.status",
+    source: SymphonyElixir.Planner.DatabaseTools,
+    bundle: :planner
+end
+
 defmodule SymphonyElixir.Tools.Codex.PlanningProfileCreateUpdate do
   use SymphonyElixir.Tools.Codex.WrappedTool,
     name: "planning_profile.create_update",

@@ -693,7 +693,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              "reason" => "blocked_by_dependencies",
              "blocked_by" => ["work-item-0"],
              "runner_kind" => "codex",
-             "repository" => nil
+             "repository" => nil,
+             "expected_pickup" => %{
+               "status" => "blocked",
+               "message" => "blocked: depends_on work-item-0 unresolved",
+               "eligible_at" => nil,
+               "cadence_ms" => 60_000,
+               "failed_gates" => ["dependencies"]
+             }
            }
 
     Req.Test.stub(__MODULE__, fn conn ->
@@ -720,6 +727,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              )
 
     assert waiting["dispatch"]["reason"] == "waiting_until_next_poll_at"
+    assert waiting["dispatch"]["expected_pickup"] == %{
+             "status" => "waiting",
+             "message" => "eligible after next_poll_at 2099-05-01T12:00:00Z",
+             "eligible_at" => "2099-05-01T12:00:00Z",
+             "cadence_ms" => 60_000,
+             "failed_gates" => ["next_poll_at"]
+           }
+
     refute waiting["dispatch"]["eligible"]
   end
 

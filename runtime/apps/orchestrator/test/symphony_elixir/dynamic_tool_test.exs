@@ -45,6 +45,7 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              "scheduled_task.delete",
              "plan.read",
              "task.read",
+             "task.status",
              "planning_profile.create_update",
              "planning_profile.delete",
              "workspace_settings.manage",
@@ -137,6 +138,16 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
 
     task_schedule = Enum.find(specs, &(&1["name"] == "task.schedule"))
     assert task_schedule["description"] =~ "Scheduling alone does not make todo work manager-runnable"
+
+    assert %{
+             "description" => task_status_description,
+             "inputSchema" => %{
+               "required" => ["task_id"],
+               "properties" => %{"workspace_id" => _, "task_id" => _}
+             }
+           } = Enum.find(specs, &(&1["name"] == "task.status"))
+
+    assert task_status_description =~ "dispatch eligibility"
 
     assert %{
              "inputSchema" => %{
@@ -434,7 +445,8 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
       "task.update",
       "task.schedule",
       "plan.read",
-      "task.read"
+      "task.read",
+      "task.status"
     ]
 
     response = DynamicTool.execute("plan.list", %{}, allowed_tools: allowed_tools)
