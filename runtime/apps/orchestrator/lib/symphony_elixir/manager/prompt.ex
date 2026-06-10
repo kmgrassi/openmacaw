@@ -21,13 +21,17 @@ defmodule SymphonyElixir.Manager.Prompt do
 
   @version "v1"
 
-  @prompt_path Path.expand(
-                 Path.join([__DIR__, "..", "..", "..", "priv", "prompts", "manager-system-#{@version}.md"])
-               )
+  @prompt_path Path.expand(Path.join([__DIR__, "..", "..", "..", "priv", "prompts", "manager-system-#{@version}.md"]))
 
   @external_resource @prompt_path
 
-  @prompt @prompt_path |> File.read!() |> String.trim()
+  @prompt @prompt_path
+          |> File.read!()
+          |> String.replace(
+            "{{INTENT_VOCABULARY}}",
+            SymphonyElixir.Orchestrator.IntentVocabulary.markdown_list()
+          )
+          |> String.trim()
 
   @spec version() :: String.t()
   def version, do: @version
