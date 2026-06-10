@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
   use SymphonyElixir.TestSupport
 
   alias SymphonyElixir.Codex.DynamicTool
+  alias SymphonyElixir.Schema.ExecutionProfile
 
   test "tool_specs advertises the linear_graphql input contract" do
     assert [
@@ -108,17 +109,7 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
     assert "local" in execution_locations
     assert "local_relay" in transports
 
-    assert runner_kinds == [
-             "codex",
-             "claude_code",
-             "openclaw",
-             "computer_use",
-             "manager",
-             "planner",
-             "local_relay",
-             "local_model_coding",
-             nil
-           ]
+    assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
 
     refute "local_runtime" in runner_kinds
     refute "llm_tool_runner" in runner_kinds

@@ -14,6 +14,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
   alias SymphonyElixir.Planner.DatabaseTools.Updates
   alias SymphonyElixir.Planning.PlanHandoff
   alias SymphonyElixir.Orchestrator.DispatchPolicy
+  alias SymphonyElixir.WorkItem.Mapper, as: WorkItemMapper
 
   @plan_table "plan"
   @work_item_table "work_items"
@@ -74,13 +75,14 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
 
   def execute("task.create", arguments, opts) do
     with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, args, normalization_feedback} <- WorkItemMapper.normalize_intake_payload(args),
          {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
          {:ok, plan_row} <- optional_plan_row(args, workspace_id, opts),
          {:ok, defaulted_args, validation_feedback} <- Payloads.default_task_create_args(args, plan_row, opts),
          {:ok, name} <- Arguments.required_string(defaulted_args, "name"),
          {:ok, resolved_args} <- resolve_author_dependencies(defaulted_args, opts),
          {:ok, payload} <- Payloads.task_create_payload(resolved_args, workspace_id, name, plan_row, opts) do
-      with {:ok, row} <- create_task_row(payload, opts, resolved_args, validation_feedback) do
+      with {:ok, row} <- create_task_row(payload, opts, resolved_args, normalization_feedback ++ validation_feedback) do
         remember_author_task_id(resolved_args, row, opts)
         {:ok, row}
       end

@@ -526,14 +526,14 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert json_response(get(authed_conn(), "/api/v1/refresh"), 405) ==
              %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
 
-    assert json_response(post(build_conn(), "/", %{}), 405) ==
-             %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
+    assert json_response(post(build_conn(), "/", %{}), 401) ==
+             %{"error" => %{"code" => "auth_required", "message" => "Service-role bearer token is required"}}
 
-    assert json_response(post(build_conn(), "/api/v1/MT-1", %{}), 405) ==
-             %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
+    assert json_response(post(build_conn(), "/api/v1/MT-1", %{}), 401) ==
+             %{"error" => %{"code" => "auth_required", "message" => "Service-role bearer token is required"}}
 
-    assert json_response(get(build_conn(), "/unknown"), 404) ==
-             %{"error" => %{"code" => "not_found", "message" => "Route not found"}}
+    assert json_response(get(build_conn(), "/unknown"), 401) ==
+             %{"error" => %{"code" => "auth_required", "message" => "Service-role bearer token is required"}}
 
     state_payload = json_response(get(authed_conn(), "/api/v1/state"), 200)
 
@@ -782,6 +782,8 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert health_payload ==
              %{
                "generated_at" => health_payload["generated_at"],
+               "ok" => false,
+               "orchestrator" => %{"status" => "unavailable"},
                "error" => %{"code" => "snapshot_unavailable", "message" => "Snapshot unavailable"}
              }
 

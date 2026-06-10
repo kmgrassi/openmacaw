@@ -11,8 +11,21 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
 
   alias SymphonyElixir.{Config, WorkItem}
   alias SymphonyElixir.Orchestrator.State
+  alias SymphonyElixir.Schema.ExecutionProfile
 
   @max_created_at_sort_key 9_223_372_036_854_775_807
+  @intent_runner_kinds %{
+    "browse" => "computer_use",
+    "computer_use" => "computer_use",
+    "coordinate" => "manager",
+    "delegate" => "manager",
+    "implement" => "codex",
+    "manage" => "manager",
+    "plan" => "planner",
+    "remediate" => "codex",
+    "review" => "codex",
+    "test" => "codex"
+  }
 
   @spec dispatch_eligible?(WorkItem.t(), State.t()) :: boolean()
   def dispatch_eligible?(%WorkItem{} = issue, %State{} = state) do
@@ -22,14 +35,16 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
   @spec dispatch_summary_for_row(map()) :: map()
   def dispatch_summary_for_row(row) when is_map(row) do
     reason = dispatch_summary_reason(row)
+    runner_kind = row_runner_kind(row)
 
     %{
       "eligible" => reason == "ready",
       "reason" => reason,
       "blocked_by" => dispatch_blockers(row),
-      "runner_kind" => row_runner_kind(row),
+      "runner_kind" => runner_kind,
       "repository" => row_repository(row)
     }
+    |> maybe_put_summary_value("intent", row_intent(row))
   end
 
   def dispatch_summary_for_row(_row) do
@@ -38,9 +53,34 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
       "reason" => "invalid_for_orchestrator",
       "blocked_by" => [],
       "runner_kind" => nil,
+      "intent" => nil,
       "repository" => nil
     }
   end
+
+  @spec resolve_runner_kind(map()) :: String.t() | nil
+  def resolve_runner_kind(row) when is_map(row), do: row_runner_kind(row)
+  def resolve_runner_kind(_row), do: nil
+
+  @spec runner_kind_for_intent(String.t() | nil, map()) :: String.t() | nil
+  def runner_kind_for_intent(intent, row \\ %{})
+
+  def runner_kind_for_intent(intent, row) when is_binary(intent) and is_map(row) do
+    intent = normalize_dispatch_token(intent)
+    location = row_execution_location(row)
+
+    cond do
+      location == "local" and intent in ["implement", "remediate", "review", "test"] ->
+        supported_runner_kind_or_nil("local_model_coding")
+
+      true ->
+        @intent_runner_kinds
+        |> Map.get(intent)
+        |> supported_runner_kind_or_nil()
+    end
+  end
+
+  def runner_kind_for_intent(_intent, _row), do: nil
 
   @spec dispatch_eligible?(WorkItem.t(), State.t(), MapSet.t(), MapSet.t()) :: boolean()
   def dispatch_eligible?(
@@ -389,9 +429,44 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
     metadata = row_metadata(row)
     routing = row_routing(row)
 
-    Map.get(row, "runner_kind") ||
-      Map.get(metadata, "runner_kind") ||
-      Map.get(routing, "runner_kind")
+    explicit_runner_kind(row, metadata, routing) ||
+      row
+      |> row_intent()
+      |> runner_kind_for_intent(row)
+  end
+
+  defp explicit_runner_kind(row, metadata, routing) do
+    [
+      Map.get(row, "runner_kind"),
+      Map.get(metadata, "runner_kind"),
+      Map.get(metadata, :runner_kind),
+      Map.get(routing, "runner_kind"),
+      Map.get(routing, :runner_kind)
+    ]
+    |> Enum.find(&present_string?/1)
+    |> supported_runner_kind_or_nil()
+  end
+
+  defp row_intent(row) do
+    metadata = row_metadata(row)
+    routing = row_routing(row)
+
+    [
+      Map.get(row, "intent"),
+      Map.get(metadata, "intent"),
+      Map.get(metadata, :intent),
+      Map.get(routing, "intent"),
+      Map.get(routing, :intent)
+    ]
+    |> Enum.find(&present_string?/1)
+    |> normalize_dispatch_token()
+  end
+
+  defp row_execution_location(row) do
+    row
+    |> row_routing()
+    |> then(&(Map.get(&1, "execution_location") || Map.get(&1, :execution_location)))
+    |> normalize_dispatch_token()
   end
 
   defp row_repository(row) do
@@ -418,7 +493,29 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
     end
   end
 
+  defp supported_runner_kind_or_nil(runner_kind) when is_binary(runner_kind) do
+    if runner_kind in ExecutionProfile.supported_runner_kinds(), do: runner_kind
+  end
+
+  defp supported_runner_kind_or_nil(_runner_kind), do: nil
+
+  defp normalize_dispatch_token(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace(~r/[\s-]+/, "_")
+    |> case do
+      "" -> nil
+      normalized -> normalized
+    end
+  end
+
+  defp normalize_dispatch_token(_value), do: nil
+
   defp non_empty_list?(value), do: is_list(value) and value != []
+
+  defp maybe_put_summary_value(summary, _key, nil), do: summary
+  defp maybe_put_summary_value(summary, key, value), do: Map.put(summary, key, value)
 
   defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
   defp present_string?(_value), do: false
