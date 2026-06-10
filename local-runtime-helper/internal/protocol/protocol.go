@@ -23,6 +23,7 @@ const (
 	TypeError       = "error"
 	TypeHeartbeat   = "heartbeat"
 	TypeCancel      = "cancel"
+	TypeCancelAck   = "cancel_ack"
 
 	TypeToolCallRequest = "tool_call_request"
 	TypeToolExecRequest = "tool_execution_request"
@@ -113,22 +114,39 @@ type CompleteFrame struct {
 // correlation_id is present.
 type ErrorFrame struct {
 	CorrelatedFrame
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	Retryable bool   `json:"retryable,omitempty"`
+	Code      string       `json:"code"`
+	Message   string       `json:"message"`
+	Retryable bool         `json:"retryable,omitempty"`
+	Detail    *ErrorDetail `json:"detail,omitempty"`
+}
+
+// ErrorDetail carries provider/transport details that are useful for
+// diagnostics but are not part of retry classification.
+type ErrorDetail struct {
+	HTTPStatus *int   `json:"http_status,omitempty"`
+	DialError  string `json:"dial_error,omitempty"`
+	Endpoint   string `json:"endpoint,omitempty"`
+	RawMessage string `json:"raw_message,omitempty"`
 }
 
 // HeartbeatFrame is exchanged periodically to keep the relay connection alive.
 type HeartbeatFrame struct {
 	BaseFrame
-	SentAt  time.Time `json:"sent_at"`
-	Version string    `json:"version,omitempty"`
+	SentAt  time.Time            `json:"sent_at"`
+	Version string               `json:"version,omitempty"`
+	Runners []RunnerRegistration `json:"runners,omitempty"`
 }
 
 // CancelFrame requests cancellation for an in-flight dispatch.
 type CancelFrame struct {
 	CorrelatedFrame
 	Reason string `json:"reason,omitempty"`
+}
+
+// CancelAckFrame reports whether a cancel request matched an in-flight dispatch.
+type CancelAckFrame struct {
+	CorrelatedFrame
+	Outcome string `json:"outcome"`
 }
 
 // ToolCallInfo describes one model-requested tool call.
@@ -184,6 +202,7 @@ func (*CompleteFrame) frame()             {}
 func (*ErrorFrame) frame()                {}
 func (*HeartbeatFrame) frame()            {}
 func (*CancelFrame) frame()               {}
+func (*CancelAckFrame) frame()            {}
 func (*ToolCallRequestFrame) frame()      {}
 func (*ToolExecutionRequestFrame) frame() {}
 func (*ToolCallResultFrame) frame()       {}
@@ -325,6 +344,8 @@ func frameForType(frameType string) (Frame, error) {
 		return &HeartbeatFrame{}, nil
 	case TypeCancel:
 		return &CancelFrame{}, nil
+	case TypeCancelAck:
+		return &CancelAckFrame{}, nil
 	case TypeToolCallRequest:
 		return &ToolCallRequestFrame{}, nil
 	case TypeToolExecRequest:
@@ -383,6 +404,11 @@ func frameMetadata(frame Frame) (*BaseFrame, string, error) {
 			return nil, TypeCancel, &NilFrameError{Type: "*CancelFrame"}
 		}
 		return &f.BaseFrame, TypeCancel, nil
+	case *CancelAckFrame:
+		if f == nil {
+			return nil, TypeCancelAck, &NilFrameError{Type: "*CancelAckFrame"}
+		}
+		return &f.BaseFrame, TypeCancelAck, nil
 	case *ToolCallRequestFrame:
 		if f == nil {
 			return nil, TypeToolCallRequest, &NilFrameError{Type: "*ToolCallRequestFrame"}

@@ -245,6 +245,67 @@ func TestDispatcherCancelStopsRunner(t *testing.T) {
 	}
 }
 
+func TestDispatcherCancelFrameEmitsAck(t *testing.T) {
+	sender := &recordingSender{}
+	dispatcher := newTestDispatcher(t, sender, 1, 0)
+
+	if err := dispatcher.HandleFrame(context.Background(), &protocol.CancelFrame{
+		CorrelatedFrame: protocol.CorrelatedFrame{
+			BaseFrame:     protocol.BaseFrame{Type: protocol.TypeCancel, SchemaVersion: protocol.SchemaVersion},
+			CorrelationID: "missing",
+		},
+	}); err != nil {
+		t.Fatalf("handle cancel: %v", err)
+	}
+
+	frame := sender.only(t).(*protocol.CancelAckFrame)
+	if frame.CorrelationID != "missing" {
+		t.Fatalf("correlation id = %q, want missing", frame.CorrelationID)
+	}
+	if frame.Outcome != "not_found" {
+		t.Fatalf("outcome = %q, want not_found", frame.Outcome)
+	}
+}
+
+func TestDispatcherPropagatesRunnerErrorDetail(t *testing.T) {
+	sender := &recordingSender{}
+	status := 503
+	fake := fakeRunner{
+		kind: "fake",
+		dispatch: func(ctx context.Context, input any, emit func(any) error) error {
+			return &runner.Error{
+				Kind:    runner.ErrorKindEndpointUnavailable,
+				Message: "endpoint failed",
+				Detail: runner.ErrorDetail{
+					HTTPStatus: &status,
+					DialError:  "connect: connection refused",
+					Endpoint:   "http://127.0.0.1:11434/v1/chat/completions",
+				},
+			}
+		},
+	}
+
+	dispatcher := newTestDispatcher(t, sender, 1, 0, fake)
+	if err := dispatcher.StartDispatch(context.Background(), dispatch("c1", "fake")); err != nil {
+		t.Fatalf("start dispatch: %v", err)
+	}
+	dispatcher.Wait()
+
+	frame := sender.only(t).(*protocol.ErrorFrame)
+	if frame.Code != string(runner.ErrorKindEndpointUnavailable) {
+		t.Fatalf("error code = %q, want endpoint_unavailable", frame.Code)
+	}
+	if frame.Detail == nil {
+		t.Fatal("error detail = nil")
+	}
+	if frame.Detail.HTTPStatus == nil || *frame.Detail.HTTPStatus != status {
+		t.Fatalf("http status = %#v, want %d", frame.Detail.HTTPStatus, status)
+	}
+	if frame.Detail.DialError != "connect: connection refused" {
+		t.Fatalf("dial error = %q", frame.Detail.DialError)
+	}
+}
+
 func TestDispatcherConcurrencyLimitEmitsTypedError(t *testing.T) {
 	sender := &recordingSender{}
 	started := make(chan struct{})
@@ -427,6 +488,8 @@ func frameBaseType(frame protocol.Frame) string {
 	case *protocol.CompleteFrame:
 		return f.Type
 	case *protocol.ErrorFrame:
+		return f.Type
+	case *protocol.CancelAckFrame:
 		return f.Type
 	case *protocol.ToolCallRequestFrame:
 		return f.Type

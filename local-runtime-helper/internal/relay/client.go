@@ -17,6 +17,7 @@ import (
 
 	"github.com/kmgrassi/local-runtime-helper/internal/config"
 	"github.com/kmgrassi/local-runtime-helper/internal/protocol"
+	"github.com/kmgrassi/local-runtime-helper/internal/runner"
 )
 
 const (
@@ -63,6 +64,10 @@ type ClientConfig struct {
 
 	// Runners lists concrete initialized runner capabilities.
 	Runners []protocol.RunnerRegistration
+
+	// RefreshRunners returns the current runner/model advertisements for
+	// heartbeat frames. If nil, heartbeats omit runner refreshes.
+	RefreshRunners func(context.Context) ([]protocol.RunnerRegistration, error)
 
 	// Dispatcher routes incoming dispatch/cancel frames.
 	Dispatcher *Dispatcher
@@ -117,6 +122,66 @@ func NewClientFromConfig(appCfg *config.Config, runnerKinds []string, version st
 		Dispatcher:         dispatcher,
 		Logger:             logger,
 	}
+}
+
+// NewRunnerRegistrationRefresher returns a heartbeat refresher backed by the
+// active runner instances. Runners that do not support model listing keep their
+// static startup registration.
+func NewRunnerRegistrationRefresher(active []runner.Runner, fallback []protocol.RunnerRegistration) func(context.Context) ([]protocol.RunnerRegistration, error) {
+	staticByKind := make(map[string]protocol.RunnerRegistration, len(fallback))
+	for _, registration := range fallback {
+		staticByKind[registration.RunnerKind] = registration
+	}
+
+	return func(ctx context.Context) ([]protocol.RunnerRegistration, error) {
+		registrations := make([]protocol.RunnerRegistration, 0, len(fallback))
+		for _, activeRunner := range active {
+			if activeRunner == nil {
+				continue
+			}
+			lister, ok := activeRunner.(runner.ModelLister)
+			if !ok {
+				if registration, exists := staticByKind[activeRunner.Kind()]; exists {
+					registrations = append(registrations, registration)
+				}
+				continue
+			}
+			models, err := lister.ListModels(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, model := range models {
+				if model.ID == "" {
+					continue
+				}
+				registration := staticByKind[activeRunner.Kind()]
+				registration.RunnerKind = activeRunner.Kind()
+				registration.Model = model.ID
+				if model.Provider != "" {
+					registration.Provider = model.Provider
+				}
+				if len(model.Capabilities) > 0 {
+					registration.Capabilities = mergeCapabilities(registration.Capabilities, model.Capabilities)
+				}
+				registrations = append(registrations, registration)
+			}
+		}
+		return registrations, nil
+	}
+}
+
+func mergeCapabilities(base, override map[string]any) map[string]any {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]any, len(base)+len(override))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range override {
+		merged[key] = value
+	}
+	return merged
 }
 
 func runnerRegistrations(appCfg *config.Config, runnerKinds []string) []protocol.RunnerRegistration {
@@ -347,11 +412,15 @@ func (c *Client) heartbeatLoop(ctx context.Context, conn *websocket.Conn, interv
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	heartbeatCount := 0
+	lastRunnerSignature := runnerSignature(c.cfg.Runners)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			heartbeatCount++
 			hb := &protocol.HeartbeatFrame{
 				BaseFrame: protocol.BaseFrame{
 					Type:          protocol.TypeHeartbeat,
@@ -360,12 +429,33 @@ func (c *Client) heartbeatLoop(ctx context.Context, conn *websocket.Conn, interv
 				SentAt:  time.Now(),
 				Version: c.cfg.Version,
 			}
+			if c.cfg.RefreshRunners != nil && heartbeatCount%4 == 0 {
+				runners, err := c.cfg.RefreshRunners(ctx)
+				if err != nil {
+					c.logger.Warn("runner heartbeat refresh failed", "error", err)
+				} else if signature := runnerSignature(runners); signature != lastRunnerSignature {
+					hb.Runners = runners
+					lastRunnerSignature = signature
+					c.cfg.Runners = runners
+					c.logger.Info("runner model list changed", "runner_count", len(runners))
+				} else {
+					hb.Runners = runners
+				}
+			}
 			if err := c.writeFrame(ctx, conn, hb); err != nil {
 				return fmt.Errorf("send heartbeat: %w", err)
 			}
 			c.logger.Debug("heartbeat sent")
 		}
 	}
+}
+
+func runnerSignature(registrations []protocol.RunnerRegistration) string {
+	data, err := json.Marshal(registrations)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 // SendFrame implements the Sender interface so the Dispatcher can write

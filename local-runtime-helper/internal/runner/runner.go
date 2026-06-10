@@ -274,6 +274,7 @@ type Error struct {
 	StatusCode int
 	Code       string
 	Hint       string
+	Detail     ErrorDetail
 }
 
 func (e *Error) Error() string {
@@ -281,6 +282,27 @@ func (e *Error) Error() string {
 		return ""
 	}
 	return e.Message
+}
+
+// ErrorDetail preserves underlying provider/transport failure context for
+// relay diagnostics without changing normalized retry/error codes.
+type ErrorDetail struct {
+	HTTPStatus *int
+	DialError  string
+	Endpoint   string
+	RawMessage string
+}
+
+// ModelInfo describes one locally advertised model for heartbeat refreshes.
+type ModelInfo struct {
+	ID           string
+	Provider     string
+	Capabilities map[string]any
+}
+
+// ModelLister is implemented by runners that can refresh their live model list.
+type ModelLister interface {
+	ListModels(context.Context) ([]ModelInfo, error)
 }
 
 // Metadata describes the local target a runner will call.
