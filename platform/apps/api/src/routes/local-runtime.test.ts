@@ -295,7 +295,7 @@ describe("local runtime routes", () => {
         expect.objectContaining({
           name: "agent:manager-agent-1:execution-profile",
           runner_kind: "llm_tool_runner",
-          provider: "openai_compatible",
+          provider: "local",
           model: "qwen3-coder:30b",
         }),
       ]),
@@ -571,7 +571,7 @@ describe("local runtime routes", () => {
           name: "agent:manager-agent-1:execution-profile",
           runner_kind: "llm_tool_runner",
           model: "qwen3-coder:30b",
-          provider: "openai_compatible",
+          provider: "local",
         },
       ],
       routing_rule_match: [

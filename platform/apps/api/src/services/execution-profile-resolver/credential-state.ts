@@ -12,7 +12,11 @@ export function isCredentiallessManagerProfile(input: {
   runnerKind: RunnerKind | null;
   provider: string | null;
 }): boolean {
-  return input.role === "manager" && input.runnerKind === "llm_tool_runner" && input.provider === "openai_compatible";
+  return (
+    input.role === "manager" &&
+    input.runnerKind === "llm_tool_runner" &&
+    (input.provider === "openai_compatible" || input.provider === "local")
+  );
 }
 
 export function isCredentiallessPlannerProfile(input: {

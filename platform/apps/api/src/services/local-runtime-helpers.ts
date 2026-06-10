@@ -101,7 +101,7 @@ export async function assignLocalModelToAgent(input: {
       agentId: input.agentId,
       body: {
         workspaceId: input.workspaceId,
-        provider,
+        provider: "local",
         model,
         credentialRef: null,
         localEndpointUrl,
@@ -162,6 +162,7 @@ export async function unassignLocalModelFromAgent(input: {
   if (agent?.type !== "manager" || provider !== "openai_compatible" || !model) {
     return;
   }
+  const managerRuntimeProfileProvider = "local";
 
   const localEndpointUrl = await getRoutingRuleLocalEndpointUrl({
     ruleId: input.ruleId,
@@ -176,7 +177,7 @@ export async function unassignLocalModelFromAgent(input: {
     .select("id")
     .eq("workspace_id", input.workspaceId)
     .eq("name", `agent:${input.agentId}:execution-profile`)
-    .eq("provider", provider)
+    .eq("provider", managerRuntimeProfileProvider)
     .eq("model", model)
     .maybeSingle();
 

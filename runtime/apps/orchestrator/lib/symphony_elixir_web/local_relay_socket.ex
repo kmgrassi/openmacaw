@@ -199,10 +199,10 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
       :ok = Registry.heartbeat(state.workspace_id, state.machine_id, updates)
 
       :ok =
-        MachineHeartbeatRecorder.record_heartbeat(state.machine_id, %{
-          helper_version: heartbeat.helper_version,
-          advertised_runner_kinds: heartbeat.runner_kinds || []
-        })
+        MachineHeartbeatRecorder.record_heartbeat(
+          state.machine_id,
+          heartbeat_record_fields(heartbeat)
+        )
 
       reply = %{
         type: "heartbeat_ack",
@@ -310,6 +310,14 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
     |> maybe_put(:provider, runner.provider)
     |> maybe_put(:model, runner.model)
   end
+
+  defp heartbeat_record_fields(heartbeat) do
+    %{helper_version: heartbeat.helper_version}
+    |> maybe_put_unless_nil(:advertised_runner_kinds, heartbeat.runner_kinds)
+  end
+
+  defp maybe_put_unless_nil(map, _key, nil), do: map
+  defp maybe_put_unless_nil(map, key, value), do: Map.put(map, key, value)
 
   defp registry_registration(registration) do
     runners =

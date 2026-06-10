@@ -323,6 +323,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
   test "bridges registry dispatch, tool execution, and helper result frames over the socket" do
     {:ok, state} = init_socket()
     {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+    assert_received {:record_register, @machine_id, _fields}
 
     dispatch = %{
       "type" => "dispatch",
@@ -381,6 +382,10 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(tool_result), []}, state)
     assert_receive {:local_relay_tool_call_result, "corr-1", ^tool_result}
 
+    follow_up = %{"type" => "dispatch", "protocol" => 1, "correlation_id" => "corr-1", "tool_outputs" => []}
+    assert :ok = Registry.send_frame("corr-1", follow_up)
+    assert_receive {:local_relay_frame, ^follow_up}
+
     complete = %{"type" => "complete", "protocol" => 1, "correlation_id" => "corr-1", "output_text" => "done"}
     assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(complete), []}, state)
     assert_receive {:local_relay_complete, "corr-1", ^complete}
@@ -428,6 +433,24 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert_received {:record_heartbeat, @machine_id, fields}
     assert fields.helper_version == "0.4.3"
     assert fields.advertised_runner_kinds == ["openai_compatible", "openclaw"]
+  end
+
+  test "heartbeat without runner_kinds leaves persisted advertised runner kinds unchanged" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+
+    heartbeat = %{
+      type: "heartbeat",
+      correlation_id: "hb-1",
+      ts: 123,
+      helper_version: "0.4.3"
+    }
+
+    {:push, [_reply], _state} = LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+
+    assert_received {:record_heartbeat, @machine_id, fields}
+    assert fields.helper_version == "0.4.3"
+    refute Map.has_key?(fields, :advertised_runner_kinds)
   end
 
   test "heartbeat rejects non-list runner_kinds instead of silently clearing capabilities" do

@@ -809,6 +809,64 @@ describe("resolveExecutionProfile", () => {
     expect(resolution.missing).toEqual([]);
   });
 
+  it("resolves local manager routing rules without hosted credentials", async () => {
+    setupMockDatabase({
+      agent: [
+        {
+          id: managerAgentId,
+          workspace_id: workspaceId,
+          type: "manager",
+          model_settings: { primary: "qwen3-coder:30b" },
+          tool_policy: {},
+        },
+      ],
+      routing_rule: [
+        {
+          id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+          workspace_id: workspaceId,
+          priority: 100,
+          enabled: true,
+          runner_kind: "llm_tool_runner",
+          provider: "local",
+          model: "qwen3-coder:30b",
+          credential_id: null,
+          credential_alias: null,
+          next_fallback_rule_id: null,
+        },
+      ],
+      routing_rule_match: [
+        {
+          rule_id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+          workspace_id: workspaceId,
+          kind: "agent_id",
+          key: "id",
+          value: managerAgentId,
+        },
+        {
+          rule_id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+          workspace_id: workspaceId,
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
+      ],
+      credential: [],
+    });
+
+    const resolution = await resolveExecutionProfile({ agentId: managerAgentId });
+
+    expect(resolution.profile).toMatchObject({
+      agentId: managerAgentId,
+      role: "manager",
+      runnerKind: "llm_tool_runner",
+      provider: "local",
+      model: "qwen3-coder:30b",
+      credentialRef: null,
+      toolProfile: "manager",
+    });
+    expect(resolution.missing).toEqual([]);
+  });
+
   it("returns explicit missing requirements without leaking credential material", async () => {
     setupMockDatabase({
       routing_rule: [

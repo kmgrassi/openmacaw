@@ -4,7 +4,7 @@ type Row = Record<string, unknown>;
 type TableMap = Record<string, Row[]>;
 type Filter = {
   column: string;
-  operator: "eq" | "in" | "is" | "not" | "like" | "gte" | "lte";
+  operator: "contains" | "eq" | "in" | "is" | "not" | "like" | "gte" | "lte";
   negatedOperator?: "is";
   value: unknown;
 };
@@ -35,6 +35,10 @@ class MockSupabaseQueryBuilder {
   });
   in = vi.fn((column: string, value: unknown[]) => {
     this.filters.push({ column, operator: "in", value });
+    return this;
+  });
+  contains = vi.fn((column: string, value: unknown[]) => {
+    this.filters.push({ column, operator: "contains", value });
     return this;
   });
   lte = vi.fn((column: string, value: unknown) => {
@@ -201,6 +205,14 @@ class MockSupabaseQueryBuilder {
   private matches(row: Row): boolean {
     return this.filters.every((filter) => {
       if (filter.operator === "eq") return row[filter.column] === filter.value;
+      if (filter.operator === "contains") {
+        const candidate = row[filter.column];
+        return (
+          Array.isArray(candidate) &&
+          Array.isArray(filter.value) &&
+          filter.value.every((value) => candidate.includes(value))
+        );
+      }
       if (filter.operator === "in") return Array.isArray(filter.value) && filter.value.includes(row[filter.column]);
       if (filter.operator === "gte") return this.compare(row[filter.column], filter.value) >= 0;
       if (filter.operator === "lte") return this.compare(row[filter.column], filter.value) <= 0;
