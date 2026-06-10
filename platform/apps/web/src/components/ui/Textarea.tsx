@@ -1,6 +1,6 @@
 import { forwardRef, type TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
-import { FieldMessage } from "./FieldMessage";
+import { FormField } from "./FormField";
 
 type Props = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   error?: string;
@@ -13,15 +13,12 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
     const textareaId = id || label?.toLowerCase().replace(/\s+/g, "-");
 
     return (
-      <div className={cn("space-y-1.5", wrapperClassName)}>
-        {label && (
-          <label
-            htmlFor={textareaId}
-            className="block text-xs font-medium text-slate-400"
-          >
-            {label}
-          </label>
-        )}
+      <FormField
+        label={label}
+        htmlFor={textareaId}
+        error={error}
+        className={wrapperClassName}
+      >
         <textarea
           ref={ref}
           id={textareaId}
@@ -32,8 +29,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
           )}
           {...rest}
         />
-        {error && <FieldMessage tone="error">{error}</FieldMessage>}
-      </div>
+      </FormField>
     );
   },
 );
