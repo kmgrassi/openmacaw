@@ -168,7 +168,7 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.assignRunner,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res, userId }) {
+      async handler({ req, res, accessToken, userId }) {
         if (!userId) {
           throw new ApiRouteError(401, "unauthorized", "User ID is required");
         }
@@ -182,7 +182,7 @@ export function registerLocalRuntimeRoutes(app: Express) {
           workspaceId: requireWorkspaceId(req),
           ruleId: requireRouteParam(req, "runnerId"),
           agentId,
-          userId,
+          auth: { accessToken, userId },
         });
         return res.status(201).json(response);
       },

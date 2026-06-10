@@ -129,9 +129,7 @@ describe("local runtime routes", () => {
         },
       ],
     };
-    const supabase = createMockSupabaseClient(db) as never;
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
-    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/probe?workspaceId=${workspaceId}`,
@@ -252,7 +250,9 @@ describe("local runtime routes", () => {
       gateway_config: [] as Array<Record<string, unknown>>,
       gateway_config_versions: [] as Array<Record<string, unknown>>,
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    const supabase = createMockSupabaseClient(db) as never;
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
+    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign?workspaceId=${workspaceId}`,
@@ -314,8 +314,27 @@ describe("local runtime routes", () => {
         }),
       ]),
     );
-    expect(db.gateway_config).toEqual([]);
-    expect(db.gateway_config_versions).toEqual([]);
+    expect(getUserScopedSupabase).toHaveBeenCalledWith("test-token");
+    expect(db.gateway_config).toEqual([
+      expect.objectContaining({
+        scope_type: "agent",
+        scope_id: "manager-agent-1",
+        version: 1,
+        updated_by: userId,
+        config_json: expect.objectContaining({
+          tracker: expect.objectContaining({
+            kind: expect.any(String),
+          }),
+        }),
+      }),
+    ]);
+    expect(db.gateway_config_versions).toEqual([
+      expect.objectContaining({
+        gateway_config_id: db.gateway_config[0]?.id,
+        version: 1,
+        created_by: userId,
+      }),
+    ]);
   });
 
   it("preserves existing assignments when assigning the same local model to another agent", async () => {

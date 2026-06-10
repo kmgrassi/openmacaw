@@ -3,7 +3,7 @@ import { ApiRouteError } from "../http.js";
 import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import { getRoutingRuleLocalEndpointUrl } from "../repositories/routing-rules.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
-import { updateAgentRuntimeProfile } from "./agent-runtime-profile.js";
+import { updateAgentRuntimeProfileForAuthenticatedUser } from "./agent-runtime-profile.js";
 import {
   LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX,
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
@@ -13,7 +13,10 @@ export async function assignLocalModelToAgent(input: {
   workspaceId: string;
   ruleId: string;
   agentId: string;
-  userId: string;
+  auth: {
+    accessToken: string;
+    userId: string;
+  };
 }) {
   const supabase = getServiceRoleSupabase();
 
@@ -95,9 +98,8 @@ export async function assignLocalModelToAgent(input: {
       ruleId: input.ruleId,
       workspaceId: input.workspaceId,
     });
-    await updateAgentRuntimeProfile({
-      accessToken: "",
-      userId: input.userId,
+    await updateAgentRuntimeProfileForAuthenticatedUser({
+      auth: input.auth,
       agentId: input.agentId,
       body: {
         workspaceId: input.workspaceId,
