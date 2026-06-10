@@ -254,8 +254,14 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
     end
   end
 
+  defp handle_frame("cancel_ack", frame, state) do
+    Logger.debug("local_relay_cancel_ack correlation_id=#{Map.get(frame, "correlation_id")} outcome=#{Map.get(frame, "outcome")}")
+
+    {:ok, state}
+  end
+
   defp handle_frame(type, frame, state)
-       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel", "dispatch"] do
+       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel", "cancel_ack", "dispatch"] do
     reply =
       error_frame(
         Map.get(frame, "correlation_id"),

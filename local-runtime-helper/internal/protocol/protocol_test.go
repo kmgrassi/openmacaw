@@ -104,6 +104,10 @@ func TestFrameRoundTrip(t *testing.T) {
 				Code:      "runner_unavailable",
 				Message:   "local endpoint refused connection",
 				Retryable: true,
+				Detail: ErrorFrameDetail{
+					DialError: "connect: connection refused",
+					Endpoint:  "http://127.0.0.1:11434/v1/chat/completions",
+				},
 			},
 		},
 		{
@@ -112,6 +116,11 @@ func TestFrameRoundTrip(t *testing.T) {
 				BaseFrame: BaseFrame{Type: TypeHeartbeat, SchemaVersion: SchemaVersion},
 				SentAt:    now,
 				Version:   "0.2.0-test",
+				Runners: []RunnerRegistration{{
+					RunnerKind: "openai_compatible",
+					Provider:   "openai_compatible",
+					Model:      "qwen2.5-coder:latest",
+				}},
 			},
 		},
 		{
@@ -122,6 +131,16 @@ func TestFrameRoundTrip(t *testing.T) {
 					CorrelationID: "dispatch_123",
 				},
 				Reason: "user requested cancellation",
+			},
+		},
+		{
+			name: "cancel_ack",
+			frame: &CancelAckFrame{
+				CorrelatedFrame: CorrelatedFrame{
+					BaseFrame:     BaseFrame{Type: TypeCancelAck, SchemaVersion: SchemaVersion},
+					CorrelationID: "dispatch_123",
+				},
+				Outcome: "cancelled",
 			},
 		},
 		{

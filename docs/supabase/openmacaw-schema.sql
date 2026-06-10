@@ -253,6 +253,7 @@ create table if not exists public.local_runtime_machine (
   last_seen_at timestamptz,
   revoked_at timestamptz,
   runner_kinds text[] default '{}',
+  status text not null default 'offline' check (status in ('online', 'offline', 'degraded')),
   updated_at timestamptz default now(),
   user_id uuid not null,
   workspace_id uuid not null,
@@ -260,9 +261,22 @@ create table if not exists public.local_runtime_machine (
 );
 comment on table public.local_runtime_machine is 'OpenMacaw runtime bridge table.';
 
+create table if not exists public.local_runtime_model (
+  capabilities jsonb not null default '{}'::jsonb,
+  id uuid primary key default gen_random_uuid(),
+  last_advertised_at timestamptz not null default now(),
+  machine_id uuid not null references public.local_runtime_machine(id) on delete cascade,
+  model text not null,
+  provider text,
+  runner_kind text not null,
+  unique (machine_id, runner_kind, model)
+);
+comment on table public.local_runtime_model is 'OpenMacaw runtime bridge table.';
+
 create table if not exists public.local_runtime_token (
   created_at timestamptz default now(),
   created_by_user_id uuid,
+  expires_at timestamptz,
   id uuid default gen_random_uuid(),
   last_used_at timestamptz,
   machine_id uuid not null,
@@ -272,6 +286,16 @@ create table if not exists public.local_runtime_token (
   primary key (id)
 );
 comment on table public.local_runtime_token is 'OpenMacaw runtime bridge table.';
+
+create table if not exists public.local_runtime_event (
+  created_at timestamptz not null default now(),
+  detail jsonb not null default '{}'::jsonb,
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,
+  machine_id uuid not null references public.local_runtime_machine(id) on delete cascade,
+  workspace_id uuid not null
+);
+comment on table public.local_runtime_event is 'OpenMacaw runtime bridge table.';
 
 create table if not exists public.memory_items (
   agent_id uuid,
@@ -393,6 +417,9 @@ create table if not exists public.routing_rule (
   hit_count integer,
   id uuid default gen_random_uuid(),
   last_hit_at timestamptz,
+  last_error text,
+  last_error_at timestamptz,
+  machine_id uuid references public.local_runtime_machine(id) on delete set null,
   model text,
   name text not null,
   next_fallback_rule_id uuid,
@@ -1115,6 +1142,7 @@ create index if not exists broker_task_run_idx on public.broker_task (run_id);
 create index if not exists credential_workspace_idx on public.credential (workspace_id);
 create index if not exists engine_instance_agent_status_idx on public.engine_instance (agent_id, status);
 create unique index if not exists gateway_config_scope_key on public.gateway_config (scope_type, scope_id);
+create index if not exists local_runtime_event_machine_created_idx on public.local_runtime_event (machine_id, created_at desc);
 create index if not exists local_runtime_machine_workspace_idx on public.local_runtime_machine (workspace_id);
 create index if not exists local_runtime_token_machine_idx on public.local_runtime_token (machine_id);
 create index if not exists memory_items_workspace_idx on public.memory_items (workspace_id);
@@ -1184,6 +1212,7 @@ begin
     'gateway_config',
     'gateway_config_state',
     'gateway_config_versions',
+    'local_runtime_event',
     'local_runtime_machine',
     'local_runtime_token',
     'memory_items',
@@ -1278,6 +1307,28 @@ drop policy if exists workspace_members_visible_to_members on public.workspace_m
 create policy workspace_members_visible_to_members on public.workspace_members for all to authenticated
 using (user_id = public.current_app_user_id() or public.is_workspace_member(workspace_id))
 with check (user_id = public.current_app_user_id() or public.is_workspace_admin(workspace_id));
+
+alter table public.local_runtime_model enable row level security;
+drop policy if exists local_runtime_model_workspace_member_access on public.local_runtime_model;
+create policy local_runtime_model_workspace_member_access
+on public.local_runtime_model
+for all to authenticated
+using (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_model.machine_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_model.machine_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+);
 
 alter table public.agent_eval_suite enable row level security;
 drop policy if exists agent_eval_suite_member_access on public.agent_eval_suite;
@@ -1582,6 +1633,7 @@ begin
     'gateway_config',
     'gateway_config_state',
     'gateway_config_versions',
+    'local_runtime_event',
     'local_runtime_machine',
     'local_runtime_token',
     'memory_items',
