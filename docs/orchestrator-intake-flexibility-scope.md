@@ -36,8 +36,8 @@ Concretely:
   `dispatch_runner`'s enum (`codex, planner, openclaw, openclaw_ws,
   computer_use`), the routing hint's enum (`codex, openclaw, computer_use,
   manager, planner, local_relay, local_model_coding`), and
-  `ExecutionProfile.supported_runner_kinds()`. Even a perfectly attentive
-  agent cannot be consistent across them.
+  `SymphonyElixir.Schema.ExecutionProfile.supported_runner_kinds()`. Even a
+  perfectly attentive agent cannot be consistent across them.
 - Validation failures bounce back as `validation_failed` feedback the agent
   must parse and re-call, costing a tool round-trip for repairs that are
   mechanical (case mismatches, scalar-vs-list).
@@ -57,7 +57,8 @@ Concretely:
 3. **One vocabulary, one normalizer.** All intake paths (planner tools,
    manager tools, `POST /api/v1/items`, platform `POST /api/work-items`,
    webhooks) converge on a single normalization module and a single
-   runner-kind/intent vocabulary sourced from `ExecutionProfile`.
+   runner-kind/intent vocabulary sourced from
+   `SymphonyElixir.Schema.ExecutionProfile`.
 
 ## Scope
 
@@ -127,11 +128,13 @@ every intake path.
 
 ### 6. Unify the runner-kind vocabulary
 
-One enum, sourced from `ExecutionProfile.supported_runner_kinds()`, used by
+One enum, sourced from
+`SymphonyElixir.Schema.ExecutionProfile.supported_runner_kinds()`, used by
 every agent-facing schema and prompt. Resolve the `openclaw_ws` /
-`local_model_coding` discrepancies at the source per the no-shims rule
-(change everywhere in one PR set, including any stored values + DB
-constraints in harper-server).
+`local_model_coding` discrepancies at the schema source and the
+`SymphonyElixir.ExecutionProfile` platform-to-runtime normalizer per the
+no-shims rule (change everywhere in one PR set, including any stored values +
+DB constraints in harper-server).
 
 ### 7. Agent context fixes (prompts and tool descriptions)
 
@@ -148,9 +151,9 @@ remaining context must actually be given to the agents:
   description. After item 2, the `delegate` description should carry the
   intent vocabulary and the `when` semantics; the pickup contract stops
   being prose because it becomes atomic behavior.
-- **Shared intent vocabulary** is defined once (runtime config or
-  `ExecutionProfile`) and injected into both tool descriptions and prompts,
-  so prompts cannot drift from the mapping table.
+- **Shared intent vocabulary** is defined once (runtime config or the
+  execution-profile schema) and injected into both tool descriptions and
+  prompts, so prompts cannot drift from the mapping table.
 
 ## Non-goals
 
@@ -184,7 +187,8 @@ remaining context must actually be given to the agents:
 | Manager dispatch execution + idempotency | `runtime/apps/orchestrator/lib/symphony_elixir/manager/tool_support.ex` |
 | Manager prompt | `runtime/apps/orchestrator/priv/prompts/manager-system-v1.md` |
 | Normalization | `runtime/apps/orchestrator/lib/symphony_elixir/work_item/mapper.ex` |
-| Runner-kind allowlist | `runtime/apps/orchestrator/lib/symphony_elixir/execution_profile.ex` |
+| Runner-kind allowlist / exported schema enum | `runtime/apps/orchestrator/lib/symphony_elixir/schema/execution_profile.ex` |
+| Platform-to-runtime runner normalization | `runtime/apps/orchestrator/lib/symphony_elixir/execution_profile.ex` |
 | HTTP intake | `runtime/apps/orchestrator/lib/symphony_elixir/tracker/api.ex` |
 | Platform contracts | `platform/contracts/work-items.ts` |
 | Platform intake route | `platform/apps/api/src/routes/work-items.ts` |
