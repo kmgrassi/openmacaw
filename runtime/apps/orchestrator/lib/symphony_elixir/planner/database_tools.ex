@@ -14,6 +14,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
   alias SymphonyElixir.Planner.DatabaseTools.Updates
   alias SymphonyElixir.Planning.PlanHandoff
   alias SymphonyElixir.Orchestrator.DispatchPolicy
+  alias SymphonyElixir.WorkItem.Mapper, as: WorkItemMapper
 
   @plan_table "plan"
   @work_item_table "work_items"
@@ -74,13 +75,14 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
 
   def execute("task.create", arguments, opts) do
     with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, args, normalization_feedback} <- WorkItemMapper.normalize_intake_payload(args),
          {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
          {:ok, plan_row} <- optional_plan_row(args, workspace_id, opts),
          {:ok, defaulted_args, validation_feedback} <- Payloads.default_task_create_args(args, plan_row, opts),
          {:ok, name} <- Arguments.required_string(defaulted_args, "name"),
          {:ok, resolved_args} <- resolve_author_dependencies(defaulted_args, opts),
          {:ok, payload} <- Payloads.task_create_payload(resolved_args, workspace_id, name, plan_row, opts) do
-      with {:ok, row} <- create_task_row(payload, opts, resolved_args, validation_feedback) do
+      with {:ok, row} <- create_task_row(payload, opts, resolved_args, normalization_feedback ++ validation_feedback) do
         remember_author_task_id(resolved_args, row, opts)
         {:ok, row}
       end
@@ -173,6 +175,15 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
     end
   end
 
+  def execute("task.status", arguments, opts) do
+    with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
+         {:ok, task_id} <- Arguments.required_string(args, "task_id"),
+         {:ok, row} <- read_scoped_row(@work_item_table, task_id, workspace_id, opts) do
+      {:ok, with_dispatch_status(row)}
+    end
+  end
+
   def execute(tool, _arguments, _opts), do: {:error, {:unsupported_planner_tool, tool, @tools}}
 
   @spec tool_specs() :: [map()]
@@ -220,6 +231,12 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
 
   defp maybe_put_validation_feedback(row, []), do: row
   defp maybe_put_validation_feedback(row, feedback), do: Map.put(row, "validation_feedback", feedback)
+
+  defp with_dispatch_status(row) when is_map(row) do
+    Map.put(row, "dispatch", DispatchPolicy.dispatch_summary_for_row(row))
+  end
+
+  defp with_dispatch_status(row), do: row
 
   defp with_review_event(row, tool, args) when is_map(row) do
     case PlanHandoff.review_event(tool, row, args) do

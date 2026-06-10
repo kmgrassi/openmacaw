@@ -151,6 +151,83 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              )
   end
 
+  test "task.create normalizes mechanical intake near misses before insert" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/rest/v1/work_items"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+
+      assert payload["runner_kind"] == "codex"
+      assert payload["state"] == "running"
+      assert payload["labels"] == ["runtime"]
+      assert get_in(payload, ["metadata", "routing", "intent"]) == "implement"
+      assert get_in(payload, ["metadata", "routing", "execution_location"]) == "cloud"
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(201, Jason.encode!([%{"id" => "work-item-1"}]))
+    end)
+
+    assert {:ok, task} =
+             DatabaseTools.execute("task.create", %{
+               "workspace_id" => "workspace-1",
+               "name" => "Draft implementation",
+               "runner_kind" => "Codex",
+               "state" => "Running",
+               "labels" => "runtime",
+               "intent" => "Implement",
+               "routing" => %{"execution_location" => "Cloud"}
+             })
+
+    assert Enum.any?(task["validation_feedback"], &(&1["field"] == "runner_kind"))
+    assert Enum.any?(task["validation_feedback"], &(&1["field"] == "labels"))
+    assert task["dispatch"]["reason"] == "ready"
+    assert task["dispatch"]["intent"] == "implement"
+  end
+
+  test "task.create stores the resolved runner kind for intent-only routing" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/rest/v1/work_items"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+
+      assert payload["runner_kind"] == "computer_use"
+      assert get_in(payload, ["metadata", "runner_kind"]) == "computer_use"
+      assert get_in(payload, ["metadata", "routing", "intent"]) == "browse"
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(201, Jason.encode!([%{"id" => "work-item-1"}]))
+    end)
+
+    assert {:ok, task} =
+             DatabaseTools.execute("task.create", %{
+               "workspace_id" => "workspace-1",
+               "name" => "Inspect browser state",
+               "intent" => "browse"
+             })
+
+    assert task["dispatch"]["reason"] == "ready"
+    assert task["dispatch"]["runner_kind"] == "computer_use"
+  end
+
+  test "task.create rejects invalid dependency list entries before insert" do
+    Req.Test.stub(__MODULE__, fn _conn ->
+      flunk("supabase should not be called when dependency lists contain invalid entries")
+    end)
+
+    assert {:error, {:invalid_argument, "depends_on", "must be a string or list of strings"}} =
+             DatabaseTools.execute("task.create", %{
+               "workspace_id" => "workspace-1",
+               "name" => "Blocked work",
+               "depends_on" => [123, "work-1"]
+             })
+  end
+
   test "task.create derives a missing name from description and reports validation feedback" do
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "POST"
@@ -616,7 +693,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              "reason" => "blocked_by_dependencies",
              "blocked_by" => ["work-item-0"],
              "runner_kind" => "codex",
-             "repository" => nil
+             "repository" => nil,
+             "expected_pickup" => %{
+               "status" => "blocked",
+               "message" => "blocked: depends_on work-item-0 unresolved",
+               "eligible_at" => nil,
+               "cadence_ms" => 60_000,
+               "failed_gates" => ["dependencies"]
+             }
            }
 
     Req.Test.stub(__MODULE__, fn conn ->
@@ -643,6 +727,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              )
 
     assert waiting["dispatch"]["reason"] == "waiting_until_next_poll_at"
+    assert waiting["dispatch"]["expected_pickup"] == %{
+             "status" => "waiting",
+             "message" => "eligible after next_poll_at 2099-05-01T12:00:00Z",
+             "eligible_at" => "2099-05-01T12:00:00Z",
+             "cadence_ms" => 60_000,
+             "failed_gates" => ["next_poll_at"]
+           }
+
     refute waiting["dispatch"]["eligible"]
   end
 

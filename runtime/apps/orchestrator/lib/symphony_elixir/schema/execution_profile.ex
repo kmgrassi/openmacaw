@@ -86,8 +86,6 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   @primary_key false
 
   @supported_runner_kinds ~w(codex claude_code openclaw openclaw_ws computer_use manager planner local_relay local_model_coding)
-  @manager_dispatchable_runner_kinds ~w(codex planner openclaw openclaw_ws computer_use)
-  @manager_undispatchable_runner_kinds ~w(claude_code manager local_relay local_model_coding)
   @supported_providers ~w(openai openai_codex codex anthropic openai_compatible openclaw computer_use local)
 
   embedded_schema do
@@ -145,20 +143,6 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
 
   @spec supported_runner_kinds() :: [String.t()]
   def supported_runner_kinds, do: @supported_runner_kinds
-
-  @doc """
-  Runner kinds the manager `dispatch_runner` tool can launch through its
-  current work-item dispatch path.
-
-  `local_relay` and `local_model_coding` require the helper-daemon transport,
-  `claude_code` is not yet wired through manager dispatch, and `manager`
-  should not recursively dispatch itself through this tool.
-  """
-  @spec manager_dispatchable_runner_kinds() :: [String.t()]
-  def manager_dispatchable_runner_kinds, do: @manager_dispatchable_runner_kinds
-
-  @spec manager_undispatchable_runner_kinds() :: [String.t()]
-  def manager_undispatchable_runner_kinds, do: @manager_undispatchable_runner_kinds
 
   @spec supported_providers() :: [String.t()]
   def supported_providers, do: @supported_providers

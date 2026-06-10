@@ -38,6 +38,7 @@ defmodule SymphonyElixir.ToolRegistry do
     SymphonyElixir.Planner.Tools.TaskUpdate,
     SymphonyElixir.Planner.Tools.TaskSchedule,
     SymphonyElixir.Planner.Tools.TaskRead,
+    SymphonyElixir.Planner.Tools.TaskStatus,
     SymphonyElixir.Planner.Tools.UpdateTrackerKind,
     SymphonyElixir.ScheduledTask.Tools.Create,
     SymphonyElixir.ScheduledTask.Tools.Read,
@@ -86,7 +87,8 @@ defmodule SymphonyElixir.ToolRegistry do
     "scheduled_task.list",
     "scheduled_task.delete",
     "plan.read",
-    "task.read"
+    "task.read",
+    "task.status"
   ]
 
   @type tool_name :: String.t()

@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Manager.PromptTest do
   use ExUnit.Case, async: true
 
   alias SymphonyElixir.Manager.Prompt
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
 
   test "version matches the manager system prompt filename" do
     assert Prompt.version() == "v1"
@@ -23,5 +24,15 @@ defmodule SymphonyElixir.Manager.PromptTest do
     assert prompt =~ "Always make exactly one tool call"
     assert prompt =~ "per task in `due_tasks`"
     assert prompt =~ "`git.run`"
+  end
+
+  test "load! injects shared dispatch intent vocabulary" do
+    prompt = Prompt.load!()
+
+    refute prompt =~ "{{INTENT_VOCABULARY}}"
+
+    for %{name: name, description: description} <- IntentVocabulary.entries() do
+      assert prompt =~ "- `#{name}` - #{description}."
+    end
   end
 end

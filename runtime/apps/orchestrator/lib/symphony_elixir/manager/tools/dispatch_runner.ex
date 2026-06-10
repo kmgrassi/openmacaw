@@ -1,6 +1,7 @@
 defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
   @behaviour SymphonyElixir.Tool
 
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Manager.ToolSupport
   alias SymphonyElixir.Schema.ExecutionProfile
 
@@ -8,7 +9,9 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
   def name, do: "dispatch_runner"
 
   @impl true
-  def description, do: "Dispatch an author, reviewer, or other runner turn for a work item and intent."
+  def description do
+    "Dispatch an author, reviewer, or other runner turn for a work item and intent. #{IntentVocabulary.tool_description()}"
+  end
 
   @impl true
   def parameters_schema do
@@ -20,10 +23,10 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
         "work_item_id" => ToolSupport.string_schema("Work item database UUID."),
         "runner_kind" =>
           ToolSupport.enum_schema(
-            ExecutionProfile.manager_dispatchable_runner_kinds(),
+            ExecutionProfile.supported_runner_kinds(),
             "Runner kind to dispatch."
           ),
-        "intent" => ToolSupport.string_schema("Short machine-readable reason for the dispatch, such as address_review."),
+        "intent" => ToolSupport.string_schema("Short machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"),
         "context" => %{
           "type" => ["object", "null"],
           "description" => "Structured context to pass to the dispatched runner.",

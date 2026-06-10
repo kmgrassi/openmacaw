@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
   use ExUnit.Case, async: false
 
   alias SymphonyElixir.AgentRunner
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
   alias SymphonyElixir.ToolRegistry
 
@@ -91,22 +92,23 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     assert properties["candidate_options"]["items"]["required"] == ["id", "label"]
   end
 
-  test "dispatch_runner advertises only currently resolvable runner kinds" do
+  test "dispatch_runner advertises the canonical execution profile runner kinds" do
     spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
     runner_kinds = spec["inputSchema"]["properties"]["runner_kind"]["enum"]
 
-    assert runner_kinds == ExecutionProfile.manager_dispatchable_runner_kinds()
+    assert runner_kinds == ExecutionProfile.supported_runner_kinds()
     assert "openclaw_ws" in runner_kinds
-    refute "local_relay" in runner_kinds
+    refute "llm_tool_runner" in runner_kinds
+    assert "local_model_coding" in runner_kinds
   end
 
-  test "manager dispatchability makes an explicit decision for every runtime runner kind" do
-    decided_runner_kinds =
-      ExecutionProfile.manager_dispatchable_runner_kinds() ++
-        ExecutionProfile.manager_undispatchable_runner_kinds()
+  test "dispatch_runner descriptions include the shared dispatch intent vocabulary" do
+    spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
 
-    assert Enum.sort(decided_runner_kinds) ==
-             Enum.sort(ExecutionProfile.supported_runner_kinds())
+    assert spec["description"] =~ IntentVocabulary.tool_description()
+
+    assert spec["inputSchema"]["properties"]["intent"]["description"] =~
+             IntentVocabulary.tool_description()
   end
 
   test "list_plans scopes to the session workspace" do
