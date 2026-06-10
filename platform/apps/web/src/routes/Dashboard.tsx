@@ -18,7 +18,10 @@ import { EngineInstanceCard } from "../components/dashboard/EngineInstanceCard";
 import { RuntimeChatPanel } from "../components/dashboard/RuntimeChatPanel";
 import { RuntimeDebugCard } from "../components/dashboard/RuntimeDebugCard";
 import { OnboardingNudgeBanner } from "../components/dashboard/OnboardingNudgeBanner";
-import { WorkspaceAgentHealthWidget } from "../components/dashboard/WorkspaceAgentHealthWidget";
+import {
+  WorkspaceAgentDiagnosticsPanel,
+  WorkspaceAgentHealthWidget,
+} from "../components/dashboard/WorkspaceAgentHealthWidget";
 import type { DashboardSetup } from "../components/dashboard/dashboardTypes";
 import { Alert } from "../components/ui/Alert";
 import {
@@ -252,6 +255,9 @@ export function Dashboard() {
     () => (
       <div className="space-y-3">
         {debugMode && scope && <GatewayDebugPanel />}
+        <WorkspaceAgentDiagnosticsPanel
+          workspaceId={setup?.agent.workspaceId}
+        />
         <EngineInstanceCard
           setup={setup}
           health={agentHealth}
@@ -288,7 +294,6 @@ export function Dashboard() {
       handleRefreshEngine,
       handleStop,
       handleViewEngineDetails,
-      loading,
       runtimeAgents,
       runtimeAgentsQuery.isFetching,
       runtimeAgentsQuery.isLoading,
