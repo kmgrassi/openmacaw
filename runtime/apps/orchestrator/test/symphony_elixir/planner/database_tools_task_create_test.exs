@@ -664,6 +664,70 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
     assert DatabaseTools.tool_spec("task.create")["inputSchema"]["required"] == []
   end
 
+  test "delegate creates manager-runnable work with compact intent metadata" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/rest/v1/work_items"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+
+      assert payload["workspace_id"] == "workspace-1"
+      assert payload["title"] == "Implement API"
+      assert payload["description"] == "Build the endpoint and tests."
+      assert payload["instructions"] == "Build the endpoint and tests."
+      assert payload["state"] == "running"
+      assert payload["source"] == "planner"
+      assert payload["runner_kind"] == "codex"
+      assert payload["repository"] == "kmgrassi/openmacaw"
+      assert {:ok, _datetime, _offset} = DateTime.from_iso8601(payload["next_poll_at"])
+
+      assert payload["metadata"] == %{
+               "created_via" => "planner_delegate_tool",
+               "planner_tool" => "delegate",
+               "intent" => "implement",
+               "routing" => %{"intent" => "implement"},
+               "repository" => "kmgrassi/openmacaw",
+               "runner_kind" => "codex"
+             }
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(201, Jason.encode!([Map.put(payload, "id", "work-item-1")]))
+    end)
+
+    assert {:ok, %{"id" => "work-item-1", "dispatch" => dispatch}} =
+             DatabaseTools.execute("delegate", %{
+               "workspace_id" => "workspace-1",
+               "title" => "Implement API",
+               "instructions" => "Build the endpoint and tests.",
+               "intent" => "implement",
+               "repository" => "kmgrassi/openmacaw",
+               "when" => "now"
+             })
+
+    assert dispatch["reason"] == "ready"
+  end
+
+  test "delegate schema is minimal and required only instructions" do
+    schema = DatabaseTools.tool_spec("delegate")["inputSchema"]
+
+    assert schema["required"] == ["instructions"]
+
+    assert Map.keys(schema["properties"]) |> Enum.sort() == [
+             "depends_on",
+             "instructions",
+             "intent",
+             "metadata",
+             "plan_id",
+             "priority",
+             "repository",
+             "title",
+             "when",
+             "workspace_id"
+           ]
+  end
+
   test "task.create returns dispatch readiness summaries for dependency and future-poll blockers" do
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "POST"

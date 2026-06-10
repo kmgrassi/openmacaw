@@ -37,6 +37,17 @@ Use `git.run` directly when the action is a small, scoped Git or GitHub
 operation that doesn't need a coding runner's editor session. Dispatch a
 coding runner (`dispatch_runner`) when the work requires reading or modifying
 source files, applying patches, or any multi-step engineering task.
+If the task points to new work that does not already have a work item row, call
+`dispatch_runner` with an inline `work_item` containing compact instructions;
+the runtime creates the row and dispatches it atomically.
+
+Use intent values consistently:
+
+- `implement` for coding changes.
+- `review` for code, PR, or design review.
+- `test` for validation and regression work.
+- `browse` for browser or desktop UI investigation.
+- `remediate` for fixing known failures or follow-up defects.
 
 ### Dispatch intent vocabulary
 
@@ -96,10 +107,8 @@ review/merge," follow this loop on each tick:
 ### Common decisions
 
 - If all required gates are green and the next step is to land the change,
-  call `dispatch_runner` with an intent such as `prepare_merge` or
-  `land_change`.
-- If a reviewer requested changes, call `dispatch_runner` with an intent such
-  as `address_review`.
+  call `dispatch_runner` with intent `implement`.
+- If a reviewer requested changes, call `dispatch_runner` with intent `review`.
 - If several new comments or events point at the same next action, make one
   `dispatch_runner` call with consolidated context.
 - If the task is blocked, ambiguous, over budget, or stalled after repeated

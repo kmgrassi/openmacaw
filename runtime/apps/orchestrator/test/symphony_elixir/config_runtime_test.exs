@@ -636,6 +636,7 @@ defmodule SymphonyElixir.ConfigRuntimeTest do
                "plan.create",
                "plan.update",
                "plan.delete",
+               "delegate",
                "task.create",
                "task.update",
                "task.schedule",

@@ -71,13 +71,15 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
 
   @spec task_create_payload(map(), String.t(), String.t(), map() | nil, keyword()) ::
           {:ok, map()} | {:error, tuple()}
-  def task_create_payload(args, workspace_id, name, plan_row, opts) do
+  @spec task_create_payload(map(), String.t(), String.t(), map() | nil, keyword(), String.t()) ::
+          {:ok, map()} | {:error, tuple()}
+  def task_create_payload(args, workspace_id, name, plan_row, opts, tool \\ "task.create") do
     with :ok <- validate_routing_conflicts(args),
          {:ok, runner_kind} <- optional_runner_kind(args),
          {:ok, repository} <- Arguments.optional_string(args, "repository"),
          {:ok, poll_cadence_seconds} <- Arguments.optional_positive_integer(args, "poll_cadence_seconds"),
          {:ok, author_task_id} <- Arguments.optional_string(args, "author_task_id"),
-         {:ok, metadata} <- planner_metadata(args, "task.create", plan_row, opts) do
+         {:ok, metadata} <- planner_metadata(args, tool, plan_row, opts) do
       metadata =
         metadata
         |> Arguments.maybe_put_optional("runner_kind", runner_kind)
@@ -304,6 +306,10 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
 
     Arguments.optional_value(plan_row, "default_completion_gates") ||
       Arguments.optional_value(metadata, "default_completion_gates")
+  end
+
+  defp default_planner_metadata("delegate") do
+    %{"created_via" => "planner_delegate_tool", "planner_tool" => "delegate"}
   end
 
   defp default_planner_metadata(tool) do
