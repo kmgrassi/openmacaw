@@ -163,8 +163,10 @@ export function LocalHelperCard({ onBack, onContinue, onSkip }: Props) {
       }
       await Promise.all(
         agentIds.map((agentId) =>
-          localRuntimeMutations.assign.mutateAsync({
-            runnerId: codingRunner.id,
+          localRuntimeMutations.assignLocalModel.mutateAsync({
+            machineId: registered.machine.id,
+            model: codingRunner.model,
+            provider: codingRunner.provider,
             agentId,
           }),
         ),

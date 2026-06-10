@@ -246,6 +246,15 @@ export type AgentLocalRuntimeAssignRequest = z.infer<
   typeof AgentLocalRuntimeAssignRequestSchema
 >;
 
+export const AgentAssignLocalModelRequestSchema = z.object({
+  machineId: z.string().min(1, "machineId is required"),
+  model: z.string().min(1, "model is required"),
+  provider: z.string().trim().min(1).default("openai_compatible"),
+});
+export type AgentAssignLocalModelRequest = z.infer<
+  typeof AgentAssignLocalModelRequestSchema
+>;
+
 export const AgentLocalRuntimeAssignResponseSchema = z.object({
   routingRuleId: z.string(),
   agentId: z.string(),

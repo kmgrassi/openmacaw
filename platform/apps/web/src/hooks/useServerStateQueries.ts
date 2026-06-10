@@ -6,7 +6,7 @@ import {
   saveStoredCredential,
 } from "../api/credentials";
 import {
-  assignLocalRuntimeRunnerToAgent,
+  assignLocalModelToAgent,
   getLocalRuntimeConfig,
   listLocalRuntimes,
   probeLocalModel,
@@ -14,7 +14,6 @@ import {
   registerLocalRuntime,
   removeLocalRuntime,
   rotateLocalRuntimeToken,
-  unassignLocalRuntimeRunnerFromAgent,
 } from "../api/local-runtime";
 import {
   fallbackModelCatalog,
@@ -106,20 +105,18 @@ export function useLocalRuntimeMutations(workspaceId?: string | null) {
         rotateLocalRuntimeToken(workspaceId!, machineId),
       onSuccess: async () => invalidate(),
     }),
-    assign: useMutation({
-      mutationFn: (input: { runnerId: string; agentId: string }) =>
-        assignLocalRuntimeRunnerToAgent(workspaceId!, input.runnerId, {
-          agentId: input.agentId,
+    assignLocalModel: useMutation({
+      mutationFn: (input: {
+        agentId: string;
+        machineId: string;
+        model: string;
+        provider?: string;
+      }) =>
+        assignLocalModelToAgent(workspaceId!, input.agentId, {
+          machineId: input.machineId,
+          model: input.model,
+          provider: input.provider,
         }),
-      onSuccess: async (_result, input) => invalidate([input.agentId]),
-    }),
-    unassign: useMutation({
-      mutationFn: (input: { runnerId: string; agentId: string }) =>
-        unassignLocalRuntimeRunnerFromAgent(
-          workspaceId!,
-          input.runnerId,
-          input.agentId,
-        ),
       onSuccess: async (_result, input) => invalidate([input.agentId]),
     }),
   };

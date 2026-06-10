@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  listInstalledLocalModels,
-  type InstalledLocalModel,
-} from "../../../api/local-models";
 import type {
   LocalRuntime,
+  LocalModelProbeResponse,
   LocalRuntimeRunner,
 } from "../../../api/local-runtime";
 import { prepareRuntime } from "../../../api/broker-runtime";
@@ -74,8 +71,9 @@ export function AgentRuntimeEditor({
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [ensuringRouting, setEnsuringRouting] = useState(false);
   const [selectedLocalRunnerId, setSelectedLocalRunnerId] = useState("");
+  const [localProbeResult, setLocalProbeResult] =
+    useState<LocalModelProbeResponse | null>(null);
 
-  const showLocalModelPicker = runtimeProvider === "openai_compatible";
   const workspaceId = agent.workspaceId;
   const localRuntimesQuery = useLocalRuntimesQuery(workspaceId);
   const localRuntimeMutations = useLocalRuntimeMutations(workspaceId);
@@ -103,6 +101,7 @@ export function AgentRuntimeEditor({
     [agent.id, localRunnerOptions],
   );
   const assignedLocalRunnerId = assignedLocalRunner?.id ?? "";
+  const helperRegistered = localRunnerOptions.length > 0;
   const firstOnlineLocalRunnerId = onlineLocalRunnerOptions[0]?.id ?? "";
   const selectedLocalRunner = useMemo(
     () =>
@@ -111,41 +110,16 @@ export function AgentRuntimeEditor({
       ) ?? null,
     [localRunnerOptions, selectedLocalRunnerId],
   );
-  const [installedModels, setInstalledModels] = useState<
-    InstalledLocalModel[] | null
-  >(null);
-  const [installedModelsError, setInstalledModelsError] = useState<
-    string | null
-  >(null);
   const previousLocalRuntimeSelectionRef = useRef<{
     agentId: string;
     assignedLocalRunnerId: string;
   } | null>(null);
 
   useEffect(() => {
-    if (!showLocalModelPicker) {
-      setInstalledModels(null);
-      setInstalledModelsError(null);
+    if (runtimeProvider !== "local") {
+      setLocalProbeResult(null);
       return;
     }
-    let cancelled = false;
-    listInstalledLocalModels().then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        setInstalledModels(result.models);
-        setInstalledModelsError(null);
-      } else {
-        setInstalledModels([]);
-        setInstalledModelsError(result.error);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [showLocalModelPicker]);
-
-  useEffect(() => {
-    if (runtimeProvider !== "local") return;
 
     const previous = previousLocalRuntimeSelectionRef.current;
     const agentChanged = previous === null || previous.agentId !== agent.id;
@@ -175,6 +149,10 @@ export function AgentRuntimeEditor({
     runtimeProvider,
     selectedLocalRunnerId,
   ]);
+
+  useEffect(() => {
+    setLocalProbeResult(null);
+  }, [selectedLocalRunnerId]);
 
   useEffect(() => {
     const missing = agent.configurationStatus?.missing ?? [];
@@ -240,7 +218,7 @@ export function AgentRuntimeEditor({
 
   const handleUseLocalRunner = async () => {
     if (!selectedLocalRunner) {
-      onError("Select an online local runtime before saving.");
+      onError("Select an advertised local model before saving.");
       return;
     }
     if (!selectedLocalRunner.runtime.localExecution.helperOnline) {
@@ -251,9 +229,11 @@ export function AgentRuntimeEditor({
     onClearError();
     setRuntimeMessage(null);
     try {
-      await localRuntimeMutations.assign.mutateAsync({
-        runnerId: selectedLocalRunner.runner.id,
+      await localRuntimeMutations.assignLocalModel.mutateAsync({
         agentId: agent.id,
+        machineId: selectedLocalRunner.runtime.id,
+        model: selectedLocalRunner.runner.model,
+        provider: selectedLocalRunner.runner.provider,
       });
       await onRuntimeProfileSaveInput({
         provider: "local",
@@ -272,8 +252,26 @@ export function AgentRuntimeEditor({
     }
   };
 
+  const handleTestLocalRunner = async () => {
+    if (!selectedLocalRunner) {
+      onError("Select an advertised local model before testing.");
+      return;
+    }
+    onClearError();
+    setRuntimeMessage(null);
+    try {
+      const result = await localRuntimeMutations.probeRegistered.mutateAsync(
+        selectedLocalRunner.runner.id,
+      );
+      setLocalProbeResult(result);
+    } catch (err) {
+      onError(String(err));
+    }
+  };
+
   const localRuntimeSaving =
-    localRuntimeMutations.assign.isPending || runtimeProfileSaving;
+    localRuntimeMutations.assignLocalModel.isPending || runtimeProfileSaving;
+  const localRuntimeTesting = localRuntimeMutations.probeRegistered.isPending;
 
   return (
     <Card>
@@ -349,41 +347,18 @@ export function AgentRuntimeEditor({
         {runtimeProvider === "local" ? (
           <Select
             label="Model"
-            value={selectedLocalRunner?.runner.model ?? runtimeModel}
-            options={[
-              {
-                value: selectedLocalRunner?.runner.model ?? runtimeModel,
-                label:
-                  selectedLocalRunner?.runner.model ||
-                  runtimeModel ||
-                  "Select a local runtime",
-              },
-            ]}
-            disabled
+            value={selectedLocalRunnerId}
+            onChange={(event) => setSelectedLocalRunnerId(event.target.value)}
+            disabled={
+              runtimeProfileLoading ||
+              localRuntimesQuery.isLoading ||
+              onlineLocalRunnerOptions.length === 0
+            }
+            options={buildLocalRuntimeRunnerOptions(
+              onlineLocalRunnerOptions,
+              selectedLocalRunnerId,
+            )}
           />
-        ) : showLocalModelPicker ? (
-          <div>
-            <Select
-              label="Model"
-              value={runtimeModel}
-              onChange={(event) => setRuntimeModel(event.target.value)}
-              disabled={runtimeProfileLoading || installedModels === null}
-              options={buildLocalModelOptions(installedModels, runtimeModel)}
-            />
-            {installedModels !== null && installedModels.length === 0 && (
-              <p className="mt-1 text-xs text-amber-300">
-                No local models are installed. Pull one with{" "}
-                <code className="font-mono">ollama pull qwen3-coder:30b</code>{" "}
-                (or similar) and refresh.
-              </p>
-            )}
-            {installedModelsError && (
-              <p className="mt-1 text-xs text-red-300">
-                Could not reach local model host:{" "}
-                <span className="font-mono">{installedModelsError}</span>
-              </p>
-            )}
-          </div>
         ) : (
           <HostedModelSelect
             label="Model"
@@ -397,44 +372,102 @@ export function AgentRuntimeEditor({
       </div>
       {runtimeProvider === "local" && (
         <div className="mt-4 space-y-3 rounded-md border border-white/5 bg-surface px-3 py-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end">
-            <div className="flex-1">
-              <Select
-                label="Local model runtime"
-                value={selectedLocalRunnerId}
-                onChange={(event) =>
-                  setSelectedLocalRunnerId(event.target.value)
-                }
+          <div className="grid gap-2 text-xs md:grid-cols-3">
+            <WizardCheck
+              label="Helper connected"
+              state={
+                localRuntimesQuery.isLoading
+                  ? "pending"
+                  : helperRegistered
+                    ? "pass"
+                    : "fail"
+              }
+              detail={
+                helperRegistered
+                  ? "Relay registered for this workspace."
+                  : "Set up a helper from local runtime settings."
+              }
+            />
+            <WizardCheck
+              label="Model advertised"
+              state={selectedLocalRunner ? "pass" : "fail"}
+              detail={
+                selectedLocalRunner
+                  ? localRunnerLabel(selectedLocalRunner)
+                  : "No online helper is advertising a model."
+              }
+            />
+            <WizardCheck
+              label="Dispatch test"
+              state={
+                localProbeResult
+                  ? localProbeResult.reachable && localProbeResult.modelFound
+                    ? "pass"
+                    : "fail"
+                  : "pending"
+              }
+              detail={
+                localProbeResult
+                  ? localProbeResult.reachable && localProbeResult.modelFound
+                    ? "Connection test passed."
+                    : (localProbeResult.error ??
+                      "The helper did not find the selected model.")
+                  : "Run a test before binding."
+              }
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              {assignedLocalRunner ? (
+                <p className="text-xs text-green-400">
+                  Bound to {localRunnerLabel(assignedLocalRunner)}.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Pick an advertised model, test the helper path, then bind this
+                  agent.
+                </p>
+              )}
+              {selectedLocalRunner && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {selectedLocalRunner.runner.endpoint} ·{" "}
+                  {selectedLocalRunner.runner.toolCallCapability ??
+                    "tool support unknown"}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={localRuntimeTesting}
                 disabled={
                   runtimeProfileLoading ||
                   localRuntimesQuery.isLoading ||
-                  onlineLocalRunnerOptions.length === 0
+                  !selectedLocalRunner ||
+                  !selectedLocalRunner.runtime.localExecution.helperOnline
                 }
-                options={buildLocalRuntimeRunnerOptions(
-                  onlineLocalRunnerOptions,
-                  selectedLocalRunnerId,
-                )}
-              />
+                onClick={handleTestLocalRunner}
+              >
+                Run test
+              </Button>
+              <Button
+                size="sm"
+                loading={localRuntimeSaving}
+                disabled={
+                  runtimeProfileLoading ||
+                  localRuntimesQuery.isLoading ||
+                  !selectedLocalRunner ||
+                  !selectedLocalRunner.runtime.localExecution.helperOnline ||
+                  !localProbeResult?.reachable ||
+                  !localProbeResult.modelFound
+                }
+                onClick={handleUseLocalRunner}
+              >
+                Use local model
+              </Button>
             </div>
-            <Button
-              size="sm"
-              loading={localRuntimeSaving}
-              disabled={
-                runtimeProfileLoading ||
-                localRuntimesQuery.isLoading ||
-                !selectedLocalRunner ||
-                !selectedLocalRunner.runtime.localExecution.helperOnline
-              }
-              onClick={handleUseLocalRunner}
-            >
-              Use for this agent
-            </Button>
           </div>
-          {assignedLocalRunner && (
-            <p className="text-xs text-green-400">
-              Bound to {localRunnerLabel(assignedLocalRunner)}.
-            </p>
-          )}
           {!localRuntimesQuery.isLoading &&
             onlineLocalRunnerOptions.length === 0 && (
               <p className="text-xs text-amber-400">
@@ -447,46 +480,42 @@ export function AgentRuntimeEditor({
                 </Link>
               </p>
             )}
-          {selectedLocalRunner && (
-            <p className="text-xs text-slate-500">
-              {selectedLocalRunner.runner.endpoint} ·{" "}
-              {selectedLocalRunner.runner.toolCallCapability ??
-                "tool support unknown"}
-            </p>
-          )}
         </div>
       )}
     </Card>
   );
 }
 
-function buildLocalModelOptions(
-  installed: InstalledLocalModel[] | null,
-  current: string,
-): Array<{ value: string; label: string }> {
-  if (installed === null) {
-    return [{ value: "", label: "Loading installed models…" }];
-  }
-  const options = installed.map((model) => ({
-    value: model.name,
-    label: model.parameterSize
-      ? `${model.name}  (${model.parameterSize})`
-      : model.name,
-  }));
-  // If the saved model isn't in the installed list (e.g. user has it
-  // configured but hasn't pulled it yet), keep it visible so saves
-  // don't silently change the value.
-  if (current && !options.some((option) => option.value === current)) {
-    options.unshift({ value: current, label: `${current}  (not installed)` });
-  }
-  if (options.length === 0) {
-    return [{ value: "", label: "No local models installed" }];
-  }
-  return options;
-}
-
 function localRunnerLabel(option: LocalRuntimeRunnerOption) {
   return `${option.runner.model} on ${option.runtime.machineDisplayName}`;
+}
+
+function WizardCheck({
+  label,
+  state,
+  detail,
+}: {
+  label: string;
+  state: "pass" | "fail" | "pending";
+  detail: string;
+}) {
+  const tone =
+    state === "pass"
+      ? "border-green-600/30 bg-green-950/20 text-green-200"
+      : state === "fail"
+        ? "border-amber-600/30 bg-amber-950/20 text-amber-200"
+        : "border-white/5 bg-surface-raised text-slate-300";
+  const marker =
+    state === "pass" ? "OK" : state === "fail" ? "Needs attention" : "Pending";
+  return (
+    <div className={`rounded-md border px-3 py-2 ${tone}`}>
+      <div className="font-medium">{label}</div>
+      <div className="mt-1 text-[11px] uppercase tracking-wide opacity-75">
+        {marker}
+      </div>
+      <div className="mt-1 text-slate-400">{detail}</div>
+    </div>
+  );
 }
 
 function buildLocalRuntimeRunnerOptions(

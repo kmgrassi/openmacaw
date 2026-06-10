@@ -118,6 +118,74 @@ export async function assignLocalModelToAgent(input: {
   });
 }
 
+export async function assignLocalModelByMachineToAgent(input: {
+  workspaceId: string;
+  machineId: string;
+  agentId: string;
+  model: string;
+  provider: string;
+  auth: {
+    accessToken: string;
+    userId: string;
+  };
+}) {
+  const supabase = getServiceRoleSupabase();
+
+  const { data: machineMatches, error: machineMatchError } = await supabase
+    .from("routing_rule_match")
+    .select("rule_id")
+    .eq("workspace_id", input.workspaceId)
+    .eq("kind", "local_machine")
+    .eq("key", "id")
+    .eq("value", input.machineId);
+
+  assertSupabaseSuccess("find local runtime machine rules", machineMatches, machineMatchError);
+
+  const ruleIds = Array.from(
+    new Set(
+      (machineMatches ?? [])
+        .map((row) => row.rule_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
+  if (ruleIds.length === 0) {
+    throw new ApiRouteError(404, "local_runtime_not_found", "Local runtime machine was not found");
+  }
+
+  const { data: rules, error: rulesError } = await supabase
+    .from("routing_rule")
+    .select("id, model, provider, runner_kind, name")
+    .eq("workspace_id", input.workspaceId)
+    .in("id", ruleIds)
+    .in("runner_kind", [...REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS])
+    .like("name", `${LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX}%`);
+
+  assertSupabaseSuccess("find local runtime model rule", rules, rulesError);
+
+  const requestedModel = input.model.trim();
+  const requestedProvider = input.provider.trim();
+  const rule = (rules ?? []).find(
+    (candidate) =>
+      candidate.model?.trim() === requestedModel &&
+      (candidate.provider?.trim() ?? "openai_compatible") === requestedProvider,
+  );
+
+  if (!rule?.id) {
+    throw new ApiRouteError(
+      404,
+      "local_model_not_advertised",
+      "Selected model is not advertised by that local runtime",
+    );
+  }
+
+  return assignLocalModelToAgent({
+    workspaceId: input.workspaceId,
+    ruleId: rule.id,
+    agentId: input.agentId,
+    auth: input.auth,
+  });
+}
+
 export async function unassignLocalModelFromAgent(input: {
   workspaceId: string;
   ruleId: string;
