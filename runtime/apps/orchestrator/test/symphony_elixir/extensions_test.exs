@@ -4,7 +4,9 @@ defmodule SymphonyElixir.ExtensionsTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
   import Plug.Conn, only: [put_req_header: 3]
-  import SymphonyElixir.TestSupport, only: [put_system_env: 2]
+
+  import SymphonyElixir.TestSupport,
+    only: [put_system_env: 2, write_workflow_file!: 1, write_workflow_file!: 2]
 
   alias SymphonyElixir.Tracker.Linear, as: Adapter
   alias SymphonyElixir.Tracker.Memory
