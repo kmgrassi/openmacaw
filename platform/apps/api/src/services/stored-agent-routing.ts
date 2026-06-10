@@ -1,4 +1,3 @@
-import type { DefaultAgentRole } from "../../../../contracts/setup.js";
 import { deriveProviderFromModel } from "../../../../contracts/agent-helpers.js";
 import { defaultRunnerKindForAgentType } from "../../../../contracts/agent-runner-defaults.js";
 import { defaultModelForProvider, modelMatchesProvider } from "../../../../contracts/model-catalog.js";
@@ -9,9 +8,9 @@ import {
   upsertAgentCredentialReferenceRule,
 } from "../repositories/routing-rules.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
+import { syncAgentGatewayConfigForExecutionProfile } from "./agent-gateway-config-sync.js";
 import { listStoredAgentsFromSupabase } from "./stored-agent-management.js";
 import { ensureDefaultAgentToolsForAgent } from "./default-agent-tools.js";
-import { ensureGatewayConfigExists } from "./ensure-gateway-config.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
 import { toolProfileForAgentType } from "./tool-bundles.js";
 
@@ -180,28 +179,24 @@ export async function ensureStoredAgentDefaultRouting(input: { agentId: string; 
     workspaceId: agent.workspaceId,
   });
 
-  const rule =
-    existingRule && !routeMissing
-      ? existingRule
-      : await upsertAgentCredentialReferenceRule({
-          agentId: agent.id,
-          workspaceId: agent.workspaceId,
-          runnerKind,
-          provider: existingRule?.provider ?? provider,
-          model: existingRule?.model ?? model,
-          credentialRef: credentialRefFromRoutingRule(existingRule),
-        });
-  changed ||= !existingRule || routeMissing;
-
-  if (agent.agentType === "planning" || agent.agentType === "coding") {
-    await ensureGatewayConfigExists({
+  if (!existingRule || routeMissing) {
+    await upsertAgentCredentialReferenceRule({
       agentId: agent.id,
-      role: agent.agentType as DefaultAgentRole,
-      provider: rule.provider ?? provider,
-      model: rule.model ?? model,
+      workspaceId: agent.workspaceId,
+      runnerKind,
+      provider: existingRule?.provider ?? provider,
+      model: existingRule?.model ?? model,
+      credentialRef: credentialRefFromRoutingRule(existingRule),
     });
-    changed ||= gatewayMissing;
+    changed = true;
   }
+
+  const syncResult = await syncAgentGatewayConfigForExecutionProfile({
+    accessToken: input.accessToken,
+    userId: input.userId,
+    agentId: agent.id,
+  });
+  changed ||= syncResult.changed && gatewayMissing;
 
   const resolution = await resolveExecutionProfile({
     accessToken: input.accessToken,
