@@ -1,4 +1,5 @@
 import { LocalRuntimeListResponseSchema } from "../../../../../contracts/local-runtime.js";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
@@ -10,6 +11,7 @@ import {
 import { toLocalRuntimeListItem, type RunnerRow } from "./mappers.js";
 import {
   LocalRuntimeAgentRowSchema,
+  LocalRuntimeModelRowSchema,
   LocalRuntimeMachineRowSchema,
   LocalRuntimeRoutingRuleListRowSchema,
   RoutingRuleMatchRowSchema,
@@ -20,6 +22,32 @@ import {
   registrationKindForRule,
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
 } from "./routing-metadata.js";
+
+type LiveModel = {
+  runnerKind: string;
+  model: string;
+  provider: string | null;
+  capabilities: Record<string, unknown>;
+  lastAdvertisedAt: string | null;
+};
+
+type OptionalModelTableClient = {
+  from(table: "local_runtime_model"): {
+    select(columns: string): {
+      in(column: "machine_id", values: string[]): Promise<{ data: unknown[] | null; error: PostgrestError | null }>;
+    };
+  };
+};
+
+function isMissingOptionalLocalRuntimeTable(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: string; message?: string };
+  return (
+    maybeError.code === "42P01" ||
+    maybeError.code === "PGRST205" ||
+    maybeError.message?.includes("local_runtime_model") === true
+  );
+}
 
 export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: string) {
   const supabase = getServiceRoleSupabase();
@@ -96,6 +124,39 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   }
   const parsedMachines = parseSupabaseRows("list local runtime machines", LocalRuntimeMachineRowSchema, machines);
 
+  const liveModelsByMachine = new Map<string, LiveModel[]>();
+  let liveModelRowsAvailable = false;
+  if (machineIds.length > 0) {
+    const optionalTables = supabase as unknown as OptionalModelTableClient;
+    const { data: modelRows, error: modelError } = await optionalTables
+      .from("local_runtime_model")
+      .select("machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
+      .in("machine_id", machineIds);
+
+    if (modelError && !isMissingOptionalLocalRuntimeTable(modelError)) {
+      assertSupabaseSuccess("list local runtime live models", modelRows, modelError);
+    }
+    if (!modelError) {
+      liveModelRowsAvailable = true;
+      const parsedModelRows = parseSupabaseRows(
+        "list local runtime live models",
+        LocalRuntimeModelRowSchema,
+        modelRows,
+      );
+      for (const row of parsedModelRows) {
+        const list = liveModelsByMachine.get(row.machine_id) ?? [];
+        list.push({
+          runnerKind: row.runner_kind,
+          model: row.model,
+          provider: row.provider,
+          capabilities: row.capabilities ?? {},
+          lastAdvertisedAt: row.last_advertised_at,
+        });
+        liveModelsByMachine.set(row.machine_id, list);
+      }
+    }
+  }
+
   const agentIds = Array.from(
     new Set(ruleMatches.filter((match) => match.kind === "agent_id").map((match) => match.value)),
   );
@@ -139,6 +200,9 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
         registrationKind === "openclaw"
           ? null
           : normalizeToolCallCapability(matchValue(ruleMatchesForRule, "local_model_capability", "tool_call")),
+      liveModels: (liveModelsByMachine.get(machineId) ?? []).filter(
+        (model) => model.runnerKind === rule.runner_kind || model.runnerKind === registrationKind,
+      ),
       agents: assignedAgentIds.map((id) => ({
         agentId: id,
         agentName: agentsById.get(id)?.name ?? id,
@@ -151,13 +215,26 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
 
   const runtimes = Array.from(runnersByMachine.entries()).map(([machineId, runners]) => {
     const machine = machinesById.get(machineId) ?? null;
+    const localExecution = buildLocalExecution({
+      machine,
+      workspaceRoot: workspaceRootByMachine.get(machineId) ?? null,
+    });
+    const status = localExecution.status;
+    const hasMissingAdvertisedModel =
+      liveModelRowsAvailable && runners.some((runner) => runner.liveModels?.length === 0 && Boolean(runner.model));
+    const lastError =
+      hasMissingAdvertisedModel && status === "online"
+        ? "Configured model is not currently advertised by the helper."
+        : null;
     return toLocalRuntimeListItem({
       machineId,
       machineDisplayName: machine?.display_name ?? machineId,
-      localExecution: buildLocalExecution({
-        machine,
-        workspaceRoot: workspaceRootByMachine.get(machineId) ?? null,
-      }),
+      status,
+      lastError,
+      localExecution: {
+        ...localExecution,
+        lastError,
+      },
       runners,
     });
   });

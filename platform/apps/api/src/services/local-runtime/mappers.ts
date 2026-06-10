@@ -7,7 +7,12 @@ import {
   type LocalRuntimeRunner,
   type LocalToolCallCapability,
 } from "../../../../../contracts/local-runtime.js";
-import { buildConfigSnippet, buildLaunchCommand, buildSetupCommand, type ConfigSnippetInput } from "./config-snippet.js";
+import {
+  buildConfigSnippet,
+  buildLaunchCommand,
+  buildSetupCommand,
+  type ConfigSnippetInput,
+} from "./config-snippet.js";
 import type { buildLocalExecution } from "./config-snippet.js";
 
 type LocalExecution = ReturnType<typeof buildLocalExecution>;
@@ -37,6 +42,13 @@ export type RunnerRow = {
   model: string | null;
   provider: string | null;
   toolCallCapability: LocalToolCallCapability | null;
+  liveModels?: Array<{
+    runnerKind: string;
+    model: string;
+    provider: string | null;
+    capabilities: Record<string, unknown>;
+    lastAdvertisedAt: string | null;
+  }>;
   agents: Array<{ agentId: string; agentName: string }>;
 };
 
@@ -49,6 +61,7 @@ export function toLocalRuntimeRunner(input: RunnerRow): LocalRuntimeRunner {
     model: input.model ?? "",
     provider: input.provider ?? defaultProviderFor(input.kind),
     toolCallCapability: input.toolCallCapability,
+    liveModels: input.liveModels ?? [],
     agents: input.agents,
   });
 }
@@ -75,12 +88,16 @@ export function toLocalRuntimeRegistrationResponse(input: {
 export function toLocalRuntimeListItem(input: {
   machineId: string;
   machineDisplayName: string;
+  status: "online" | "offline" | "degraded";
+  lastError: string | null;
   localExecution: LocalExecution;
   runners: RunnerRow[];
 }) {
   return LocalRuntimeListItemSchema.parse({
     id: input.machineId,
     machineDisplayName: input.machineDisplayName,
+    status: input.status,
+    lastError: input.lastError,
     localExecution: input.localExecution,
     runners: input.runners.map(toLocalRuntimeRunner),
   });

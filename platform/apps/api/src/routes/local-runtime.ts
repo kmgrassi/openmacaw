@@ -10,11 +10,13 @@ import { assignLocalModelToAgent, unassignLocalModelFromAgent } from "../service
 import {
   deleteLocalRuntimeForWorkspace,
   getLocalRuntimeConfigForWorkspace,
+  listLocalRuntimeEventsForWorkspace,
   listLocalRuntimesForWorkspace,
   probeLocalModel,
   probeRegisteredLocalRuntimeForWorkspace,
   registerLocalRuntimeForWorkspace,
   rotateLocalRuntimeTokenForWorkspace,
+  testLocalRuntimeDispatchForWorkspace,
 } from "../services/local-runtime-machines.js";
 
 function requireWorkspaceId(req: Request) {
@@ -101,6 +103,51 @@ export function registerLocalRuntimeRoutes(app: Express) {
           status: 502,
           code: "local_runtime_config_failed",
           message: "Could not regenerate local runtime config",
+        }),
+    }),
+  );
+
+  app.get(
+    LocalRuntimeRouteTemplates.events,
+    apiRoute({
+      requireAuth: true,
+      async handler({ req, res }) {
+        const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
+        return res
+          .status(200)
+          .json(
+            await listLocalRuntimeEventsForWorkspace(
+              requireWorkspaceId(req),
+              requireRouteParam(req, "machineId"),
+              Number.isFinite(limit) ? limit : 50,
+            ),
+          );
+      },
+      onError: (res, error) =>
+        handleApiRouteError(res, error, {
+          status: 502,
+          code: "local_runtime_events_failed",
+          message: "Could not list local runtime events",
+        }),
+    }),
+  );
+
+  app.post(
+    LocalRuntimeRouteTemplates.testDispatch,
+    apiRoute({
+      requireAuth: true,
+      async handler({ req, res }) {
+        return res
+          .status(200)
+          .json(
+            await testLocalRuntimeDispatchForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "machineId")),
+          );
+      },
+      onError: (res, error) =>
+        handleApiRouteError(res, error, {
+          status: 502,
+          code: "local_runtime_test_dispatch_failed",
+          message: "Could not test local runtime dispatch",
         }),
     }),
   );

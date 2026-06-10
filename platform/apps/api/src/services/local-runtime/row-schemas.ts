@@ -18,6 +18,24 @@ export const LocalRuntimeMachineRowSchema = z.object({
   advertised_runner_kinds: z.array(z.string()).nullable().default(null),
 });
 
+export const LocalRuntimeModelRowSchema = z.object({
+  machine_id: z.string(),
+  runner_kind: z.string(),
+  model: z.string(),
+  provider: z.string().nullable().default(null),
+  capabilities: z.record(z.string(), z.unknown()).nullable().default({}),
+  last_advertised_at: z.string().nullable().default(null),
+});
+
+export const LocalRuntimeEventRowSchema = z.object({
+  id: z.string(),
+  machine_id: z.string(),
+  workspace_id: z.string(),
+  kind: z.string(),
+  detail: z.record(z.string(), z.unknown()).nullable().default({}),
+  created_at: z.string(),
+});
+
 export const LocalRuntimeRoutingRuleRowSchema = z.object({
   id: z.string(),
   model: z.string().nullable(),
@@ -42,6 +60,8 @@ export const RoutingRuleMatchRowSchema = z.object({
 
 export type LocalRuntimeAgentRow = z.infer<typeof LocalRuntimeAgentRowSchema>;
 export type LocalRuntimeMachineRowRecord = z.infer<typeof LocalRuntimeMachineRowSchema>;
+export type LocalRuntimeModelRowRecord = z.infer<typeof LocalRuntimeModelRowSchema>;
+export type LocalRuntimeEventRowRecord = z.infer<typeof LocalRuntimeEventRowSchema>;
 export type LocalRuntimeRoutingRuleListRow = z.infer<typeof LocalRuntimeRoutingRuleListRowSchema>;
 export type LocalRuntimeRoutingRuleRow = z.infer<typeof LocalRuntimeRoutingRuleRowSchema>;
 export type RoutingRuleIdRow = z.infer<typeof RoutingRuleIdRowSchema>;

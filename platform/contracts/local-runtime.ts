@@ -85,6 +85,8 @@ export const LocalExecutionTargetSchema = z.object({
   machineId: z.string().nullable(),
   machineDisplayName: z.string().nullable(),
   helperOnline: z.boolean(),
+  status: z.enum(["online", "offline", "degraded"]).default("offline"),
+  lastError: z.string().nullable().default(null),
   lastSeenAt: z.string().nullable(),
   workspaceRoot: z.string().nullable(),
   registered: z.boolean(),
@@ -94,6 +96,15 @@ export const LocalExecutionTargetSchema = z.object({
   runtimeManagedTools: z.boolean().nullable().default(null),
 });
 export type LocalExecutionTarget = z.infer<typeof LocalExecutionTargetSchema>;
+
+export const LocalRuntimeLiveModelSchema = z.object({
+  runnerKind: z.string(),
+  model: z.string(),
+  provider: z.string().nullable().default(null),
+  capabilities: z.record(z.string(), z.unknown()).default({}),
+  lastAdvertisedAt: z.string().nullable().default(null),
+});
+export type LocalRuntimeLiveModel = z.infer<typeof LocalRuntimeLiveModelSchema>;
 
 const OpenAICompatibleRunnerInputSchema = z.object({
   kind: z.literal("openai_compatible"),
@@ -159,6 +170,7 @@ export const LocalRuntimeRunnerSchema = z.object({
   provider: z.string(),
   /** Null for runtimes whose tool loop is internal (e.g. openclaw). */
   toolCallCapability: LocalToolCallCapabilitySchema.nullable(),
+  liveModels: z.array(LocalRuntimeLiveModelSchema).default([]),
   agents: z
     .array(z.object({ agentId: z.string(), agentName: z.string() }))
     .default([]),
@@ -225,6 +237,8 @@ export type LocalModelProbeResponse = z.infer<
 export const LocalRuntimeListItemSchema = z.object({
   id: z.string(),
   machineDisplayName: z.string(),
+  status: z.enum(["online", "offline", "degraded"]).default("offline"),
+  lastError: z.string().nullable().default(null),
   localExecution: LocalExecutionTargetSchema,
   runners: z.array(LocalRuntimeRunnerSchema),
 });
@@ -236,6 +250,33 @@ export const LocalRuntimeListResponseSchema = z.object({
 });
 export type LocalRuntimeListResponse = z.infer<
   typeof LocalRuntimeListResponseSchema
+>;
+
+export const LocalRuntimeEventSchema = z.object({
+  id: z.string(),
+  machineId: z.string(),
+  workspaceId: z.string(),
+  kind: z.string(),
+  detail: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.string(),
+});
+export type LocalRuntimeEvent = z.infer<typeof LocalRuntimeEventSchema>;
+
+export const LocalRuntimeEventsResponseSchema = z.object({
+  events: z.array(LocalRuntimeEventSchema),
+});
+export type LocalRuntimeEventsResponse = z.infer<
+  typeof LocalRuntimeEventsResponseSchema
+>;
+
+export const LocalRuntimeTestDispatchResponseSchema = z.object({
+  helperConnected: z.boolean(),
+  modelAdvertised: z.boolean(),
+  dispatchSucceeded: z.boolean(),
+  error: z.string().nullable().default(null),
+});
+export type LocalRuntimeTestDispatchResponse = z.infer<
+  typeof LocalRuntimeTestDispatchResponseSchema
 >;
 
 export const AgentLocalRuntimeAssignRequestSchema = z.object({

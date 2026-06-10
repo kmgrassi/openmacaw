@@ -1,6 +1,8 @@
 import type { Agent } from "../hooks/useAgents";
+import { useLocalRuntimesQuery } from "../hooks/useServerStateQueries";
 import { cn } from "../lib/cn";
 import { formatAgentMetadata } from "../lib/agent-metadata";
+import { LocalRuntimeStatusChip } from "./local-runtime/LocalRuntimeStatusChip";
 import { statusToneClass, statusToneForValue } from "./ui/status-tones";
 
 export type AgentActivationState = {
@@ -27,6 +29,9 @@ export function AgentList({
   error,
   onRetry,
 }: Props) {
+  const workspaceId = agents.find((agent) => agent.workspaceId)?.workspaceId;
+  const { data: localRuntimes } = useLocalRuntimesQuery(workspaceId);
+
   if (loading) {
     return (
       <div className="px-3 py-4 text-xs text-slate-500">Loading agents...</div>
@@ -110,6 +115,12 @@ export function AgentList({
                     {metadata}
                   </span>
                 )}
+                <LocalRuntimeStatusChip
+                  agentId={agent.id}
+                  runtimes={localRuntimes?.runtimes ?? []}
+                  className="mt-1"
+                  linkToSettings={false}
+                />
                 {activation?.message && (
                   <span
                     className={cn(

@@ -5,6 +5,7 @@ import {
   type Agent,
 } from "../../hooks/useAgents";
 import { invalidateAgentData } from "../../api/query-client";
+import { useLocalRuntimesQuery } from "../../hooks/useServerStateQueries";
 import { useAuthStore } from "../../stores/auth";
 import type {
   AgentType,
@@ -12,6 +13,7 @@ import type {
 } from "../../../../../contracts/agents";
 import { ToolDefinitionsPanel } from "../agent-settings/ToolDefinitionsPanel";
 import { Alert } from "../ui/Alert";
+import { LocalRuntimeStatusChip } from "../local-runtime/LocalRuntimeStatusChip";
 import { AgentCredentialsPanel } from "./AgentDetail/AgentCredentialsPanel";
 import { AgentDangerZone } from "./AgentDetail/AgentDangerZone";
 import { AgentDetailHeader } from "./AgentDetail/AgentDetailHeader";
@@ -26,6 +28,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const deleteAgent = useDeleteAgentMutation();
   const { workspaceId } = useAuthStore();
   const toolWorkspaceId = agent.workspaceId ?? workspaceId;
+  const { data: localRuntimes } = useLocalRuntimesQuery(toolWorkspaceId);
   const [name, setName] = useState(agent.name);
   const [agentType, setAgentType] = useState<AgentType>(agent.agentType);
   const [model, setModel] = useState(agent.model ?? "");
@@ -156,6 +159,11 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   return (
     <div className="space-y-6">
       <AgentDetailHeader agent={agent} />
+
+      <LocalRuntimeStatusChip
+        agentId={agent.id}
+        runtimes={localRuntimes?.runtimes ?? []}
+      />
 
       {error && <Alert tone="error">{error}</Alert>}
 
