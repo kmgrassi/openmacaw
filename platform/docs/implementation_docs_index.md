@@ -71,6 +71,11 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/credentials-streamlining-scope.md](active/credentials-streamlining-scope.md)
   — Collapse credential storage, UI, and validation into one shape, one
   editor, one endpoint; unify local-dev with prod.
+- [active/dashboard-ui-improvement-scope.md](active/dashboard-ui-improvement-scope.md)
+  — Restore the dashboard to chat-first: one prioritized status strip, an
+  inspector drawer replacing debug mode, layout/spacing normalization,
+  semantic design tokens, and component consolidation (Radix overlays).
+  Five sequenced workstreams; open questions resolved.
 - [active/end-to-end-logging-pr-plan.md](active/end-to-end-logging-pr-plan.md)
   — Structured logging across web, API, and runtime layers.
 - [active/execution-target-schema-pr-plan.md](active/execution-target-schema-pr-plan.md)

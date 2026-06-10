@@ -1,9 +1,9 @@
 # Dashboard UI Improvement — Scope
 
-Status: proposed
+Status: proposed (open questions resolved 2026-06-10 — see Decisions)
 Owner: TBD
-Related: [`open-source-readiness-scope.md`](open-source-readiness-scope.md),
-[`platform/AGENTS.md`](../platform/AGENTS.md)
+Related: [`../../../docs/open-source-readiness-scope.md`](../../../docs/open-source-readiness-scope.md),
+[`../../AGENTS.md`](../../AGENTS.md)
 
 ## Problem
 
@@ -75,6 +75,11 @@ Concretely:
   own).
 - Form primitives (`Input`, `Textarea`, `Select`, `SegmentedControl`) each
   manage their own label/error layout, so settings forms vary visually.
+- The drift produces real bugs, not just inconsistency:
+  `WorkspaceAgentHealthWidget.tsx` is styled for a light theme (`bg-white`,
+  `bg-amber-50`, `text-slate-900`, `border-slate-200`) inside the dark-only
+  dashboard — visibly broken today, and exactly what semantic tokens
+  prevent.
 
 ## Design principles
 
@@ -124,8 +129,9 @@ A three-layer dashboard:
   the rest ("2 more issues"), link into the inspector. Replaces today's
   stack of `OnboardingNudgeBanner` + `WorkspaceAgentHealthWidget` +
   `Alert` + `ConfigurationStatusCard`.
-- **Inspector layer** (on demand): a right-side drawer (bottom sheet on
-  mobile) that absorbs everything debug mode currently injects inline —
+- **Inspector layer** (on demand): a right-side drawer (full-screen
+  takeover on mobile) that absorbs everything debug mode currently injects
+  inline —
   gateway/connection state (`GatewayDebugPanel`), engine instance + logs
   (`EngineInstanceCard`), run history (`AgentDashboardPanel`), registered
   agents (`RuntimeDebugCard`) — as tabs or accordion sections, plus the
@@ -185,16 +191,19 @@ visually identical-but-misaligned across pages.
   free-handing values.
 - Mechanical migration: codemod/grep pass replacing raw `text-slate-*` and
   ad-hoc status colors with tokens. No visual change expected — this is a
-  refactor, verified by before/after screenshots.
+  refactor, verified by before/after screenshots. Exception:
+  `WorkspaceAgentHealthWidget`'s light-theme styling is a bug; migrating it
+  to tokens intentionally changes how it looks.
 
 ### WS3 — Component consolidation
 
 - **Dialog/Drawer/Sheet**: one overlay primitive (focus trap, escape,
-  backdrop, z-index scale, mobile bottom-sheet variant). Consumers:
+  backdrop, z-index scale, mobile full-screen variant). Consumers:
   `DashboardHeader` details, `OnboardingModal`, the WS4 inspector.
-  Recommendation: build on native `<dialog>` or adopt a headless library
-  (Radix/Base UI) rather than hand-rolling — overlay a11y is expensive to
-  maintain in-house.
+  **Decided: build on Radix UI** (headless, Tailwind-friendly, React 19
+  compatible) rather than hand-rolling on native `<dialog>` — the drawer
+  isn't a native-dialog shape, so going dependency-free would mean owning
+  focus-trap, scroll-lock, and nested-overlay edge cases in-house.
 - **Card**: make `Card.tsx` the only card. Add the variants the overriders
   actually need (`padding="none" | "sm" | "md"`, `tone="default" |
   "raised" | "info"`) and migrate `EngineInstanceCard`, `ChatMessage` tool
@@ -215,12 +224,19 @@ The user-visible payoff; depends on WS1 (layout) and WS3 (Drawer).
   (priority: blocking error > unconfigured > degraded health > onboarding
   nudge), with a count chip for the rest. Nothing else renders above the
   chat. Healthy + configured ⇒ the strip doesn't render at all.
+  `WorkspaceAgentHealthWidget` splits along this line: its *summary*
+  ("Orchestrator unreachable", "N agents need attention") is strip-tier;
+  the per-agent diagnostic list with error codes/details moves to the
+  inspector; the all-healthy card disappears entirely.
 - **Inspector drawer**: right-side drawer hosting Connection (gateway
   debug + export), Engine (instance card, logs, health), Runs (agent
   dashboard panel), and Agents (runtime debug card) sections. Open via
   sidebar health dot, status strip links, or keyboard shortcut. Persist
   open/closed + last tab in the existing `ui` Zustand store (replacing
-  `debugMode`).
+  `debugMode`). Starts closed for everyone — the old `debugMode` flag is
+  dropped, not migrated; former debug-mode users re-open the inspector once
+  and the preference persists from there. On mobile the inspector is a
+  full-screen takeover, not a bottom sheet.
 - **One health model**: a `useSystemHealth()` selector that reduces
   gateway/launcher/engine/agent signals into ok/degraded/down/unconfigured
   + a list of issues. Sidebar dot, status strip, and inspector header all
@@ -263,15 +279,27 @@ multiple widths.
 - Runtime/orchestrator API changes; everything here is presentational or
   client-state-level (`ui` store, selectors).
 
-## Open questions
+## Decisions (resolved 2026-06-10)
 
-1. Inspector on mobile: bottom sheet vs full-screen takeover? (Recommend
-   bottom sheet at 60vh with drag-to-expand; needs a quick prototype.)
-2. Should the inspector pin open by default on ≥2xl screens for users who
-   had `debugMode` on? (Recommend yes — it's the natural migration of the
-   old preference.)
-3. Headless UI library (Radix/Base UI) vs native `<dialog>`: adding a
-   dependency vs owning focus-trap edge cases. Decide at WS3 kickoff.
-4. Does `WorkspaceAgentHealthWidget` have content that's *actionable
-   enough* to ever claim the strip's top slot, or is it always
-   inspector-tier? Needs a content audit of what it actually renders.
+Originally open questions; resolved with the project owner. The workstream
+text above already reflects these.
+
+1. **Inspector on mobile: full-screen takeover.** Simplest to build, best
+   for reading logs, and debugging from a phone is a rare path — losing
+   chat context behind the takeover is a cheap trade. No drag gestures.
+2. **Inspector starts closed for everyone.** The old `debugMode` preference
+   is dropped, not migrated to a pinned-open default on large screens.
+   Former debug-mode users re-open the inspector once; open/closed state
+   persists in the `ui` store from there.
+3. **Overlay primitive builds on Radix UI.** Native `<dialog>` covers
+   centered modals but not the drawer/sheet shape, so dependency-free would
+   mean hand-rolling focus trap, scroll lock, and nested-overlay behavior.
+   One dependency buys both the Dialog and the Drawer.
+4. **`WorkspaceAgentHealthWidget` splits across tiers.** Content audit
+   (`platform/apps/web/src/components/dashboard/WorkspaceAgentHealthWidget.tsx`):
+   its summary states ("Orchestrator unreachable", "N agents need
+   attention") are blocking/actionable and belong in the status strip; the
+   per-agent diagnostic list (error codes, `ERROR_EXPLANATIONS`, raw
+   details) is inspector-tier; the all-healthy card stops rendering
+   entirely. The audit also surfaced the light-theme styling bug noted
+   under Component and token drift.
