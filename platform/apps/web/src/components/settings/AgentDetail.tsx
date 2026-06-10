@@ -74,6 +74,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     runtimeCredentialMissing,
     loadRuntimeProfile,
     handleRuntimeProfileSave,
+    saveRuntimeProfile,
   } = useAgentRuntimeProfile({
     agent,
     workspaceId,
@@ -216,6 +217,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
             runtimeProviderIsLocal={runtimeProviderIsLocal}
             runtimeCredentialMissing={runtimeCredentialMissing}
             onRuntimeProfileSave={handleRuntimeProfileSave}
+            onRuntimeProfileSaveInput={saveRuntimeProfile}
             onAgentReload={reloadAgents}
             onError={handleError}
             onClearError={clearError}
