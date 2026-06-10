@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   listInstalledLocalModels,
@@ -102,6 +102,8 @@ export function AgentRuntimeEditor({
       ) ?? null,
     [agent.id, localRunnerOptions],
   );
+  const assignedLocalRunnerId = assignedLocalRunner?.id ?? "";
+  const firstOnlineLocalRunnerId = onlineLocalRunnerOptions[0]?.id ?? "";
   const selectedLocalRunner = useMemo(
     () =>
       localRunnerOptions.find(
@@ -115,6 +117,10 @@ export function AgentRuntimeEditor({
   const [installedModelsError, setInstalledModelsError] = useState<
     string | null
   >(null);
+  const previousLocalRuntimeSelectionRef = useRef<{
+    agentId: string;
+    assignedLocalRunnerId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!showLocalModelPicker) {
@@ -140,17 +146,35 @@ export function AgentRuntimeEditor({
 
   useEffect(() => {
     if (runtimeProvider !== "local") return;
-    if (assignedLocalRunner) {
-      setSelectedLocalRunnerId(assignedLocalRunner.id);
+
+    const previous = previousLocalRuntimeSelectionRef.current;
+    const agentChanged = previous === null || previous.agentId !== agent.id;
+    const assignmentChanged =
+      previous === null ||
+      previous.assignedLocalRunnerId !== assignedLocalRunnerId;
+    previousLocalRuntimeSelectionRef.current = {
+      agentId: agent.id,
+      assignedLocalRunnerId,
+    };
+
+    if (agentChanged || assignmentChanged) {
+      setSelectedLocalRunnerId(
+        assignedLocalRunnerId || firstOnlineLocalRunnerId,
+      );
       return;
     }
-    const firstOnline = onlineLocalRunnerOptions[0];
-    if (firstOnline) {
-      setSelectedLocalRunnerId(firstOnline.id);
+
+    if (!selectedLocalRunnerId && firstOnlineLocalRunnerId) {
+      setSelectedLocalRunnerId(firstOnlineLocalRunnerId);
       return;
     }
-    setSelectedLocalRunnerId("");
-  }, [assignedLocalRunner, onlineLocalRunnerOptions, runtimeProvider]);
+  }, [
+    agent.id,
+    assignedLocalRunnerId,
+    firstOnlineLocalRunnerId,
+    runtimeProvider,
+    selectedLocalRunnerId,
+  ]);
 
   useEffect(() => {
     const missing = agent.configurationStatus?.missing ?? [];
