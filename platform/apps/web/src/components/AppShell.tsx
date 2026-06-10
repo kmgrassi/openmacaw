@@ -10,7 +10,7 @@ import { AgentSwitcher } from "./AppShell/AgentSwitcher";
 import { NavItem } from "./AppShell/NavItem";
 import { NavSection } from "./AppShell/NavSection";
 import { WorkspaceAgentHealthBanner } from "./dashboard/WorkspaceAgentHealthBanner";
-import { SETTINGS_SECTIONS } from "./AppShell/settings-sections";
+import { SETTINGS_GROUPS } from "./AppShell/settings-sections";
 import { Button } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
 
@@ -153,15 +153,26 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
               }
             }}
           >
-            {SETTINGS_SECTIONS.map((section) => (
-              <NavItem
-                key={section.path}
-                to={section.path}
-                label={section.label}
-                collapsed={collapsed}
-                onNavigate={closeMobile}
-              />
-            ))}
+            <div className="space-y-3">
+              {SETTINGS_GROUPS.map((group) => (
+                <div key={group.label} className="space-y-0.5">
+                  {!collapsed && (
+                    <div className="px-2.5 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-600">
+                      {group.label}
+                    </div>
+                  )}
+                  {group.sections.map((section) => (
+                    <NavItem
+                      key={section.path}
+                      to={section.path}
+                      label={section.label}
+                      collapsed={collapsed}
+                      onNavigate={closeMobile}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
           </NavSection>
         </div>
       </div>

@@ -4,6 +4,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
   alias SymphonyElixir.Config
   alias SymphonyElixir.Orchestrator.DispatchPolicy
   alias SymphonyElixir.Planner.DatabaseTools.Arguments
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
 
   @task_label_rules [
@@ -120,7 +121,8 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
 
   @spec default_task_create_args(map(), map() | nil, keyword()) :: {:ok, map(), [map()]} | {:error, tuple()}
   def default_task_create_args(args, plan_row, opts) do
-    with :ok <- validate_repository_default(args, plan_row, opts) do
+    with :ok <- validate_repository_default(args, plan_row, opts),
+         {:ok, args} <- normalize_task_when(args) do
       {args, feedback} = default_name(args)
 
       if present_string?(Map.get(args, "name")) do
@@ -138,6 +140,55 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
           )}}
       end
     end
+  end
+
+  defp normalize_task_when(args) do
+    case Arguments.optional_value(args, "when") do
+      nil ->
+        {:ok, args}
+
+      %{} = timing ->
+        normalize_task_when_map(args, timing)
+
+      _ ->
+        {:error, {:invalid_argument, "when", "must be an object"}}
+    end
+  end
+
+  defp normalize_task_when_map(args, timing) do
+    mode = Arguments.optional_value(timing, "mode") || Arguments.optional_value(timing, "kind")
+    state = Arguments.optional_value(timing, "state") || "running"
+
+    with {:ok, state} <- manager_pickup_state(state) do
+      case mode do
+        "planned" ->
+          {:ok, args}
+
+        "now" ->
+          {:ok, put_manager_pickup(args, state, DateTime.utc_now() |> DateTime.to_iso8601())}
+
+        "at" ->
+          with {:ok, at} <- Arguments.nullable_iso8601(timing, "at"),
+               {:ok, at} <- require_when_at(at) do
+            {:ok, put_manager_pickup(args, state, at)}
+          end
+
+        _ ->
+          {:error, {:invalid_argument, "when.mode", "must be planned, now, or at"}}
+      end
+    end
+  end
+
+  defp manager_pickup_state(state) when state in ["running", "awaiting_review"], do: {:ok, state}
+  defp manager_pickup_state(_state), do: {:error, {:invalid_argument, "when.state", "must be running or awaiting_review"}}
+
+  defp require_when_at(value) when is_binary(value), do: {:ok, value}
+  defp require_when_at(_value), do: {:error, {:missing_argument, "when.at"}}
+
+  defp put_manager_pickup(args, state, next_poll_at) do
+    args
+    |> Map.put("state", state)
+    |> Map.put("next_poll_at", next_poll_at)
   end
 
   defp default_name(args) do
@@ -327,10 +378,27 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
   defp optional_routing(args) do
     case Arguments.optional_value(args, "routing") do
       nil -> {:ok, nil}
-      routing when is_map(routing) -> {:ok, routing}
+      routing when is_map(routing) -> validate_routing(routing)
       _ -> {:error, {:invalid_argument, "routing", "must be an object"}}
     end
   end
+
+  defp validate_routing(routing) do
+    with :ok <- validate_optional_enum(routing, "intent", IntentVocabulary.names()),
+         :ok <- validate_optional_enum(routing, "runner_kind", ExecutionProfile.supported_runner_kinds()) do
+      {:ok, routing}
+    end
+  end
+
+  defp validate_optional_enum(map, key, allowed_values) do
+    case Arguments.optional_value(map, key) do
+      nil -> :ok
+      value when is_binary(value) -> if(value in allowed_values, do: :ok, else: invalid_enum(key, allowed_values))
+      _ -> {:error, {:invalid_argument, key, "must be a string"}}
+    end
+  end
+
+  defp invalid_enum(key, allowed_values), do: {:error, {:invalid_argument, key, "must be one of #{Enum.join(allowed_values, ", ")}"}}
 
   defp routing_runner_kind(args) do
     metadata_routing =

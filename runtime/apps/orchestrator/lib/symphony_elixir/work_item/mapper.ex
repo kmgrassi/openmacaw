@@ -8,6 +8,7 @@ defmodule SymphonyElixir.WorkItem.Mapper do
 
   alias SymphonyElixir.Time, as: Timestamp
   alias SymphonyElixir.WorkItem
+  alias SymphonyElixir.Orchestrator.DispatchPolicy
   alias SymphonyElixir.Schema.ExecutionProfile
 
   @list_fields ~w(depends_on depends_on_author_ids completion_gates)
@@ -26,7 +27,8 @@ defmodule SymphonyElixir.WorkItem.Mapper do
         row["runner_kind"] ||
         row["runner_type"] ||
         Map.get(metadata, "runner_kind") ||
-        Map.get(metadata, "runner_type")
+        Map.get(metadata, "runner_type") ||
+        runner_kind_from_routing_intent(metadata)
 
     %WorkItem{
       id: Map.get(row, "id"),
@@ -142,6 +144,17 @@ defmodule SymphonyElixir.WorkItem.Mapper do
 
   defp metadata(value) when is_map(value), do: value
   defp metadata(_), do: %{}
+
+  defp runner_kind_from_routing_intent(metadata) when is_map(metadata) do
+    case Map.get(metadata, "routing") || Map.get(metadata, :routing) do
+      routing when is_map(routing) ->
+        intent = Map.get(routing, "intent") || Map.get(routing, :intent)
+        DispatchPolicy.runner_kind_for_intent(intent, %{"metadata" => %{"routing" => routing}})
+
+      _ ->
+        nil
+    end
+  end
 
   defp repository_id(row, metadata) do
     string_value(Map.get(row, "repository_id")) ||

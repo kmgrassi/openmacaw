@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Manager.ToolSupport do
   alias SymphonyElixir.{AgentRunner, PostgRESTClient, WorkItem, WorkItemSnooze}
   alias SymphonyElixir.WorkItem.Mapper, as: WorkItemMapper
   alias SymphonyElixir.Launcher.GatewayConfig.Database, as: GatewayConfigDatabase
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
 
   @plan_table "plan"
   @work_items_table "work_items"
@@ -66,8 +67,8 @@ defmodule SymphonyElixir.Manager.ToolSupport do
 
   def dispatch_runner(arguments, context) do
     with {:ok, args} <- normalize_arguments(arguments),
-         {:ok, runner_kind} <- required_string(args, "runner_kind"),
          {:ok, intent} <- required_string(args, "intent"),
+         {:ok, runner_kind} <- dispatch_runner_kind(args, intent),
          {:ok, dispatch_context} <- optional_map(args, "context"),
          {:ok, client} <- client(context),
          {:ok, row} <- resolve_dispatch_work_item(client, args, context, runner_kind, intent),
@@ -421,6 +422,13 @@ defmodule SymphonyElixir.Manager.ToolSupport do
     case Map.get(args, key) do
       value when is_binary(value) and value != "" -> value
       _ -> nil
+    end
+  end
+
+  defp dispatch_runner_kind(args, intent) do
+    case optional_string(args, "runner_kind") || IntentVocabulary.runner_kind_for_intent(intent) do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> {:error, {:unsupported_dispatch_intent, intent}}
     end
   end
 

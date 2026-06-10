@@ -221,18 +221,18 @@ export function ChatView({
         tabIndex={0}
         aria-label="Chat messages"
         onScroll={handleMessagesScroll}
-        className="chat-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 sm:px-4"
-        style={{ paddingBottom: bottomOverlayHeight + 16 }}
+        className="chat-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pt-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 sm:px-4 sm:pt-2"
+        style={{ paddingBottom: bottomOverlayHeight + 12 }}
       >
         {(loading || waitingForHistory) && messages.length === 0 && (
           <LoadingState
             label="Loading history..."
-            className="flex items-center justify-center py-4"
+            className="flex items-center justify-center py-3"
           />
         )}
 
         {!loading && !waitingForHistory && messages.length === 0 && (
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 py-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-3 py-4">
             <div className="text-sm font-medium text-slate-300">
               {readOnly
                 ? "No manager transcript yet"
@@ -258,11 +258,11 @@ export function ChatView({
           </div>
         )}
 
-        <div className="mx-auto max-w-4xl space-y-3 pb-5">
+        <div className="mx-auto max-w-4xl space-y-2 pb-3">
           {loadingOlderMessages && messages.length > 0 && (
             <LoadingState
               label="Loading older messages..."
-              className="flex items-center justify-center py-2"
+              className="flex items-center justify-center py-1.5"
             />
           )}
 

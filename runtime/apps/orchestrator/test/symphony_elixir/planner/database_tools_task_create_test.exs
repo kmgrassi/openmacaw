@@ -661,7 +661,40 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
     assert properties["repository"]["type"] == ["string", "null"]
     assert properties["author_task_id"]["type"] == ["string", "null"]
     assert properties["depends_on_author_ids"]["type"] == ["array", "null"]
+    assert properties["when"]["properties"]["mode"]["enum"] == ["planned", "now", "at"]
+    assert "implement" in properties["routing"]["properties"]["intent"]["enum"]
+    assert "address_review" in properties["routing"]["properties"]["intent"]["enum"]
+    assert properties["routing"]["properties"]["runner_kind"]["enum"] == ExecutionProfile.supported_runner_kinds() ++ [nil]
     assert DatabaseTools.tool_spec("task.create")["inputSchema"]["required"] == []
+  end
+
+  test "task.create when at atomically sets manager pickup state and next_poll_at" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/rest/v1/work_items"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+
+      assert payload["state"] == "awaiting_review"
+      assert payload["next_poll_at"] == "2026-05-01T12:00:00Z"
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(201, Jason.encode!([Map.put(payload, "id", "work-item-1")]))
+    end)
+
+    assert {:ok, %{"id" => "work-item-1", "state" => "awaiting_review"}} =
+             DatabaseTools.execute("task.create", %{
+               "workspace_id" => "workspace-1",
+               "name" => "Manager pickup",
+               "routing" => %{"intent" => "follow_up"},
+               "when" => %{
+                 "mode" => "at",
+                 "at" => "2026-05-01T12:00:00Z",
+                 "state" => "awaiting_review"
+               }
+             })
   end
 
   test "delegate creates manager-runnable work with compact intent metadata" do
@@ -791,6 +824,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              )
 
     assert waiting["dispatch"]["reason"] == "waiting_until_next_poll_at"
+
     assert waiting["dispatch"]["expected_pickup"] == %{
              "status" => "waiting",
              "message" => "eligible after next_poll_at 2099-05-01T12:00:00Z",

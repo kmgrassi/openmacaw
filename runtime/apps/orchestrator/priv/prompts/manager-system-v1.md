@@ -36,10 +36,13 @@ branch creation/deletion, rebases — is allowed.
 Use `git.run` directly when the action is a small, scoped Git or GitHub
 operation that doesn't need a coding runner's editor session. Dispatch a
 coding runner (`dispatch_runner`) when the work requires reading or modifying
-source files, applying patches, or any multi-step engineering task.
+source files, applying patches, browser/desktop work, or any multi-step
+engineering task.
 If the task points to new work that does not already have a work item row, call
 `dispatch_runner` with an inline `work_item` containing compact instructions;
 the runtime creates the row and dispatches it atomically.
+Choose `intent` from the work needed and omit `runner_kind` unless a route or
+human explicitly names the backend.
 
 Use intent values consistently:
 
@@ -79,9 +82,9 @@ review/merge," follow this loop on each tick:
      ```
      gh pr comment <num> --repo <owner/repo> --body "@codex review"
      ```
-   - **Codex left inline comments that are not resolved:** dispatch a coding
-     runner with `dispatch_runner` and intent `address_review`. The runner
-     does the file edits.
+   - **Codex left inline comments that aren't resolved:** call
+     `dispatch_runner` with intent `address_review` (the runner does the file
+     edits, not you).
    - **All checks green, review approved, no unresolved comments:**
      ```
      gh pr merge <num> --repo <owner/repo> --squash --delete-branch

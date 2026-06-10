@@ -25,10 +25,25 @@ import { callLocalModel, parseModelResponse } from "../services/local-model-prox
 import { toolFunctionName } from "../services/tool-spec-translator.js";
 import { getUserScopedSupabase } from "../supabase-client.js";
 
+function isLocalRequest(req: Request): boolean {
+  const ip = req.ip ?? req.socket.remoteAddress ?? "";
+  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+}
+
+function assertDevOnly(req: Request) {
+  if (process.env.NODE_ENV !== "development") {
+    throw new ApiRouteError(404, "dev_endpoint_disabled", "Local model chat endpoint is disabled");
+  }
+  if (!isLocalRequest(req)) {
+    throw new ApiRouteError(403, "forbidden", "Local-only endpoint is unavailable from this address");
+  }
+}
+
 export function registerLocalModelProxyRoutes(app: Express) {
   // DEV ONLY — POST /api/agents/:agentId/local-chat
   app.post("/api/agents/:agentId/local-chat", async (req: Request, res: Response) => {
     try {
+      assertDevOnly(req);
       const accessToken = requireAccessToken(req);
       const userId = requireVerifiedUser(req);
       const agentId = requireRouteParam(req, "agentId");

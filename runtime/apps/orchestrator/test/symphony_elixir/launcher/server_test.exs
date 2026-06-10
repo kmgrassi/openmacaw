@@ -386,6 +386,24 @@ defmodule SymphonyElixir.Launcher.ServerTest do
     assert {:ok, 3} = Server.workspace_active_agents_count("workspace-2")
   end
 
+  test "workspace_active_agents_count skips the excluded orchestrator pid" do
+    Application.put_env(:symphony_elixir, :test_agent_inventory_agents, [
+      %Agent{id: "agent-1", name: "Builder A", workspace_id: "workspace-1"},
+      %Agent{id: "agent-2", name: "Builder B", workspace_id: "workspace-1"}
+    ])
+
+    assert {:ok, _runtime_one} = Server.start_agent("agent-1")
+    assert {:ok, _runtime_two} = Server.start_agent("agent-2")
+
+    assert {:ok, runtime_one} = Server.get_agent_runtime("agent-1")
+    assert {:ok, runtime_two} = Server.get_agent_runtime("agent-2")
+
+    Elixir.Agent.update(runtime_one.pid, &Map.put(&1, :snapshot, %{running: [%{}, %{}]}))
+    Elixir.Agent.update(runtime_two.pid, &Map.put(&1, :snapshot, %{running: [%{}]}))
+
+    assert {:ok, 1} = Server.workspace_active_agents_count("workspace-1", exclude_pid: runtime_one.pid)
+  end
+
   test "start_agent returns structured error details when tracker.kind is missing" do
     Application.put_env(:symphony_elixir, :agent_launch_template, %{})
 

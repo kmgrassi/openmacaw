@@ -18,7 +18,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
     %{
       "type" => "object",
       "additionalProperties" => false,
-      "required" => ["runner_kind", "intent"],
+      "required" => ["intent"],
       "properties" => %{
         "work_item_id" => ToolSupport.nullable_string_schema("Existing work item database UUID."),
         "work_item" => %{
@@ -41,11 +41,15 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
           }
         },
         "runner_kind" =>
-          ToolSupport.enum_schema(
+          ToolSupport.nullable_enum_schema(
             ExecutionProfile.supported_runner_kinds(),
-            "Runner kind to dispatch."
+            "Optional concrete runner override. Omit this unless an upstream route or human explicitly names a backend; dispatch normally chooses from intent."
           ),
-        "intent" => ToolSupport.string_schema("Short machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"),
+        "intent" =>
+          ToolSupport.enum_schema(
+            IntentVocabulary.names(),
+            "Machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"
+          ),
         "context" => %{
           "type" => ["object", "null"],
           "description" => "Structured context to pass to the dispatched runner.",

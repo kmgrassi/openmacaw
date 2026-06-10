@@ -91,8 +91,14 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              "description" => task_create_description,
              "inputSchema" => %{
                "properties" => %{
+                 "when" => %{
+                   "properties" => %{
+                     "mode" => %{"enum" => when_modes}
+                   }
+                 },
                  "routing" => %{
                    "properties" => %{
+                     "intent" => %{"enum" => routing_intents},
                      "runner_family" => %{"enum" => runner_families},
                      "execution_location" => %{"enum" => execution_locations},
                      "transport" => %{"enum" => transports},
@@ -103,9 +109,12 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              }
            } = Enum.find(specs, &(&1["name"] == "task.create"))
 
-    assert task_create_description =~ "capability loop"
-    assert task_create_description =~ "For manager-agent pickup"
-    assert task_create_description =~ "todo items are planned but not manager-runnable"
+    assert task_create_description =~ "routing.intent"
+    assert task_create_description =~ "set when to"
+    assert task_create_description =~ "not manager-runnable"
+    assert when_modes == ["planned", "now", "at"]
+    assert "implement" in routing_intents
+    assert "address_review" in routing_intents
     assert "workspace_coding" in runner_families
     assert "tool_calling_llm" in runner_families
     assert "local" in execution_locations
