@@ -44,7 +44,6 @@ const RUNTIME_NORMALIZED_RUNNER_KIND_ALIASES = {
 };
 const RUNTIME_NON_SCHEMA_PLATFORM_RUNNER_KINDS = [
   "local_runtime",
-  "openclaw_ws",
   "openclaw_http_sse",
 ];
 function headers() {

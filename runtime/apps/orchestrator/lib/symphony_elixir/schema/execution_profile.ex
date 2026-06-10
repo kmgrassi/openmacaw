@@ -24,17 +24,18 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
 
   ## Runner kind vocabulary
 
-  `@supported_runner_kinds` is the **runtime-internal** vocabulary, not
-  the platform-facing one. The two diverge intentionally:
+  `@supported_runner_kinds` is the canonical runtime-internal vocabulary
+  for execution profiles. Platform routing-rule values that are role or
+  transport aliases must be normalized before this schema validates them:
 
   | Platform writes (routing_rule.runner_kind) | Runtime expects after normalization |
   |---|---|
   | `codex` | `codex` |
   | `claude_code` | `claude_code` |
   | `openclaw` | `openclaw` |
-  | `openclaw_ws` | `openclaw_ws` (NOT IN this allowlist — see below) |
-  | `openclaw_http_sse` | `openclaw_http_sse` (NOT IN this allowlist) |
-  | `local_runtime` | `local_runtime` (NOT IN this allowlist) |
+  | `openclaw_ws` | `openclaw_ws` |
+  | `openclaw_http_sse` | unsupported platform-only transport alias |
+  | `local_runtime` | unsupported platform-only direct-connection alias |
   | `local_model_coding` | `local_model_coding` |
   | `local_relay` | `local_relay` |
   | `computer_use` | `computer_use` |
@@ -44,14 +45,14 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
 
   `SymphonyElixir.ExecutionProfile.normalize_family_runner_kind/2`
   (in `lib/symphony_elixir/execution_profile.ex`) maps platform → runtime.
-  The four platform values that are **not** in `@supported_runner_kinds`
-  (`openclaw_ws`, `openclaw_http_sse`, `local_runtime`, `llm_tool_runner`)
+  The platform values that are **not** in `@supported_runner_kinds`
+  (`openclaw_http_sse`, `local_runtime`, `llm_tool_runner`)
   reach this schema in two ways:
 
   1. **Validated path** (`Launcher.AgentStarter` → `normalize_from_config/1`
      in execution_profile.ex). `llm_tool_runner` is mapped to `manager` /
      `planner` by the normalizer before reaching `validate/1`, so it passes.
-     The other three pass through the normalizer unchanged and **would
+     The other two pass through the normalizer unchanged and **would
      fail** this validation if they reached it via the explicit-profile
      path. Today they don't — see #2.
   2. **Routing-rule path** (`Gateway.AgentExecutionProfile` reading
@@ -84,7 +85,9 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
 
   @primary_key false
 
-  @supported_runner_kinds ~w(codex claude_code openclaw computer_use manager planner local_relay local_model_coding)
+  @supported_runner_kinds ~w(codex claude_code openclaw openclaw_ws computer_use manager planner local_relay local_model_coding)
+  @manager_dispatchable_runner_kinds ~w(codex planner openclaw openclaw_ws computer_use)
+  @manager_undispatchable_runner_kinds ~w(claude_code manager local_relay local_model_coding)
   @supported_providers ~w(openai openai_codex codex anthropic openai_compatible openclaw computer_use local)
 
   embedded_schema do
@@ -142,6 +145,20 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
 
   @spec supported_runner_kinds() :: [String.t()]
   def supported_runner_kinds, do: @supported_runner_kinds
+
+  @doc """
+  Runner kinds the manager `dispatch_runner` tool can launch through its
+  current work-item dispatch path.
+
+  `local_relay` and `local_model_coding` require the helper-daemon transport,
+  `claude_code` is not yet wired through manager dispatch, and `manager`
+  should not recursively dispatch itself through this tool.
+  """
+  @spec manager_dispatchable_runner_kinds() :: [String.t()]
+  def manager_dispatchable_runner_kinds, do: @manager_dispatchable_runner_kinds
+
+  @spec manager_undispatchable_runner_kinds() :: [String.t()]
+  def manager_undispatchable_runner_kinds, do: @manager_undispatchable_runner_kinds
 
   @spec supported_providers() :: [String.t()]
   def supported_providers, do: @supported_providers

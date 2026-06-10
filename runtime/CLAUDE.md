@@ -134,9 +134,9 @@ the entire codebase rather than adding a compatibility layer.
 ## Enum/String Conventions
 
 Execution profile enum-like values must match the runtime allowlists in
-`apps/orchestrator/lib/symphony_elixir/execution_profile.ex`:
+`apps/orchestrator/lib/symphony_elixir/schema/execution_profile.ex`:
 
-- Runner kinds: `codex`, `openclaw`, `computer_use`, `manager`, `planner`, `local_relay`
+- Runner kinds: `codex`, `claude_code`, `openclaw`, `openclaw_ws`, `computer_use`, `manager`, `planner`, `local_relay`, `local_model_coding`
 - Providers: `openai`, `openai_codex`, `codex`, `anthropic`, `openai_compatible`, `openclaw`, `computer_use`, `local`
 
 Do not invent aliases such as `local_runtime`, `openai-compatible`, or

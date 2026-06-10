@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
   @behaviour SymphonyElixir.Tool
 
   alias SymphonyElixir.Manager.ToolSupport
+  alias SymphonyElixir.Schema.ExecutionProfile
 
   @impl true
   def name, do: "dispatch_runner"
@@ -19,7 +20,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
         "work_item_id" => ToolSupport.string_schema("Work item database UUID."),
         "runner_kind" =>
           ToolSupport.enum_schema(
-            ["codex", "planner", "openclaw", "openclaw_ws", "computer_use"],
+            ExecutionProfile.manager_dispatchable_runner_kinds(),
             "Runner kind to dispatch."
           ),
         "intent" => ToolSupport.string_schema("Short machine-readable reason for the dispatch, such as address_review."),

@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
   use ExUnit.Case, async: false
 
   alias SymphonyElixir.AgentRunner
+  alias SymphonyElixir.Schema.ExecutionProfile
   alias SymphonyElixir.ToolRegistry
 
   @expected_tools ~w(
@@ -25,13 +26,9 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
       api_key: "secret"
     )
 
-    Application.put_env(:symphony_elixir, :manager_tools_req_options,
-      plug: {Req.Test, __MODULE__}
-    )
+    Application.put_env(:symphony_elixir, :manager_tools_req_options, plug: {Req.Test, __MODULE__})
 
-    Application.put_env(:symphony_elixir, :launcher_gateway_config_req_options,
-      plug: {Req.Test, __MODULE__}
-    )
+    Application.put_env(:symphony_elixir, :launcher_gateway_config_req_options, plug: {Req.Test, __MODULE__})
 
     Application.put_env(:symphony_elixir, :launcher_gateway_config,
       endpoint: "https://test.supabase.co",
@@ -98,8 +95,18 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
     runner_kinds = spec["inputSchema"]["properties"]["runner_kind"]["enum"]
 
-    assert runner_kinds == ["codex", "planner", "openclaw", "openclaw_ws", "computer_use"]
+    assert runner_kinds == ExecutionProfile.manager_dispatchable_runner_kinds()
+    assert "openclaw_ws" in runner_kinds
     refute "local_relay" in runner_kinds
+  end
+
+  test "manager dispatchability makes an explicit decision for every runtime runner kind" do
+    decided_runner_kinds =
+      ExecutionProfile.manager_dispatchable_runner_kinds() ++
+        ExecutionProfile.manager_undispatchable_runner_kinds()
+
+    assert Enum.sort(decided_runner_kinds) ==
+             Enum.sort(ExecutionProfile.supported_runner_kinds())
   end
 
   test "list_plans scopes to the session workspace" do
@@ -517,9 +524,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
           |> Plug.Conn.send_resp(200, Jason.encode!([]))
 
         _ ->
-          flunk(
-            "supabase patch/event_log should not be called when workspace scoping rejects the row"
-          )
+          flunk("supabase patch/event_log should not be called when workspace scoping rejects the row")
       end
     end)
 

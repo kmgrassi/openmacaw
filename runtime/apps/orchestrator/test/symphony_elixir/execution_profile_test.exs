@@ -2,6 +2,7 @@ defmodule SymphonyElixir.ExecutionProfileTest do
   use SymphonyElixir.TestSupport
 
   alias SymphonyElixir.ExecutionProfile
+  alias SymphonyElixir.Schema.ExecutionProfile, as: ExecutionProfileSchema
 
   describe "resolve_coding/3" do
     test "uses a supplied coding execution profile from work item metadata" do
@@ -447,7 +448,7 @@ defmodule SymphonyElixir.ExecutionProfileTest do
     end
 
     test "passes through runner_kinds that already match the runtime vocabulary" do
-      for runner_kind <- ~w(codex claude_code openclaw computer_use planner local_relay local_model_coding) do
+      for runner_kind <- ExecutionProfileSchema.supported_runner_kinds() do
         assert {:ok, profile} =
                  ExecutionProfile.normalize_from_config(%{
                    "execution_profile" => %{
@@ -463,15 +464,13 @@ defmodule SymphonyElixir.ExecutionProfileTest do
     end
 
     test "rejects platform-only runner_kinds that don't have a normalizer mapping" do
-      # These four platform values (openclaw_ws, openclaw_http_sse,
-      # local_runtime, llm_tool_runner without a manager/planning role)
+      # These platform values (openclaw_http_sse, local_runtime, and
+      # llm_tool_runner without a manager/planning role)
       # have no entry in normalize_family_runner_kind/2 today and the
       # schema's allowlist doesn't include them. If they reach the
       # explicit-profile path, they correctly surface
-      # :unsupported_execution_profile_runner. Other paths (manager
-      # SessionResolver, gateway chat) bypass this validation by
-      # design — see Schema.ExecutionProfile @moduledoc.
-      for runner_kind <- ~w(openclaw_ws openclaw_http_sse local_runtime) do
+      # :unsupported_execution_profile_runner.
+      for runner_kind <- ~w(openclaw_http_sse local_runtime) do
         assert {:error, {:unsupported_execution_profile_runner, ^runner_kind}} =
                  ExecutionProfile.normalize_from_config(%{
                    "execution_profile" => %{

@@ -284,16 +284,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         },
         "runner_kind" => %{
           "type" => ["string", "null"],
-          "enum" => [
-            "codex",
-            "openclaw",
-            "computer_use",
-            "manager",
-            "planner",
-            "local_relay",
-            "local_model_coding",
-            nil
-          ],
+          "enum" => ExecutionProfile.supported_runner_kinds() ++ [nil],
           "description" =>
             "Concrete backend preference when known. Use codex/local_model_coding for coding work, manager/planner for orchestration, computer_use for browser/desktop tasks, openclaw for OpenClaw work, and local_relay for local relay dispatch."
         },

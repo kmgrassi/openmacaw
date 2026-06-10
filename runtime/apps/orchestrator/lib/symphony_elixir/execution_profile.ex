@@ -23,7 +23,6 @@ defmodule SymphonyElixir.ExecutionProfile do
 
   @type t :: %{optional(String.t()) => term()}
 
-  @supported_runner_kinds ~w(codex claude_code openclaw computer_use manager planner local_relay local_model_coding)
   @secret_key_fragments ~w(api_key access_token refresh_token secret password private_key bearer token key_value value)
 
   # ---------------------------------------------------------------------------
@@ -51,6 +50,7 @@ defmodule SymphonyElixir.ExecutionProfile do
       "manager" -> {:ok, SymphonyElixir.Runner.LlmToolRunner}
       "planner" -> {:ok, SymphonyElixir.Runner.Planner}
       "openclaw" -> {:ok, SymphonyElixir.Runner.OpenClaw}
+      "openclaw_ws" -> {:ok, SymphonyElixir.Runner.OpenClawWS}
       "computer_use" -> {:ok, SymphonyElixir.Runner.ComputerUse}
       "local_relay" -> {:ok, SymphonyElixir.Runner.LocalRelay}
       "local_model_coding" -> {:ok, SymphonyElixir.Runner.LocalModelCoding}
@@ -157,7 +157,7 @@ defmodule SymphonyElixir.ExecutionProfile do
       runner_kind in [nil, ""] ->
         {:error, {:missing_execution_profile_field, "runner_kind"}}
 
-      runner_kind not in @supported_runner_kinds ->
+      runner_kind not in ExecutionProfileSchema.supported_runner_kinds() ->
         {:error, {:unsupported_runner_kind, runner_kind}}
 
       true ->
@@ -170,6 +170,7 @@ defmodule SymphonyElixir.ExecutionProfile do
   defp runner_kind_for(SymphonyElixir.Runner.LlmToolRunner), do: "manager"
   defp runner_kind_for(SymphonyElixir.Runner.Planner), do: "planner"
   defp runner_kind_for(SymphonyElixir.Runner.OpenClaw), do: "openclaw"
+  defp runner_kind_for(SymphonyElixir.Runner.OpenClawWS), do: "openclaw_ws"
   defp runner_kind_for(SymphonyElixir.Runner.ComputerUse), do: "computer_use"
   defp runner_kind_for(SymphonyElixir.Runner.LocalRelay), do: "local_relay"
   defp runner_kind_for(SymphonyElixir.Runner.LocalModelCoding), do: "local_model_coding"
@@ -443,6 +444,7 @@ defmodule SymphonyElixir.ExecutionProfile do
   end
 
   defp default_provider_for_runner("openclaw"), do: "openclaw"
+  defp default_provider_for_runner("openclaw_ws"), do: "openclaw"
   defp default_provider_for_runner("claude_code"), do: "anthropic"
   defp default_provider_for_runner("computer_use"), do: "computer_use"
   defp default_provider_for_runner("local_relay"), do: "local"
