@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
   @moduledoc false
 
   alias SymphonyElixir.Config
+  alias SymphonyElixir.Orchestrator.DispatchPolicy
   alias SymphonyElixir.Planner.DatabaseTools.Arguments
   alias SymphonyElixir.Routing.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
@@ -84,7 +85,8 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
         |> Arguments.maybe_put_optional("repository", repository)
         |> Arguments.maybe_put_optional("author_task_id", author_task_id)
 
-      routing_runner_kind = Arguments.optional_value(metadata, "runner_kind")
+      routing_runner_kind = task_runner_kind(runner_kind, metadata)
+      metadata = Arguments.maybe_put_optional(metadata, "runner_kind", routing_runner_kind)
       routing_repository = Arguments.optional_value(metadata, "repository") || Arguments.optional_value(metadata, "repository_id")
 
       payload =
@@ -406,6 +408,36 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
       end
 
     Arguments.optional_value(routing, "runner_kind")
+  end
+
+  defp task_runner_kind(runner_kind, metadata) do
+    runner_kind ||
+      metadata_routing_runner_kind(metadata) ||
+      DispatchPolicy.runner_kind_for_intent(metadata_routing_intent(metadata), %{"metadata" => metadata}) ||
+      Arguments.optional_value(metadata, "runner_kind")
+  end
+
+  defp metadata_routing_runner_kind(metadata) when is_map(metadata) do
+    metadata
+    |> metadata_routing()
+    |> Arguments.optional_value("runner_kind")
+  end
+
+  defp metadata_routing_runner_kind(_metadata), do: nil
+
+  defp metadata_routing_intent(metadata) when is_map(metadata) do
+    metadata
+    |> metadata_routing()
+    |> Arguments.optional_value("intent")
+  end
+
+  defp metadata_routing_intent(_metadata), do: nil
+
+  defp metadata_routing(metadata) do
+    case Arguments.optional_value(metadata, "routing") do
+      routing when is_map(routing) -> routing
+      _ -> %{}
+    end
   end
 
   defp maybe_put_routing(metadata, nil), do: metadata

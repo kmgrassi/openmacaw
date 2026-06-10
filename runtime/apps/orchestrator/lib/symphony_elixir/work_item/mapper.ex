@@ -8,7 +8,10 @@ defmodule SymphonyElixir.WorkItem.Mapper do
 
   alias SymphonyElixir.Time, as: Timestamp
   alias SymphonyElixir.WorkItem
-  alias SymphonyElixir.Routing.IntentVocabulary
+  alias SymphonyElixir.Orchestrator.DispatchPolicy
+  alias SymphonyElixir.Schema.ExecutionProfile
+
+  @list_fields ~w(depends_on depends_on_author_ids completion_gates)
 
   @spec from_database_row(map(), keyword()) :: WorkItem.t()
   def from_database_row(row, opts \\ []) when is_map(row) do
@@ -114,6 +117,27 @@ defmodule SymphonyElixir.WorkItem.Mapper do
 
   def normalize_labels(_), do: []
 
+  @spec normalize_intake_payload(map()) :: {:ok, map(), [map()]} | {:error, tuple()}
+  def normalize_intake_payload(payload) when is_map(payload) do
+    payload
+    |> stringify_keys()
+    |> normalize_scalar_string("runner_kind", &normalize_runner_kind/1)
+    |> normalize_scalar_string("state", &normalize_work_item_state/1)
+    |> normalize_scalar_string("status", &normalize_work_item_state/1)
+    |> normalize_scalar_string("intent", &normalize_intent/1)
+    |> normalize_list_fields()
+    |> normalize_labels_field()
+    |> normalize_routing_field()
+    |> normalize_metadata_routing_field()
+    |> materialize_top_level_intent()
+    |> case do
+      {:ok, normalized, feedback} -> {:ok, normalized, Enum.reverse(feedback)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def normalize_intake_payload(_payload), do: {:error, :invalid_payload}
+
   @spec metadata_url(term()) :: String.t() | nil
   def metadata_url(metadata) when is_map(metadata), do: Map.get(metadata, "url") || Map.get(metadata, :url)
   def metadata_url(_), do: nil
@@ -123,8 +147,12 @@ defmodule SymphonyElixir.WorkItem.Mapper do
 
   defp runner_kind_from_routing_intent(metadata) when is_map(metadata) do
     case Map.get(metadata, "routing") || Map.get(metadata, :routing) do
-      routing when is_map(routing) -> IntentVocabulary.runner_kind_for_intent(Map.get(routing, "intent") || Map.get(routing, :intent))
-      _ -> nil
+      routing when is_map(routing) ->
+        intent = Map.get(routing, "intent") || Map.get(routing, :intent)
+        DispatchPolicy.runner_kind_for_intent(intent, %{"metadata" => %{"routing" => routing}})
+
+      _ ->
+        nil
     end
   end
 
@@ -175,6 +203,195 @@ defmodule SymphonyElixir.WorkItem.Mapper do
   defp label_name(%{"name" => name}) when is_binary(name), do: name
   defp label_name(%{name: name}) when is_binary(name), do: name
   defp label_name(_), do: nil
+
+  defp stringify_keys(map), do: {:ok, Map.new(map, fn {key, value} -> {to_string(key), value} end), []}
+
+  defp normalize_scalar_string({:ok, map, feedback}, key, normalizer) do
+    case Map.get(map, key) do
+      value when value in [nil, ""] ->
+        {:ok, map, feedback}
+
+      value when is_binary(value) or is_atom(value) ->
+        original = to_string(value)
+
+        case normalizer.(original) do
+          {:ok, normalized} ->
+            {:ok, Map.put(map, key, normalized), maybe_feedback(feedback, key, original, normalized)}
+
+          {:error, message} ->
+            {:error, {:invalid_argument, key, message}}
+        end
+
+      _ ->
+        {:error, {:invalid_argument, key, "must be a string"}}
+    end
+  end
+
+  defp normalize_scalar_string({:error, _reason} = error, _key, _normalizer), do: error
+
+  defp normalize_list_fields({:ok, map, feedback}) do
+    Enum.reduce_while(@list_fields, {:ok, map, feedback}, fn key, {:ok, acc, acc_feedback} ->
+      case normalize_string_list(Map.get(acc, key)) do
+        {:ok, value, nil} ->
+          {:cont, {:ok, maybe_put_value(acc, key, value), acc_feedback}}
+
+        {:ok, value, message} ->
+          {:cont, {:ok, maybe_put_value(acc, key, value), prepend_feedback(acc_feedback, key, message, value)}}
+
+        {:error, message} ->
+          {:halt, {:error, {:invalid_argument, key, message}}}
+      end
+    end)
+  end
+
+  defp normalize_list_fields({:error, _reason} = error), do: error
+
+  defp normalize_labels_field({:ok, map, feedback}) do
+    case Map.get(map, "labels") do
+      nil ->
+        {:ok, map, feedback}
+
+      labels ->
+        normalized = normalize_labels(List.wrap(labels))
+        message = if is_list(labels), do: nil, else: "wrapped scalar in list"
+
+        {:ok, Map.put(map, "labels", normalized), maybe_prepend_feedback(feedback, "labels", message, normalized)}
+    end
+  end
+
+  defp normalize_labels_field({:error, _reason} = error), do: error
+
+  defp normalize_routing_field({:ok, map, feedback}) do
+    case normalize_routing(Map.get(map, "routing")) do
+      {:ok, nil, routing_feedback} ->
+        {:ok, map, routing_feedback ++ feedback}
+
+      {:ok, routing, routing_feedback} ->
+        {:ok, Map.put(map, "routing", routing), routing_feedback ++ feedback}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp normalize_routing_field({:error, _reason} = error), do: error
+
+  defp normalize_metadata_routing_field({:ok, %{"metadata" => metadata} = map, feedback}) when is_map(metadata) do
+    metadata = stringify_metadata_keys(metadata)
+
+    case normalize_routing(Map.get(metadata, "routing")) do
+      {:ok, nil, routing_feedback} ->
+        {:ok, Map.put(map, "metadata", metadata), routing_feedback ++ feedback}
+
+      {:ok, routing, routing_feedback} ->
+        {:ok, Map.put(map, "metadata", Map.put(metadata, "routing", routing)), routing_feedback ++ feedback}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp normalize_metadata_routing_field({:ok, map, feedback}), do: {:ok, map, feedback}
+  defp normalize_metadata_routing_field({:error, _reason} = error), do: error
+
+  defp materialize_top_level_intent({:ok, %{"intent" => intent} = map, feedback}) when is_binary(intent) do
+    routing =
+      case Map.get(map, "routing") do
+        routing when is_map(routing) -> Map.put_new(routing, "intent", intent)
+        _ -> %{"intent" => intent}
+      end
+
+    {:ok, Map.put(map, "routing", routing), feedback}
+  end
+
+  defp materialize_top_level_intent(result), do: result
+
+  defp normalize_routing(nil), do: {:ok, nil, []}
+
+  defp normalize_routing(routing) when is_map(routing) do
+    {:ok, stringify_metadata_keys(routing), []}
+    |> normalize_scalar_string("runner_kind", &normalize_runner_kind/1)
+    |> normalize_scalar_string("intent", &normalize_intent/1)
+    |> normalize_scalar_string("execution_location", &normalize_intent/1)
+  end
+
+  defp normalize_routing(_routing), do: {:error, {:invalid_argument, "routing", "must be an object"}}
+
+  defp normalize_string_list(nil), do: {:ok, nil, nil}
+
+  defp normalize_string_list(values) when is_list(values) do
+    if Enum.all?(values, &string_list_entry?/1) do
+      values =
+        values
+        |> Enum.map(&string_value/1)
+        |> Enum.reject(&is_nil/1)
+
+      {:ok, values, nil}
+    else
+      {:error, "must be a string or list of strings"}
+    end
+  end
+
+  defp normalize_string_list(value) when is_binary(value) or is_atom(value),
+    do: {:ok, [to_string(value) |> String.trim()], "wrapped scalar in list"}
+
+  defp normalize_string_list(_value), do: {:error, "must be a string or list of strings"}
+
+  defp string_list_entry?(value) when is_binary(value) or is_atom(value), do: true
+  defp string_list_entry?(_value), do: false
+
+  defp normalize_runner_kind(value) do
+    normalized = value |> normalize_intake_token()
+
+    if normalized in ExecutionProfile.supported_runner_kinds() do
+      {:ok, normalized}
+    else
+      {:error, "must be a supported runner kind"}
+    end
+  end
+
+  defp normalize_work_item_state(value), do: {:ok, normalize_intake_token(value)}
+  defp normalize_intent(value), do: {:ok, normalize_intake_token(value)}
+
+  defp normalize_intake_token(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace(~r/[\s-]+/, "_")
+  end
+
+  defp maybe_put_value(map, _key, nil), do: map
+  defp maybe_put_value(map, key, value), do: Map.put(map, key, value)
+
+  defp maybe_feedback(feedback, _key, value, value), do: feedback
+
+  defp maybe_feedback(feedback, key, _original, normalized),
+    do: prepend_feedback(feedback, key, "normalized value", normalized)
+
+  defp maybe_prepend_feedback(feedback, _key, nil, _value), do: feedback
+  defp maybe_prepend_feedback(feedback, key, message, value), do: prepend_feedback(feedback, key, message, value)
+
+  defp prepend_feedback(feedback, field, message, suggested_default) do
+    [
+      %{
+        "code" => "normalized_field",
+        "field" => field,
+        "message" => message,
+        "recoverable" => true,
+        "suggested_default" => suggested_default,
+        "ask_user" => false
+      }
+      | feedback
+    ]
+  end
+
+  defp stringify_metadata_keys(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {Atom.to_string(key), value}
+      {key, value} -> {key, value}
+    end)
+  end
 
   defp blank?(value) when value in [nil, ""], do: true
   defp blank?(_), do: false

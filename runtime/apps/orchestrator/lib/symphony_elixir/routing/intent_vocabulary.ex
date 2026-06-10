@@ -10,6 +10,10 @@ defmodule SymphonyElixir.Routing.IntentVocabulary do
     "plan",
     "follow_up",
     "browse",
+    "computer_use",
+    "coordinate",
+    "delegate",
+    "manage",
     "remediate",
     "prepare_merge",
     "land_change"
@@ -19,17 +23,21 @@ defmodule SymphonyElixir.Routing.IntentVocabulary do
     "implement" => "codex",
     "address_review" => "codex",
     "fix_tests" => "codex",
-    "review" => "planner",
+    "review" => "codex",
     "test" => "codex",
     "plan" => "planner",
     "follow_up" => "planner",
     "browse" => "computer_use",
+    "computer_use" => "computer_use",
+    "coordinate" => "manager",
+    "delegate" => "manager",
+    "manage" => "manager",
     "remediate" => "codex",
     "prepare_merge" => "codex",
     "land_change" => "codex"
   }
 
-  @manager_dispatch_runner_kinds ~w(codex claude_code openclaw computer_use planner local_model_coding)
+  @manager_dispatch_runner_kinds ~w(codex claude_code openclaw computer_use manager planner local_model_coding)
 
   @spec intents() :: [String.t()]
   def intents, do: @intents

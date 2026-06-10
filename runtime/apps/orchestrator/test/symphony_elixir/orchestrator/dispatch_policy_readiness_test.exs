@@ -33,18 +33,47 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicyReadinessTest do
   end
 
   test "dispatch summary resolves runner from routing intent" do
-    assert DispatchPolicy.dispatch_summary_for_row(%{
-             "id" => "work-1",
-             "title" => "Follow up",
-             "state" => "running",
-             "metadata" => %{"routing" => %{"intent" => "follow_up"}}
-           }) == %{
+    assert %{
              "eligible" => true,
              "reason" => "ready",
-             "blocked_by" => [],
              "runner_kind" => "planner",
-             "repository" => nil
-           }
+             "intent" => "follow_up"
+           } =
+             DispatchPolicy.dispatch_summary_for_row(%{
+               "id" => "work-1",
+               "title" => "Follow up",
+               "state" => "running",
+               "metadata" => %{"routing" => %{"intent" => "follow_up"}}
+             })
+  end
+
+  test "dispatch summary resolves runner kind from routing intent" do
+    assert %{
+             "eligible" => true,
+             "reason" => "ready",
+             "runner_kind" => "codex",
+             "intent" => "implement"
+           } =
+             DispatchPolicy.dispatch_summary_for_row(%{
+               "id" => "work-1",
+               "title" => "Implement feature",
+               "state" => "todo",
+               "metadata" => %{"routing" => %{"intent" => "implement"}}
+             })
+  end
+
+  test "dispatch summary resolves local coding intent to local model coding" do
+    assert %{
+             "eligible" => true,
+             "runner_kind" => "local_model_coding",
+             "intent" => "test"
+           } =
+             DispatchPolicy.dispatch_summary_for_row(%{
+               "id" => "work-1",
+               "title" => "Run focused tests",
+               "state" => "todo",
+               "metadata" => %{"routing" => %{"intent" => "test", "execution_location" => "local"}}
+             })
   end
 
   test "dispatch summary reports draft or paused rows separately from route readiness" do
