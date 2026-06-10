@@ -1,6 +1,6 @@
 import { AgentLocalRuntimeAssignResponseSchema } from "../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../http.js";
-import { assertSupabaseSuccess } from "../lib/supabase-errors.js";
+import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import { getRoutingRuleLocalEndpointUrl } from "../repositories/routing-rules.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { updateAgentRuntimeProfile } from "./agent-runtime-profile.js";
@@ -83,7 +83,7 @@ export async function assignLocalModelToAgent(input: {
     .eq("workspace_id", input.workspaceId)
     .maybeSingle();
 
-  assertSupabaseSuccess("read assigned local runtime agent", agent, agentError);
+  assertSupabaseNoError("read assigned local runtime agent", agentError);
   if (!agent) {
     throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
   }
@@ -155,7 +155,7 @@ export async function unassignLocalModelFromAgent(input: {
     .eq("workspace_id", input.workspaceId)
     .maybeSingle();
 
-  assertSupabaseSuccess("read unassigned local runtime agent", agent, agentError);
+  assertSupabaseNoError("read unassigned local runtime agent", agentError);
 
   const provider = rule.provider?.trim();
   const model = rule.model?.trim();
@@ -181,7 +181,7 @@ export async function unassignLocalModelFromAgent(input: {
     .eq("model", model)
     .maybeSingle();
 
-  assertSupabaseSuccess("read manager local runtime profile", runtimeProfileRule, runtimeProfileRuleError);
+  assertSupabaseNoError("read manager local runtime profile", runtimeProfileRuleError);
   if (!runtimeProfileRule?.id) {
     return;
   }
@@ -201,11 +201,7 @@ export async function unassignLocalModelFromAgent(input: {
     .eq("rule_id", runtimeProfileRule.id);
 
   if (deleteRuntimeProfileMatchesError) {
-    assertSupabaseSuccess(
-      "remove manager local runtime profile matches",
-      null,
-      deleteRuntimeProfileMatchesError,
-    );
+    assertSupabaseSuccess("remove manager local runtime profile matches", null, deleteRuntimeProfileMatchesError);
   }
 
   const { error: deleteRuntimeProfileError } = await supabase

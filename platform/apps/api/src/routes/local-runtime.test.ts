@@ -686,6 +686,101 @@ describe("local runtime routes", () => {
     expect(db.gateway_config_versions).toEqual([]);
   });
 
+  it("unassigns a manager local model when the execution profile is still hosted", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
+        {
+          id: "manager-profile-rule",
+          workspace_id: workspaceId,
+          name: "agent:manager-agent-1:execution-profile",
+          runner_kind: "llm_tool_runner",
+          model: "openai/gpt-5.2",
+          provider: "openai",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "local-endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
+        {
+          id: "match-1",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "agent_id",
+          key: "agent_id",
+          value: "manager-agent-1",
+        },
+        {
+          id: "manager-profile-agent-match",
+          workspace_id: workspaceId,
+          rule_id: "manager-profile-rule",
+          kind: "agent_id",
+          key: "id",
+          value: "manager-agent-1",
+        },
+      ] as Array<Record<string, unknown>>,
+      agent: [
+        {
+          id: "manager-agent-1",
+          workspace_id: workspaceId,
+          type: "manager",
+        },
+      ],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(
+      `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign/manager-agent-1?workspaceId=${workspaceId}`,
+      {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer test-token",
+        },
+      },
+    );
+
+    expect(response.status).toBe(204);
+    expect(db.routing_rule_match).toEqual([
+      expect.objectContaining({
+        id: "local-endpoint-match",
+        rule_id: "local-rule-1",
+        kind: "local_endpoint",
+        value: "http://127.0.0.1:11434/v1",
+      }),
+      expect.objectContaining({
+        id: "manager-profile-agent-match",
+        rule_id: "manager-profile-rule",
+        kind: "agent_id",
+        value: "manager-agent-1",
+      }),
+    ]);
+    expect(db.routing_rule).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "local-rule-1",
+        }),
+        expect.objectContaining({
+          id: "manager-profile-rule",
+          provider: "openai",
+          model: "openai/gpt-5.2",
+        }),
+      ]),
+    );
+  });
+
   it("registers a model-only runtime and emits an [runner.openai_compatible] snippet", async () => {
     const db = {
       local_runtime_machine: [] as Array<Record<string, unknown>>,
