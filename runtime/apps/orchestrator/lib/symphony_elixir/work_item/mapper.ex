@@ -307,18 +307,25 @@ defmodule SymphonyElixir.WorkItem.Mapper do
   defp normalize_string_list(nil), do: {:ok, nil, nil}
 
   defp normalize_string_list(values) when is_list(values) do
-    values =
-      values
-      |> Enum.map(&string_value/1)
-      |> Enum.reject(&is_nil/1)
+    if Enum.all?(values, &string_list_entry?/1) do
+      values =
+        values
+        |> Enum.map(&string_value/1)
+        |> Enum.reject(&is_nil/1)
 
-    {:ok, values, nil}
+      {:ok, values, nil}
+    else
+      {:error, "must be a string or list of strings"}
+    end
   end
 
   defp normalize_string_list(value) when is_binary(value) or is_atom(value),
     do: {:ok, [to_string(value) |> String.trim()], "wrapped scalar in list"}
 
   defp normalize_string_list(_value), do: {:error, "must be a string or list of strings"}
+
+  defp string_list_entry?(value) when is_binary(value) or is_atom(value), do: true
+  defp string_list_entry?(_value), do: false
 
   defp normalize_runner_kind(value) do
     normalized = value |> normalize_intake_token()

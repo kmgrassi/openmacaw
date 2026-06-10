@@ -154,5 +154,12 @@ defmodule SymphonyElixir.WorkItem.MapperTest do
       assert Enum.any?(feedback, &(&1["field"] == "runner_kind"))
       assert Enum.any?(feedback, &(&1["field"] == "labels"))
     end
+
+    test "rejects invalid entries in string-list fields" do
+      assert {:error, {:invalid_argument, "depends_on", "must be a string or list of strings"}} =
+               Mapper.normalize_intake_payload(%{
+                 "depends_on" => [123, "work-1"]
+               })
+    end
   end
 end
