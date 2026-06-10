@@ -23,7 +23,6 @@ defmodule SymphonyElixir.ExecutionProfile do
 
   @type t :: %{optional(String.t()) => term()}
 
-  @supported_runner_kinds ~w(codex claude_code openclaw computer_use manager planner local_relay local_model_coding)
   @secret_key_fragments ~w(api_key access_token refresh_token secret password private_key bearer token key_value value)
 
   # ---------------------------------------------------------------------------
@@ -157,7 +156,7 @@ defmodule SymphonyElixir.ExecutionProfile do
       runner_kind in [nil, ""] ->
         {:error, {:missing_execution_profile_field, "runner_kind"}}
 
-      runner_kind not in @supported_runner_kinds ->
+      runner_kind not in ExecutionProfileSchema.supported_runner_kinds() ->
         {:error, {:unsupported_runner_kind, runner_kind}}
 
       true ->
