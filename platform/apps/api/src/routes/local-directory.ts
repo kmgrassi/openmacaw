@@ -15,7 +15,7 @@ import path from "node:path";
 import type { Express, Request, Response } from "express";
 
 import { getUserScopedSupabase, getServiceRoleSupabase } from "../supabase-client.js";
-import { assertSupabaseSuccess } from "../lib/supabase-errors.js";
+import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import {
   ApiRouteError,
   errorPayload,
@@ -173,7 +173,7 @@ export function registerLocalDirectoryRoutes(app: Express) {
       const agentId = requireRouteParam(req, "agentId");
       const supabase = getUserScopedSupabase(accessToken);
       const fetched = await supabase.from("agent").select("id,tool_policy").eq("id", agentId).maybeSingle();
-      assertSupabaseSuccess("agent fetch", fetched.data, fetched.error);
+      assertSupabaseNoError("agent fetch", fetched.error);
       if (!fetched.data) {
         throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
       }
@@ -223,7 +223,7 @@ export function registerLocalDirectoryRoutes(app: Express) {
         .select("id,workspace_id,tool_policy")
         .eq("id", agentId)
         .maybeSingle();
-      assertSupabaseSuccess("agent fetch", fetched.data, fetched.error);
+      assertSupabaseNoError("agent fetch", fetched.error);
       const existing = fetched.data;
       if (!existing) {
         throw new ApiRouteError(404, "agent_not_found", "Agent was not found");

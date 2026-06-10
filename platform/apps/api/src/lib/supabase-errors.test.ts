@@ -2,7 +2,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiRouteError } from "../http.js";
-import { assertSupabaseSuccess } from "./supabase-errors.js";
+import { assertSupabaseNoError, assertSupabaseSuccess } from "./supabase-errors.js";
 
 vi.mock("../logger.js", () => ({
   logEvent: vi.fn(),
@@ -66,6 +66,29 @@ describe("assertSupabaseSuccess", () => {
           details: "Key (workspace_id)=(workspace-1) already exists.",
           hint: "Use another workspace.",
         },
+      });
+    }
+  });
+});
+
+describe("assertSupabaseNoError", () => {
+  it("allows null data callers to pass when Supabase returned no error", () => {
+    expect(() => assertSupabaseNoError("optional lookup", null)).not.toThrow();
+  });
+
+  it("still masks Supabase errors outside development", () => {
+    process.env.NODE_ENV = "production";
+
+    try {
+      assertSupabaseNoError("optional lookup", supabaseError);
+      throw new Error("Expected assertSupabaseNoError to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiRouteError);
+      expect(error).toMatchObject({
+        status: 502,
+        code: "database_error",
+        message: "Database operation failed",
+        details: undefined,
       });
     }
   });

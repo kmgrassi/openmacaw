@@ -65,3 +65,20 @@ export function assertSupabaseSuccess<T>(
     );
   }
 }
+
+/**
+ * Check a Supabase response where a null row is an expected result, such as
+ * `maybeSingle()` lookups that intentionally model zero-or-one cardinality.
+ */
+export function assertSupabaseNoError(context: string, error: PostgrestError | null, httpStatus = 502) {
+  if (!error) return;
+
+  const includeDetails = process.env.NODE_ENV === "development";
+  const formatted = logSupabaseError(context, error);
+  throw new ApiRouteError(
+    httpStatus,
+    "database_error",
+    includeDetails ? `${context}: ${formatted.message}` : "Database operation failed",
+    includeDetails ? formatted : undefined,
+  );
+}
