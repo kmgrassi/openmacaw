@@ -14,13 +14,16 @@ defmodule SymphonyElixirWeb.ItemsController do
       {:ok, work_item} ->
         conn
         |> put_status(201)
-        |> json(%{
-          id: work_item.id,
-          identifier: work_item.identifier,
-          title: work_item.title,
-          state: work_item.state,
-          source: work_item.source
-        })
+        |> json(
+          %{
+            id: work_item.id,
+            identifier: work_item.identifier,
+            title: work_item.title,
+            state: work_item.state,
+            source: work_item.source
+          }
+          |> maybe_put_normalization_feedback(work_item)
+        )
 
       {:error, {:missing_fields, fields}} ->
         conn
@@ -36,6 +39,13 @@ defmodule SymphonyElixirWeb.ItemsController do
         conn
         |> put_status(500)
         |> json(%{error: "internal_error", detail: inspect(reason)})
+    end
+  end
+
+  defp maybe_put_normalization_feedback(response, work_item) do
+    case get_in(work_item.metadata || %{}, ["normalization_feedback"]) do
+      [_ | _] = feedback -> Map.put(response, :normalization_feedback, feedback)
+      _ -> response
     end
   end
 end

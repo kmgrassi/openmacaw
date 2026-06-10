@@ -1,8 +1,8 @@
 defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
   @moduledoc false
 
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
-  alias SymphonyElixir.Routing.IntentVocabulary
 
   @tools [
     "plan.create",
@@ -12,7 +12,8 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     "task.update",
     "task.schedule",
     "plan.read",
-    "task.read"
+    "task.read",
+    "task.status"
   ]
 
   @spec tool_names() :: [String.t()]
@@ -85,7 +86,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
       %{
         "name" => "task.create",
         "description" =>
-          "Create a work item row in the platform database, optionally linked to a plan. The returned id is the work item id used for plan review, coding handoff, and runtime routing. Choose routing.intent from the work to be done; runtime routing maps intent to concrete runners. For manager-agent pickup, set when to {mode: now} or {mode: at, at: <absolute ISO timestamp>} so state and next_poll_at are written atomically. Items without when remain planned todo work and are not manager-runnable.",
+          "Create a work item row in the platform database, optionally linked to a plan. The returned id is the work item id used for plan review, coding handoff, and runtime routing. Choose routing.intent from the work to be done; runtime routing maps intent to concrete runners. For manager-agent pickup, set when to {mode: now} or {mode: at, at: <absolute ISO timestamp>} so state and next_poll_at are written atomically. Items without when remain planned todo work and are not manager-runnable. #{IntentVocabulary.tool_description()}",
         "inputSchema" => %{
           "type" => "object",
           "additionalProperties" => false,
@@ -208,6 +209,11 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         "task.read",
         "task_id",
         "Read a work item row scoped by work item id and workspace id."
+      ),
+      read_tool_spec(
+        "task.status",
+        "task_id",
+        "Read a work item row plus dispatch eligibility and expected manager pickup reasoning."
       )
     ]
   end
@@ -268,7 +274,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
       "properties" => %{
         "intent" => %{
           "type" => ["string", "null"],
-          "enum" => IntentVocabulary.intents() ++ [nil],
+          "enum" => IntentVocabulary.names() ++ [nil],
           "description" => IntentVocabulary.tool_description()
         },
         "runner_family" => %{

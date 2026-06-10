@@ -19,6 +19,7 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutor do
     "scheduled_task.delete",
     "plan.read",
     "task.read",
+    "task.status",
     "snooze_work_item"
   ]
 

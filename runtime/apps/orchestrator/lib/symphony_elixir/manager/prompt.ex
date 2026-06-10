@@ -25,26 +25,17 @@ defmodule SymphonyElixir.Manager.Prompt do
 
   @external_resource @prompt_path
 
-  alias SymphonyElixir.Routing.IntentVocabulary
-
-  @prompt @prompt_path |> File.read!() |> String.trim()
+  @prompt @prompt_path
+          |> File.read!()
+          |> String.replace(
+            "{{INTENT_VOCABULARY}}",
+            SymphonyElixir.Orchestrator.IntentVocabulary.markdown_list()
+          )
+          |> String.trim()
 
   @spec version() :: String.t()
   def version, do: @version
 
   @spec load!() :: String.t()
-  def load! do
-    """
-    #{@prompt}
-
-    ## Dispatch intent vocabulary
-
-    Use `dispatch_runner` with the intent that describes the next unit of work.
-    Omit `runner_kind` unless an upstream route or human explicitly names a
-    backend; runtime routing maps intent to the concrete runner.
-
-    #{IntentVocabulary.tool_description()}
-    """
-    |> String.trim()
-  end
+  def load!, do: @prompt
 end

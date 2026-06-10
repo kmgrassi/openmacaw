@@ -646,6 +646,7 @@ defmodule SymphonyElixir.ConfigRuntimeTest do
                "scheduled_task.delete",
                "plan.read",
                "task.read",
+               "task.status",
                "planning_profile.create_update",
                "planning_profile.delete",
                "workspace_settings.manage",

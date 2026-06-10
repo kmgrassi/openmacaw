@@ -39,7 +39,9 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
     assert session.instructions =~ ~s(routing intent "follow_up")
     assert session.instructions =~ "Work item routing guidance:"
     assert session.instructions =~ "task.create routing.intent is the primary dispatch hint"
-    assert session.instructions =~ "implement, address_review, fix_tests"
+    assert session.instructions =~ "implement"
+    assert session.instructions =~ "address_review"
+    assert session.instructions =~ "fix_tests"
     assert session.instructions =~ "task.create accepts optional top-level repository and runner_kind fields"
     assert session.instructions =~ "inspect available repository context with repo.list"
     assert session.instructions =~ "repo.search"

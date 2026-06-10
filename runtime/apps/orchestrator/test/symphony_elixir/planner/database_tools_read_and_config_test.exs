@@ -13,7 +13,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolsReadAndConfigTest do
       response =
         case conn.request_path do
           "/rest/v1/plan" -> [%{"id" => "plan-1"}]
-          "/rest/v1/work_items" -> [%{"id" => "work-item-1"}]
+          "/rest/v1/work_items" -> [%{"id" => "work-item-1", "title" => "Work item", "state" => "todo"}]
         end
 
       conn
@@ -33,9 +33,23 @@ defmodule SymphonyElixir.Planner.DatabaseToolsReadAndConfigTest do
                "task_id" => "work-item-1"
              })
 
+    assert {:ok, %{"id" => "work-item-1", "dispatch" => %{"reason" => "missing_route"}}} =
+             DatabaseTools.execute("task.status", %{
+               "workspace_id" => "workspace-1",
+               "task_id" => "work-item-1"
+             })
+
     assert_received {:request, "GET", "/rest/v1/plan",
                      %{
                        "id" => "eq.plan-1",
+                       "workspace_id" => "eq.workspace-1",
+                       "order" => "id.asc",
+                       "limit" => "1"
+                     }}
+
+    assert_received {:request, "GET", "/rest/v1/work_items",
+                     %{
+                       "id" => "eq.work-item-1",
                        "workspace_id" => "eq.workspace-1",
                        "order" => "id.asc",
                        "limit" => "1"

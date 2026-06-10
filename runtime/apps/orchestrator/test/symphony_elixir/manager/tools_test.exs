@@ -2,7 +2,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
   use ExUnit.Case, async: false
 
   alias SymphonyElixir.AgentRunner
-  alias SymphonyElixir.Routing.IntentVocabulary
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
   alias SymphonyElixir.ToolRegistry
 
@@ -99,11 +99,20 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     intents = schema["properties"]["intent"]["enum"]
 
     assert schema["required"] == ["work_item_id", "intent"]
-    assert intents == IntentVocabulary.intents()
+    assert intents == IntentVocabulary.names()
     assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
     refute "openclaw_ws" in runner_kinds
     refute "llm_tool_runner" in runner_kinds
     assert "local_model_coding" in runner_kinds
+  end
+
+  test "dispatch_runner descriptions include the shared dispatch intent vocabulary" do
+    spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
+
+    assert spec["description"] =~ IntentVocabulary.tool_description()
+
+    assert spec["inputSchema"]["properties"]["intent"]["description"] =~
+             IntentVocabulary.tool_description()
   end
 
   test "list_plans scopes to the session workspace" do

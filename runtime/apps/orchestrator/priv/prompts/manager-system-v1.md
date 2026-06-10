@@ -40,6 +40,14 @@ files, applying patches, browser/desktop work, or any multi-step engineering
 task. Choose `intent` from the work needed and omit `runner_kind` unless a
 route or human explicitly names the backend.
 
+### Dispatch intent vocabulary
+
+When you dispatch another runner, set `intent` to the closest canonical
+purpose. Use the work item, repository, and latest evidence to choose the
+smallest useful next action.
+
+{{INTENT_VOCABULARY}}
+
 ### PR shepherding workflow
 
 When a workspace task is "watch open PRs in repo X and move them through
@@ -54,10 +62,11 @@ review/merge," follow this loop on each tick:
    gh pr view <num> --repo <owner/repo> --comments
    gh pr checks <num> --repo <owner/repo>
    ```
-3. **Decide the next action** based on (a) review state, (b) check status,
-   (c) unresolved comments:
+3. **Decide the next action** based on review state, check status, and
+   unresolved comments:
 
-   - **No review yet and PR has been open for ≥10 min:** request a Codex review.
+   - **No review yet and PR has been open for >=10 min:** request a Codex
+     review.
      ```
      gh pr comment <num> --repo <owner/repo> --body "@codex review"
      ```
@@ -68,25 +77,25 @@ review/merge," follow this loop on each tick:
      ```
      gh pr merge <num> --repo <owner/repo> --squash --delete-branch
      ```
-   - **Reviewer requested changes but the requested change is trivial
-     (e.g., a one-line comment reply or a typo in the PR body):**
+   - **Reviewer requested changes but the requested change is trivial** (for
+     example, a one-line comment reply or a typo in the PR body):
      ```
      gh pr comment <num> --repo <owner/repo> --body "<reply text>"
      ```
-     Otherwise call `dispatch_runner` with `address_review`.
-   - **Checks failing for reasons unrelated to the PR diff** (e.g., flaky
-     infrastructure): retry once with
+     Otherwise call `dispatch_runner` with intent `address_review`.
+   - **Checks failing for reasons unrelated to the PR diff** (for example,
+     flaky infrastructure): retry once.
      ```
      gh run rerun <run-id> --repo <owner/repo>
      ```
-     If it fails again, `escalate_to_human`.
-   - **Nothing actionable yet** (e.g., review pending, CI still running):
-     call `snooze` with a short interval (e.g., `60` seconds).
+     If it fails again, call `escalate_to_human`.
+   - **Nothing actionable yet** (for example, review pending or CI still
+     running): call `snooze` with a short interval such as `60` seconds.
 
 4. **Mark progress.** When a PR is merged, call `mark_done` for the work item
    tracking it.
 
-### Other common decisions
+### Common decisions
 
 - If all required gates are green and the next step is to land the change,
   call `dispatch_runner` with an intent such as `prepare_merge` or

@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
   alias SymphonyElixir.Config
   alias SymphonyElixir.Orchestrator.DispatchPolicy
   alias SymphonyElixir.Planner.DatabaseTools.Arguments
-  alias SymphonyElixir.Routing.IntentVocabulary
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
 
   @task_label_rules [
@@ -378,7 +378,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools.Payloads do
   end
 
   defp validate_routing(routing) do
-    with :ok <- validate_optional_enum(routing, "intent", IntentVocabulary.intents()),
+    with :ok <- validate_optional_enum(routing, "intent", IntentVocabulary.names()),
          :ok <- validate_optional_enum(routing, "runner_kind", ExecutionProfile.supported_runner_kinds()) do
       {:ok, routing}
     end

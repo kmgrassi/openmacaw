@@ -601,7 +601,7 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
 
     Work item routing guidance:
     - For multi-task plans, give each task.create call a stable author_task_id such as "A" or "implement-api". When a later task depends on earlier tasks created in the same planner session, pass depends_on_author_ids instead of guessing database ids.
-    - task.create routing.intent is the primary dispatch hint. Use one of: #{Enum.join(SymphonyElixir.Routing.IntentVocabulary.intents(), ", ")}.
+    - task.create routing.intent is the primary dispatch hint. Use one of: #{Enum.join(SymphonyElixir.Orchestrator.IntentVocabulary.names(), ", ")}.
     - task.create accepts optional top-level repository and runner_kind fields. Use repository when the user names a repository or the request spans multiple repositories. Use runner_kind only when the user, agent context, or repository routing explicitly names a backend.
     - task.create returns validation_feedback when the runtime applied a smart default and dispatch.eligible/reason to summarize whether the created row is ready for orchestrator polling. Treat this as advisory feedback; the orchestrator re-checks policy at poll time.
     - If a tool failure includes validation_feedback with recoverable true and ask_user false, retry once with the suggested_default. If ask_user is true, ask exactly one concise question before retrying.

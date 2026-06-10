@@ -143,16 +143,25 @@ defmodule SymphonyElixir.Tracker.API do
   end
 
   defp validate_and_normalize(payload) when is_map(payload) do
-    missing = Enum.filter(@required_fields, fn f -> blank?(payload[f]) end)
+    with {:ok, normalized_payload, normalization_feedback} <- WorkItemMapper.normalize_intake_payload(payload) do
+      missing = Enum.filter(@required_fields, fn f -> blank?(normalized_payload[f]) end)
 
-    if missing != [] do
-      {:error, {:missing_fields, missing}}
-    else
-      {:ok, WorkItemMapper.from_api_payload(payload)}
+      if missing != [] do
+        {:error, {:missing_fields, missing}}
+      else
+        {:ok, normalized_payload |> WorkItemMapper.from_api_payload() |> maybe_put_normalization_feedback(normalization_feedback)}
+      end
     end
   end
 
   defp validate_and_normalize(_), do: {:error, :invalid_payload}
+
+  defp maybe_put_normalization_feedback(%WorkItem{} = work_item, [_ | _] = feedback) do
+    metadata = Map.put(work_item.metadata || %{}, "normalization_feedback", feedback)
+    %{work_item | metadata: metadata}
+  end
+
+  defp maybe_put_normalization_feedback(%WorkItem{} = work_item, _feedback), do: work_item
 
   defp blank?(nil), do: true
   defp blank?(""), do: true

@@ -1,15 +1,17 @@
 defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
   @behaviour SymphonyElixir.Tool
 
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Manager.ToolSupport
-  alias SymphonyElixir.Routing.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
 
   @impl true
   def name, do: "dispatch_runner"
 
   @impl true
-  def description, do: "Dispatch an author, reviewer, or other runner turn for a work item and intent."
+  def description do
+    "Dispatch an author, reviewer, or other runner turn for a work item and intent. #{IntentVocabulary.tool_description()}"
+  end
 
   @impl true
   def parameters_schema do
@@ -26,7 +28,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
           ),
         "intent" =>
           ToolSupport.enum_schema(
-            IntentVocabulary.intents(),
+            IntentVocabulary.names(),
             "Machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"
           ),
         "context" => %{
