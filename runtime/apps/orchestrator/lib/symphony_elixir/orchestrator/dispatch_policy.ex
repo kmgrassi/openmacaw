@@ -11,6 +11,7 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
 
   alias SymphonyElixir.{Config, WorkItem}
   alias SymphonyElixir.Orchestrator.State
+  alias SymphonyElixir.Routing.IntentVocabulary
 
   @max_created_at_sort_key 9_223_372_036_854_775_807
 
@@ -391,7 +392,8 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
 
     Map.get(row, "runner_kind") ||
       Map.get(metadata, "runner_kind") ||
-      Map.get(routing, "runner_kind")
+      Map.get(routing, "runner_kind") ||
+      IntentVocabulary.runner_kind_for_intent(Map.get(routing, "intent"))
   end
 
   defp row_repository(row) do

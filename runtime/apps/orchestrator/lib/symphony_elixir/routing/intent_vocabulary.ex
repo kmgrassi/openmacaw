@@ -39,9 +39,15 @@ defmodule SymphonyElixir.Routing.IntentVocabulary do
 
   @spec manager_dispatch_runner_kind(String.t()) :: String.t() | nil
   def manager_dispatch_runner_kind(intent) when is_binary(intent),
-    do: Map.get(@manager_dispatch_runner_by_intent, intent)
+    do: runner_kind_for_intent(intent)
 
   def manager_dispatch_runner_kind(_intent), do: nil
+
+  @spec runner_kind_for_intent(String.t()) :: String.t() | nil
+  def runner_kind_for_intent(intent) when is_binary(intent),
+    do: Map.get(@manager_dispatch_runner_by_intent, intent)
+
+  def runner_kind_for_intent(_intent), do: nil
 
   @spec tool_description() :: String.t()
   def tool_description do
