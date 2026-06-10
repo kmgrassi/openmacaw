@@ -1,6 +1,7 @@
 defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
   @moduledoc false
 
+  alias SymphonyElixir.Orchestrator.IntentVocabulary
   alias SymphonyElixir.Schema.ExecutionProfile
 
   @tools [
@@ -84,7 +85,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
       %{
         "name" => "task.create",
         "description" =>
-          "Create a work item row in the platform database, optionally linked to a plan. The returned id is the work item id used for plan review, coding handoff, and runtime routing. When the task should be handled by another agent, add a routing hint that explains what capability loop is needed, where it should run, how it should be reached, and any concrete runner preference. For manager-agent pickup, set state to running or awaiting_review and set next_poll_at to an absolute ISO timestamp; todo items are planned but not manager-runnable.",
+          "Create a work item row in the platform database, optionally linked to a plan. The returned id is the work item id used for plan review, coding handoff, and runtime routing. When the task should be handled by another agent, add a routing hint that explains the capability loop or intent and any concrete runner preference only when known. For manager-agent pickup, set state to running or awaiting_review and set next_poll_at to an absolute ISO timestamp; todo items are planned but not manager-runnable. #{IntentVocabulary.tool_description()}",
         "inputSchema" => %{
           "type" => "object",
           "additionalProperties" => false,
@@ -292,7 +293,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
           "description" =>
             "Concrete backend preference when known. Use codex/local_model_coding for coding work, manager/planner for orchestration, computer_use for browser/desktop tasks, openclaw for OpenClaw work, and local_relay for local relay dispatch."
         },
-        "intent" => nullable_string_schema("Machine-readable dispatch intent, such as implement, review, test, plan, browse, or remediate."),
+        "intent" => nullable_string_schema("Machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"),
         "rationale" => nullable_string_schema("Brief reason this route is appropriate.")
       }
     }
