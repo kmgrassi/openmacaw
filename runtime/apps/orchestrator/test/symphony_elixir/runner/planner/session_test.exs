@@ -1,6 +1,8 @@
 defmodule SymphonyElixir.Runner.Planner.SessionTest do
   use SymphonyElixir.Runner.PlannerTestSupport
 
+  alias SymphonyElixir.Schema.ExecutionProfile
+
   test "starts without a workspace and exposes only planner tools" do
     Req.Test.stub(__MODULE__, fn conn ->
       case {conn.method, conn.request_path} do
@@ -47,7 +49,7 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
     assert session.instructions =~ "repo.read_symbols"
     assert session.instructions =~ "Use only canonical runtime runner_kind values"
 
-    for runner_kind <- ~w(codex openclaw computer_use manager planner local_relay local_model_coding) do
+    for runner_kind <- ExecutionProfile.supported_runner_kinds() do
       assert session.instructions =~ runner_kind
     end
 

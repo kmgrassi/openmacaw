@@ -115,7 +115,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
 
     refute "local_runtime" in runner_kinds
     refute "llm_tool_runner" in runner_kinds
-    refute "openclaw_ws" in runner_kinds
     refute "openclaw_http_sse" in runner_kinds
 
     assert %{

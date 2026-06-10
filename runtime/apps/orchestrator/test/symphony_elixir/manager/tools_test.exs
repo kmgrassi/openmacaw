@@ -99,7 +99,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     assert spec["inputSchema"]["required"] == ["runner_kind", "intent"]
     assert spec["inputSchema"]["properties"]["work_item"]["required"] == ["instructions"]
     assert runner_kinds == ExecutionProfile.supported_runner_kinds()
-    refute "openclaw_ws" in runner_kinds
+    assert "openclaw_ws" in runner_kinds
     refute "llm_tool_runner" in runner_kinds
     assert "local_model_coding" in runner_kinds
   end
