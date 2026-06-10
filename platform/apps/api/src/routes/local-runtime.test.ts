@@ -5,11 +5,12 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
-import { getServiceRoleSupabase } from "../supabase-client.js";
+import { getServiceRoleSupabase, getUserScopedSupabase } from "../supabase-client.js";
 import { registerLocalRuntimeRoutes } from "./local-runtime.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
+  getUserScopedSupabase: vi.fn(),
 }));
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -128,7 +129,9 @@ describe("local runtime routes", () => {
         },
       ],
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    const supabase = createMockSupabaseClient(db) as never;
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
+    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/probe?workspaceId=${workspaceId}`,
