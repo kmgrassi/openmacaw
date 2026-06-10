@@ -22,6 +22,7 @@ export const StoredAgentRouteTemplates = {
 
 export const AgentRouteTemplates = {
   runtimeProfile: `${AGENTS_PREFIX}/:agentId/runtime-profile`,
+  assignLocalModel: `${AGENTS_PREFIX}/:agentId/assign-local-model`,
 } as const;
 
 export const LocalRuntimeRouteTemplates = {
@@ -29,6 +30,8 @@ export const LocalRuntimeRouteTemplates = {
   item: `${LOCAL_RUNTIME_PREFIX}/:machineId`,
   probe: `${LOCAL_RUNTIME_PREFIX}/probe`,
   config: `${LOCAL_RUNTIME_PREFIX}/:machineId/config`,
+  events: `${LOCAL_RUNTIME_PREFIX}/:machineId/events`,
+  testDispatch: `${LOCAL_RUNTIME_PREFIX}/:machineId/test-dispatch`,
   rotateToken: `${LOCAL_RUNTIME_PREFIX}/:machineId/rotate-token`,
   runnerProbe: `${LOCAL_RUNTIME_PREFIX}/runners/:runnerId/probe`,
   assignRunner: `${LOCAL_RUNTIME_PREFIX}/runners/:runnerId/assign`,
@@ -86,6 +89,16 @@ export function agentRuntimeProfileRoute(
   );
 }
 
+export function agentAssignLocalModelRoute(
+  agentId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/assign-local-model`,
+    workspaceId,
+  );
+}
+
 export function localRuntimeRoute(machineId: string) {
   return `${LOCAL_RUNTIME_PREFIX}/${encodeURIComponent(machineId)}`;
 }
@@ -100,6 +113,14 @@ export function localRuntimeProbeRoute() {
 
 export function localRuntimeConfigRoute(machineId: string) {
   return `${localRuntimeRoute(machineId)}/config`;
+}
+
+export function localRuntimeEventsRoute(machineId: string) {
+  return `${localRuntimeRoute(machineId)}/events`;
+}
+
+export function localRuntimeTestDispatchRoute(machineId: string) {
+  return `${localRuntimeRoute(machineId)}/test-dispatch`;
 }
 
 export function localRuntimeRotateTokenRoute(machineId: string) {

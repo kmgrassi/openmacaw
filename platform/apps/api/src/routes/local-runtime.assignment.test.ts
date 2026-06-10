@@ -58,6 +58,14 @@ describe("local runtime route assignments", () => {
           key: "url",
           value: "http://127.0.0.1:11434/v1",
         },
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
       ] as Array<Record<string, unknown>>,
       agent: [
         {
@@ -92,6 +100,7 @@ describe("local runtime route assignments", () => {
     await expect(response.json()).resolves.toEqual({
       routingRuleId: "local-rule-1",
       agentId: "manager-agent-1",
+      machineId: "machine-1",
       model: "qwen3-coder:30b",
     });
     expect(db.routing_rule_match).toEqual(
@@ -169,9 +178,18 @@ describe("local runtime route assignments", () => {
           runner_kind: "local_runtime",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
+          machine_id: "machine-1",
         },
       ],
       routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
         {
           id: "match-1",
           workspace_id: workspaceId,
@@ -223,6 +241,69 @@ describe("local runtime route assignments", () => {
     );
   });
 
+  it("assigns a local model through the canonical agent route with machine id", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          machine_id: "machine-1",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+      ] as Array<Record<string, unknown>>,
+      agent: [
+        {
+          id: "coding-agent-1",
+          workspace_id: workspaceId,
+          type: "coding",
+        },
+      ],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(`${baseUrl}/api/agents/coding-agent-1/assign-local-model?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        machineId: "machine-1",
+        localRuntimeId: "local-rule-1",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      routingRuleId: "local-rule-1",
+      agentId: "coding-agent-1",
+      machineId: "machine-1",
+      model: "qwen3-coder:30b",
+    });
+    expect(db.routing_rule_match).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule_id: "local-rule-1",
+          kind: "agent_id",
+          value: "coding-agent-1",
+        }),
+      ]),
+    );
+  });
+
   it("preserves non-local routing matches when replacing an agent's local model assignment", async () => {
     const db = {
       routing_rule: [
@@ -233,6 +314,7 @@ describe("local runtime route assignments", () => {
           runner_kind: "local_runtime",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
+          machine_id: "machine-1",
         },
         {
           id: "old-local-rule",
@@ -241,6 +323,7 @@ describe("local runtime route assignments", () => {
           runner_kind: "local_runtime",
           model: "llama3.1:8b",
           provider: "openai_compatible",
+          machine_id: "old-machine",
         },
         {
           id: "cloud-rule-1",
@@ -252,6 +335,22 @@ describe("local runtime route assignments", () => {
         },
       ],
       routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+        {
+          id: "old-local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "old-local-rule",
+          kind: "local_machine",
+          key: "id",
+          value: "old-machine",
+        },
         {
           id: "old-local-match",
           workspace_id: workspaceId,
@@ -334,6 +433,7 @@ describe("local runtime route assignments", () => {
           runner_kind: "local_relay",
           model: null,
           provider: "openclaw",
+          machine_id: "machine-1",
         },
       ],
       routing_rule_match: [
