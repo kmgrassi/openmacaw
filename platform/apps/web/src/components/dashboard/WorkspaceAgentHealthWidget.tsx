@@ -2,6 +2,7 @@ import type { WorkspaceAgentDiagnosticResponse } from "../../../../../contracts/
 import { useWorkspaceAgentDiagnosticsQuery } from "../../api/queries/runtime-diagnostics";
 import { Badge } from "../ui/Badge";
 import { LoadingState } from "../ui/LoadingState";
+import { StatusBanner } from "../ui/StatusBanner";
 
 type WorkspaceAgentDiagnostic = Extract<
   WorkspaceAgentDiagnosticResponse,
@@ -9,6 +10,10 @@ type WorkspaceAgentDiagnostic = Extract<
 >["agents"][number];
 
 type WorkspaceAgentHealthWidgetProps = {
+  workspaceId: string | null | undefined;
+};
+
+type WorkspaceAgentDiagnosticsPanelProps = {
   workspaceId: string | null | undefined;
 };
 
@@ -64,34 +69,27 @@ export function WorkspaceAgentHealthWidget({
 
   if (diagnostics?.ok === false) {
     return (
-      <section className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold">Orchestrator unreachable</h2>
-            <p className="mt-1 text-amber-800">{diagnostics.details}</p>
-          </div>
-          <Badge variant="warning">{diagnostics.reason}</Badge>
-        </div>
-      </section>
+      <StatusBanner
+        tone="warning"
+        title="Orchestrator unreachable"
+        actions={<Badge variant="warning">{diagnostics.reason}</Badge>}
+      >
+        <p className="mt-1 max-w-3xl text-amber-100/75">
+          {diagnostics.details}
+        </p>
+      </StatusBanner>
     );
   }
 
-  if (diagnosticsQuery.isLoading && !diagnostics) {
-    return (
-      <section className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
-        <LoadingState label="Checking workspace agents..." />
-      </section>
-    );
-  }
+  if (diagnosticsQuery.isLoading && !diagnostics) return null;
 
   if (diagnosticsQuery.error && !diagnostics) {
     return (
-      <section className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 shadow-sm">
-        <h2 className="text-sm font-semibold">Agent health unavailable</h2>
-        <p className="mt-1 text-red-800">
+      <StatusBanner tone="error" title="Agent health unavailable">
+        <p className="mt-1 max-w-3xl text-red-200/85">
           {(diagnosticsQuery.error as Error).message}
         </p>
-      </section>
+      </StatusBanner>
     );
   }
 
@@ -101,34 +99,97 @@ export function WorkspaceAgentHealthWidget({
     (agent) => agent.status === "error",
   ).length;
 
+  if (problemCount === 0) return null;
+
   return (
-    <section className="rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <StatusBanner
+      tone="error"
+      title={`${problemCount} workspace agent${problemCount === 1 ? "" : "s"} need attention`}
+      actions={<Badge variant="error">attention</Badge>}
+    >
+      <p className="mt-1 max-w-3xl text-red-200/85">
+        View dashboard details for per-agent diagnostics and runtime error
+        codes.
+      </p>
+    </StatusBanner>
+  );
+}
+
+export function WorkspaceAgentDiagnosticsPanel({
+  workspaceId,
+}: WorkspaceAgentDiagnosticsPanelProps) {
+  const diagnosticsQuery = useWorkspaceAgentDiagnosticsQuery({ workspaceId });
+
+  if (!workspaceId) return null;
+
+  const diagnostics = diagnosticsQuery.data;
+
+  if (diagnosticsQuery.isLoading && !diagnostics) {
+    return (
+      <section className="rounded-md border border-slate-800 bg-slate-900/45 px-4 py-3 text-sm">
+        <LoadingState label="Checking workspace agents..." />
+      </section>
+    );
+  }
+
+  if (diagnostics?.ok === false) {
+    return (
+      <section className="rounded-md border border-amber-800/60 bg-amber-950/20 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-amber-100">
+              Workspace agent diagnostics
+            </h2>
+            <p className="mt-1 text-amber-200/85">{diagnostics.details}</p>
+          </div>
+          <Badge variant="warning">{diagnostics.reason}</Badge>
+        </div>
+      </section>
+    );
+  }
+
+  if (diagnosticsQuery.error && !diagnostics) {
+    return (
+      <section className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm">
+        <h2 className="text-sm font-semibold text-red-200">
+          Workspace agent diagnostics
+        </h2>
+        <p className="mt-1 text-red-300">
+          {(diagnosticsQuery.error as Error).message}
+        </p>
+      </section>
+    );
+  }
+
+  if (!diagnostics?.ok) return null;
+
+  return (
+    <section className="rounded-md border border-slate-800 bg-slate-900/45 px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">
-            Workspace agent health
+          <h2 className="text-sm font-semibold text-slate-100">
+            Workspace agent diagnostics
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {problemCount > 0
-              ? `${problemCount} agent${problemCount === 1 ? "" : "s"} need attention.`
-              : "All workspace agents are ready."}
+          <p className="mt-1 text-xs text-slate-400">
+            Per-agent runtime status, error codes, and raw diagnostic details.
           </p>
         </div>
-        <Badge variant={problemCount > 0 ? "error" : "success"}>
-          {problemCount > 0 ? "attention" : "healthy"}
+        <Badge>
+          {diagnostics.agents.length} agent
+          {diagnostics.agents.length === 1 ? "" : "s"}
         </Badge>
       </div>
 
-      <div className="mt-3 divide-y divide-slate-100">
+      <div className="mt-3 divide-y divide-slate-800/70 overflow-hidden rounded-md border border-slate-800/70">
         {diagnostics.agents.length === 0 ? (
-          <div className="py-2 text-sm text-slate-500">
+          <div className="bg-slate-950/25 px-3 py-3 text-sm text-slate-400">
             No agents reported for this workspace.
           </div>
         ) : (
           diagnostics.agents.map((agent) => (
             <div
               key={agent.agentId}
-              className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2 bg-slate-950/25 px-3 py-3 sm:flex-row sm:items-start sm:justify-between"
             >
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
@@ -136,27 +197,27 @@ export function WorkspaceAgentHealthWidget({
                     aria-hidden="true"
                     className={
                       agent.status === "ok"
-                        ? "text-green-600"
+                        ? "text-emerald-400"
                         : agent.status === "error"
-                          ? "text-red-600"
-                          : "text-amber-600"
+                          ? "text-red-400"
+                          : "text-amber-400"
                     }
                   >
                     {statusIcon(agent.status)}
                   </span>
-                  <span className="truncate text-sm font-medium text-slate-900">
+                  <span className="truncate text-sm font-medium text-slate-100">
                     {agent.agentId}
                   </span>
                   <Badge>{agent.runnerKind}</Badge>
                 </div>
                 {agent.status === "error" && (
-                  <p className="mt-1 text-sm text-red-700">
+                  <p className="mt-1 text-sm text-red-300">
                     {agent.errorCode ? `${agent.errorCode}: ` : ""}
                     {explainError(agent)}
                   </p>
                 )}
                 {agent.errorDetails !== undefined && (
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 break-words font-mono text-xs text-slate-400">
                     {formatErrorDetails(agent.errorDetails)}
                   </p>
                 )}

@@ -1,14 +1,7 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { GatewayProvider } from "../context/GatewayContext";
 import { AppShell } from "../components/AppShell";
-
-const GATEWAY_SETTINGS_PATHS = new Set([
-  "/settings/channels",
-  "/settings/config",
-  "/settings/runtime",
-  "/settings/sessions",
-  "/settings/usage",
-]);
+import { GATEWAY_SETTINGS_PATHS } from "../components/AppShell/settings-sections";
 
 export function SettingsLayout() {
   const { pathname } = useLocation();

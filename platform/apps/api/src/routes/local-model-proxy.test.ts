@@ -79,10 +79,13 @@ describe("local model proxy", () => {
   let baseUrl = "";
   let originalFetch: typeof fetch;
   let fetchSpy: MockInstance<typeof fetch>;
+  let originalNodeEnv: string | undefined;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     originalFetch = globalThis.fetch;
+    originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
 
     const app = express();
     app.use(express.json());
@@ -120,8 +123,33 @@ describe("local model proxy", () => {
   });
 
   afterEach(async () => {
+    process.env.NODE_ENV = originalNodeEnv;
     fetchSpy.mockRestore();
     await closeServer(apiServer);
+  });
+
+  it("disables direct local chat outside development", async () => {
+    process.env.NODE_ENV = "production";
+
+    const response = await fetch(`${baseUrl}/api/agents/${agentId}/local-chat`, {
+      method: "POST",
+      headers: { Authorization: "Bearer test-token", "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "dev_endpoint_disabled",
+        message: "Local model chat endpoint is disabled",
+      },
+    });
+
+    const upstreamCalls = fetchSpy.mock.calls.filter(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return !url.startsWith(baseUrl);
+    });
+    expect(upstreamCalls).toHaveLength(0);
   });
 
   it("rejects local_model_coding tools on the legacy direct local-chat path", async () => {

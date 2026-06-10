@@ -215,9 +215,13 @@ visually identical-but-misaligned across pages.
   `Input`/`Textarea`/`Select`/`SegmentedControl` as children. Settings
   forms migrate opportunistically (per-section, not big-bang).
 
-### WS4 — Status strip + inspector (the IA change)
+### WS4 — Status strip, inspector, and federation visibility (the IA change)
 
-The user-visible payoff; depends on WS1 (layout) and WS3 (Drawer).
+The user-visible payoff; depends on WS1 (layout) and WS3 (Drawer). Ships as
+a straight swap — no feature flag. Gating it would mean maintaining two
+dashboard layouts, two `ui`-store shapes, and the dead debug-mode paths for
+the flag's lifetime; the user base is small enough that a clean cutover is
+cheaper.
 
 - **Status strip**: a single component above the chat that takes today's
   banner/widget/alert inputs and renders the highest-priority one
@@ -241,15 +245,33 @@ The user-visible payoff; depends on WS1 (layout) and WS3 (Drawer).
   gateway/launcher/engine/agent signals into ok/degraded/down/unconfigured
   + a list of issues. Sidebar dot, status strip, and inspector header all
   consume it — they can no longer disagree.
+- **Federation visibility**: the happy path isn't just a working chat —
+  it's *watching the agent federate*. Upgrade the delegated-work rendering
+  (today: raw `RuntimeEventTimeline` events inline) into a first-class
+  view of fan-out: which sub-agents/runners are active, what each is
+  working on, live status, and completion — inline in the conversation
+  where the delegation happened, with the inspector's Runs section as the
+  detailed history. This is the part of the original product premise the
+  rest of the scope only protects; WS4 is where it gets delivered. Needs a
+  short design pass at WS4 kickoff (what the runtime events can actually
+  support rendering).
+- **Unconfigured empty state**: when the agent/workspace isn't configured,
+  the chat message area renders a setup checklist (the steps, with links
+  into the relevant settings sections) and the composer is disabled. One
+  layout for all states — no separate setup page, no redirect to
+  onboarding; the strip's "unconfigured" line and the checklist are the
+  same signal at two altitudes. Replaces `ConfigurationStatusCard`.
 - Remove the now-dead inline debug rendering paths from `Dashboard.tsx`;
   the dashboard becomes header + (strip?) + chat, nothing else.
 
 ### WS5 — Settings coherence (follow-on, lighter touch)
 
-- Reorganize the nine settings sections around user intent:
-  **Setup** (agents, models, channels, workspace), **Runtime**
+- Reorganize the nine settings sections around user intent. Working
+  proposal: **Setup** (agents, models, channels, workspace), **Runtime**
   (runtime, local-runtimes, sessions), **Account** (usage, config, memory).
-  Pure nav grouping — no route changes required initially.
+  The three-group direction is agreed; the exact assignment of sections
+  (e.g. whether memory/config are "account" things) gets decided at WS5
+  kickoff. Pure nav grouping — no route changes required initially.
 - Move "live state" panels (worker sessions list, debug snapshot) toward
   inspector-style presentation; settings pages keep configuration and
   actions (smoke tests stay in settings — they're operations, not state).
@@ -262,7 +284,7 @@ The user-visible payoff; depends on WS1 (layout) and WS3 (Drawer).
 |-------|-------------|----------------|------------|
 | 1 | WS1 + WS2 | Mechanical, low-risk, unblocks everything; tokens and layout migrate together since both are find-and-replace heavy | ~1 week |
 | 2 | WS3 | Needs tokens; Drawer is a hard prerequisite for WS4 | ~1 week |
-| 3 | WS4 | The actual UX change; ship behind a flag if useful, but the surface area is small once 1–2 land | ~1–1.5 weeks |
+| 3 | WS4 | The actual UX change; ships as a straight swap (no flag). Includes the federation-visibility design pass | ~2–2.5 weeks |
 | 4 | WS5 | Opportunistic, can trail indefinitely | ongoing |
 
 Each phase should end with a viewport screenshot pass (320/768/1280/1920)
@@ -275,7 +297,10 @@ multiple widths.
 - Light theme / theming beyond tokens (WS2 makes it cheap later; not now).
 - The marketing `Landing.tsx` page.
 - Chat *functionality* (streaming, tool-call rendering semantics, composer
-  features) — only its layout and spacing.
+  features) — only its layout and spacing. Exception: delegated-work /
+  federation visibility is explicitly *in* scope (WS4); the exclusion
+  covers message rendering and composer behavior, not how fan-out is
+  surfaced.
 - Runtime/orchestrator API changes; everything here is presentational or
   client-state-level (`ui` store, selectors).
 
@@ -303,3 +328,16 @@ text above already reflects these.
    details) is inspector-tier; the all-healthy card stops rendering
    entirely. The audit also surfaced the light-theme styling bug noted
    under Component and token drift.
+5. **Federation visibility is in scope, inside WS4.** Watching the agent
+   fan out is part of the product premise, not a chat-rendering detail —
+   WS4 includes upgrading the delegated-work timeline into a first-class
+   view of sub-agent activity, with a design pass at WS4 kickoff.
+6. **Unconfigured state renders a setup checklist in the chat area** with
+   the composer disabled — one layout for all states, replacing
+   `ConfigurationStatusCard`. No redirect to onboarding.
+7. **Settings regrouping is directionally agreed, details deferred.** Three
+   intent groups (Setup / Runtime / Account); exact section assignment
+   decided at WS5 kickoff.
+8. **WS4 ships as a straight swap, no feature flag.** A flag would mean
+   maintaining two dashboard layouts and two `ui`-store shapes; the clean
+   cutover is cheaper for this user base.

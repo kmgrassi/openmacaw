@@ -119,8 +119,8 @@ export function ChatMessage({
       <div
         className={`min-w-0 max-w-[88%] text-sm leading-relaxed sm:max-w-[min(44rem,84%)] ${
           isUser
-            ? "rounded-xl border border-blue-400/20 bg-blue-500/18 px-3.5 py-2.5 text-blue-50 shadow-sm"
-            : "border-l border-slate-800/80 px-3 py-1.5 text-slate-200"
+            ? "rounded-xl border border-blue-400/20 bg-blue-500/18 px-3.5 py-2 text-blue-50 shadow-sm"
+            : "border-l border-slate-800/80 px-3 py-1 text-slate-200"
         }`}
       >
         {pending ? (
