@@ -279,6 +279,35 @@ describe("assertRuntimePrepareSupported", () => {
     });
   });
 
+  it("ensures manager gateway config exists even when routing profile is complete", async () => {
+    const managerResolution = completeResolution({
+      agent: { agentId, workspaceId, role: "manager" },
+      profile: profile({
+        role: "manager",
+        runnerKind: "llm_tool_runner",
+        provider: "local",
+        model: "qwen3-coder:30b",
+        credentialRef: null,
+      }),
+    });
+    resolveExecutionProfile.mockResolvedValueOnce(managerResolution).mockResolvedValueOnce(managerResolution);
+
+    const result = await assertRuntimePrepareSupported(accessToken, userId, agentId);
+
+    expect(ensureGatewayConfigExists).toHaveBeenCalledWith({
+      agentId,
+      role: "manager",
+      provider: "local",
+      model: "qwen3-coder:30b",
+    });
+    expect(result).toEqual({
+      agentId,
+      agentType: "manager",
+      workspaceId,
+      localRuntime: false,
+    });
+  });
+
   it("local_model_coding agents require a registered helper before startup", async () => {
     resolveExecutionProfile.mockResolvedValueOnce(
       completeResolution({
