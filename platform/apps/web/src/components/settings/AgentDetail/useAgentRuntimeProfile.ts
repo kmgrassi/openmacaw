@@ -15,11 +15,19 @@ type UseAgentRuntimeProfileArgs = {
   onSaved: () => Promise<void>;
 };
 
+type RuntimeProfileSaveInput = {
+  provider: AgentRuntimeProfile["provider"];
+  model: string;
+  credentialRef?: AgentRuntimeProfile["credentialRef"];
+  localEndpointUrl?: string | null;
+};
+
 export function useAgentRuntimeProfile({
   agent,
   workspaceId,
   onError,
   onClearError,
+  onSaved,
 }: UseAgentRuntimeProfileArgs) {
   const profileWorkspaceId = agent.workspaceId ?? workspaceId;
   const runtimeProfileQuery = useAgentRuntimeProfileQuery(
@@ -28,8 +36,10 @@ export function useAgentRuntimeProfile({
   );
   const updateRuntimeProfile = useUpdateAgentRuntimeProfileMutation(agent.id);
   const runtimeProfile = runtimeProfileQuery.data ?? null;
-  const [runtimeProvider, setRuntimeProvider] = useState(
-    agent.provider ?? "openai",
+  const [runtimeProvider, setRuntimeProvider] = useState<
+    AgentRuntimeProfile["provider"]
+  >(
+    (agent.provider as AgentRuntimeProfile["provider"] | undefined) ?? "openai",
   );
   const [runtimeModel, setRuntimeModel] = useState(agent.model ?? "");
 
@@ -39,7 +49,10 @@ export function useAgentRuntimeProfile({
       setRuntimeModel(runtimeProfile.model);
       return;
     }
-    setRuntimeProvider(agent.provider ?? "openai");
+    setRuntimeProvider(
+      (agent.provider as AgentRuntimeProfile["provider"] | undefined) ??
+        "openai",
+    );
     setRuntimeModel(agent.model ?? "");
   }, [agent.id, agent.model, agent.provider, runtimeProfile]);
 
@@ -58,19 +71,23 @@ export function useAgentRuntimeProfile({
     }
   };
 
-  const handleRuntimeProfileSave = async () => {
+  const saveRuntimeProfile = async (input?: RuntimeProfileSaveInput) => {
     if (!profileWorkspaceId) {
       onError("Workspace context is required to save runtime settings.");
       return;
     }
-    if (!runtimeModel.trim()) {
+    const nextProvider = input?.provider ?? runtimeProvider;
+    const nextModel = input?.model ?? runtimeModel;
+    const nextCredentialRef =
+      input && "credentialRef" in input
+        ? (input.credentialRef ?? null)
+        : (runtimeProfile?.credentialRef ?? null);
+
+    if (!nextModel.trim()) {
       onError("Runtime model is required.");
       return;
     }
-    if (
-      HOSTED_RUNTIME_PROVIDERS.has(runtimeProvider) &&
-      !runtimeProfile?.credentialRef
-    ) {
+    if (HOSTED_RUNTIME_PROVIDERS.has(nextProvider) && !nextCredentialRef) {
       onError("Hosted providers require a saved credential reference.");
       return;
     }
@@ -79,18 +96,21 @@ export function useAgentRuntimeProfile({
     try {
       const profile = await updateRuntimeProfile.mutateAsync({
         workspaceId: profileWorkspaceId,
-        provider: runtimeProvider as AgentRuntimeProfile["provider"],
-        model: runtimeModel.trim(),
-        credentialRef:
-          runtimeProvider === "local"
-            ? null
-            : (runtimeProfile?.credentialRef ?? null),
+        provider: nextProvider,
+        model: nextModel.trim(),
+        credentialRef: nextProvider === "local" ? null : nextCredentialRef,
+        localEndpointUrl: input?.localEndpointUrl ?? null,
       });
       setRuntimeProvider(profile.provider);
       setRuntimeModel(profile.model);
+      await onSaved();
     } catch (err) {
       onError(String(err));
     }
+  };
+
+  const handleRuntimeProfileSave = async () => {
+    await saveRuntimeProfile();
   };
 
   const runtimeProfileDirty =
@@ -116,5 +136,6 @@ export function useAgentRuntimeProfile({
     runtimeCredentialMissing,
     loadRuntimeProfile,
     handleRuntimeProfileSave,
+    saveRuntimeProfile,
   };
 }

@@ -1,4 +1,5 @@
 import type {
+  AgentRuntimeProfile,
   AgentType,
   PlanningDestination,
 } from "../../../../../../contracts/agents";
@@ -26,15 +27,16 @@ export const PLANNING_DESTINATION_OPTIONS: Array<{
   { value: "linear", label: "Linear" },
 ];
 
-export const RUNTIME_PROVIDER_OPTIONS = [
-  { value: "local", label: "Local" },
+export const RUNTIME_PROVIDER_OPTIONS: Array<{
+  value: AgentRuntimeProfile["provider"];
+  label: string;
+}> = [
+  { value: "local", label: "Local runtime" },
   { value: "openai", label: "OpenAI" },
   { value: "openai_compatible", label: "OpenAI-compatible" },
   { value: "anthropic", label: "Anthropic" },
 ];
 
-export const HOSTED_RUNTIME_PROVIDERS = new Set([
-  "openai",
-  "openai_compatible",
-  "anthropic",
-]);
+export const HOSTED_RUNTIME_PROVIDERS = new Set<
+  AgentRuntimeProfile["provider"]
+>(["openai", "openai_compatible", "anthropic"]);

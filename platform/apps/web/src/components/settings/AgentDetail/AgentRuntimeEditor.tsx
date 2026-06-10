@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   listInstalledLocalModels,
   type InstalledLocalModel,
 } from "../../../api/local-models";
+import type {
+  LocalRuntime,
+  LocalRuntimeRunner,
+} from "../../../api/local-runtime";
 import { prepareRuntime } from "../../../api/broker-runtime";
 import { ensureStoredAgentDefaultRouting } from "../../../api/stored-agents";
+import {
+  useLocalRuntimeMutations,
+  useLocalRuntimesQuery,
+} from "../../../hooks/useServerStateQueries";
 import type { Agent } from "../../../types/agents";
 import type { AgentRuntimeProfile } from "../../../../../../contracts/agents";
 import { Button } from "../../ui/Button";
@@ -17,8 +25,8 @@ import { RUNTIME_PROVIDER_OPTIONS } from "./constants";
 type AgentRuntimeEditorProps = {
   agent: Agent;
   runtimeProfile: AgentRuntimeProfile | null;
-  runtimeProvider: string;
-  setRuntimeProvider: (value: string) => void;
+  runtimeProvider: AgentRuntimeProfile["provider"];
+  setRuntimeProvider: (value: AgentRuntimeProfile["provider"]) => void;
   runtimeModel: string;
   setRuntimeModel: (value: string) => void;
   runtimeProfileLoading: boolean;
@@ -27,9 +35,21 @@ type AgentRuntimeEditorProps = {
   runtimeProviderIsLocal: boolean;
   runtimeCredentialMissing: boolean;
   onRuntimeProfileSave: () => void;
+  onRuntimeProfileSaveInput: (input: {
+    provider: AgentRuntimeProfile["provider"];
+    model: string;
+    credentialRef?: AgentRuntimeProfile["credentialRef"];
+    localEndpointUrl?: string | null;
+  }) => Promise<void> | void;
   onAgentReload: () => Promise<void>;
   onError: (message: string) => void;
   onClearError: () => void;
+};
+
+type LocalRuntimeRunnerOption = {
+  id: string;
+  runtime: LocalRuntime;
+  runner: LocalRuntimeRunner;
 };
 
 export function AgentRuntimeEditor({
@@ -45,6 +65,7 @@ export function AgentRuntimeEditor({
   runtimeProviderIsLocal,
   runtimeCredentialMissing,
   onRuntimeProfileSave,
+  onRuntimeProfileSaveInput,
   onAgentReload,
   onError,
   onClearError,
@@ -52,15 +73,54 @@ export function AgentRuntimeEditor({
   const [startingRuntime, setStartingRuntime] = useState(false);
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
   const [ensuringRouting, setEnsuringRouting] = useState(false);
+  const [selectedLocalRunnerId, setSelectedLocalRunnerId] = useState("");
 
-  const showLocalModelPicker =
-    runtimeProvider === "local" || runtimeProvider === "openai_compatible";
+  const showLocalModelPicker = runtimeProvider === "openai_compatible";
+  const workspaceId = agent.workspaceId;
+  const localRuntimesQuery = useLocalRuntimesQuery(workspaceId);
+  const localRuntimeMutations = useLocalRuntimeMutations(workspaceId);
+  const localRunnerOptions = useMemo(
+    () =>
+      (localRuntimesQuery.data?.runtimes ?? []).flatMap((runtime) =>
+        runtime.runners
+          .filter((runner) => runner.kind === "openai_compatible")
+          .map((runner) => ({ id: runner.id, runtime, runner })),
+      ),
+    [localRuntimesQuery.data?.runtimes],
+  );
+  const onlineLocalRunnerOptions = useMemo(
+    () =>
+      localRunnerOptions.filter(
+        (option) => option.runtime.localExecution.helperOnline,
+      ),
+    [localRunnerOptions],
+  );
+  const assignedLocalRunner = useMemo(
+    () =>
+      localRunnerOptions.find((option) =>
+        option.runner.agents.some((assigned) => assigned.agentId === agent.id),
+      ) ?? null,
+    [agent.id, localRunnerOptions],
+  );
+  const assignedLocalRunnerId = assignedLocalRunner?.id ?? "";
+  const firstOnlineLocalRunnerId = onlineLocalRunnerOptions[0]?.id ?? "";
+  const selectedLocalRunner = useMemo(
+    () =>
+      localRunnerOptions.find(
+        (option) => option.id === selectedLocalRunnerId,
+      ) ?? null,
+    [localRunnerOptions, selectedLocalRunnerId],
+  );
   const [installedModels, setInstalledModels] = useState<
     InstalledLocalModel[] | null
   >(null);
   const [installedModelsError, setInstalledModelsError] = useState<
     string | null
   >(null);
+  const previousLocalRuntimeSelectionRef = useRef<{
+    agentId: string;
+    assignedLocalRunnerId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!showLocalModelPicker) {
@@ -83,6 +143,38 @@ export function AgentRuntimeEditor({
       cancelled = true;
     };
   }, [showLocalModelPicker]);
+
+  useEffect(() => {
+    if (runtimeProvider !== "local") return;
+
+    const previous = previousLocalRuntimeSelectionRef.current;
+    const agentChanged = previous === null || previous.agentId !== agent.id;
+    const assignmentChanged =
+      previous === null ||
+      previous.assignedLocalRunnerId !== assignedLocalRunnerId;
+    previousLocalRuntimeSelectionRef.current = {
+      agentId: agent.id,
+      assignedLocalRunnerId,
+    };
+
+    if (agentChanged || assignmentChanged) {
+      setSelectedLocalRunnerId(
+        assignedLocalRunnerId || firstOnlineLocalRunnerId,
+      );
+      return;
+    }
+
+    if (!selectedLocalRunnerId && firstOnlineLocalRunnerId) {
+      setSelectedLocalRunnerId(firstOnlineLocalRunnerId);
+      return;
+    }
+  }, [
+    agent.id,
+    assignedLocalRunnerId,
+    firstOnlineLocalRunnerId,
+    runtimeProvider,
+    selectedLocalRunnerId,
+  ]);
 
   useEffect(() => {
     const missing = agent.configurationStatus?.missing ?? [];
@@ -146,6 +238,43 @@ export function AgentRuntimeEditor({
     }
   };
 
+  const handleUseLocalRunner = async () => {
+    if (!selectedLocalRunner) {
+      onError("Select an online local runtime before saving.");
+      return;
+    }
+    if (!selectedLocalRunner.runtime.localExecution.helperOnline) {
+      onError("Selected local runtime is offline.");
+      return;
+    }
+
+    onClearError();
+    setRuntimeMessage(null);
+    try {
+      await localRuntimeMutations.assign.mutateAsync({
+        runnerId: selectedLocalRunner.runner.id,
+        agentId: agent.id,
+      });
+      await onRuntimeProfileSaveInput({
+        provider: "local",
+        model: selectedLocalRunner.runner.model,
+        credentialRef: null,
+        localEndpointUrl: selectedLocalRunner.runner.endpoint,
+      });
+      setRuntimeProvider("local");
+      setRuntimeModel(selectedLocalRunner.runner.model);
+      setRuntimeMessage(
+        `Local runtime bound: ${localRunnerLabel(selectedLocalRunner)}.`,
+      );
+      await onAgentReload();
+    } catch (err) {
+      onError(String(err));
+    }
+  };
+
+  const localRuntimeSaving =
+    localRuntimeMutations.assign.isPending || runtimeProfileSaving;
+
   return (
     <Card>
       <div className="flex items-start justify-between gap-4">
@@ -188,6 +317,7 @@ export function AgentRuntimeEditor({
             loading={runtimeProfileSaving}
             disabled={
               runtimeProfileLoading ||
+              runtimeProvider === "local" ||
               !runtimeProfileDirty ||
               runtimeCredentialMissing
             }
@@ -208,11 +338,30 @@ export function AgentRuntimeEditor({
         <Select
           label="Provider"
           value={runtimeProvider}
-          onChange={(event) => setRuntimeProvider(event.target.value)}
+          onChange={(event) =>
+            setRuntimeProvider(
+              event.target.value as AgentRuntimeProfile["provider"],
+            )
+          }
           options={RUNTIME_PROVIDER_OPTIONS}
           disabled={runtimeProfileLoading}
         />
-        {showLocalModelPicker ? (
+        {runtimeProvider === "local" ? (
+          <Select
+            label="Model"
+            value={selectedLocalRunner?.runner.model ?? runtimeModel}
+            options={[
+              {
+                value: selectedLocalRunner?.runner.model ?? runtimeModel,
+                label:
+                  selectedLocalRunner?.runner.model ||
+                  runtimeModel ||
+                  "Select a local runtime",
+              },
+            ]}
+            disabled
+          />
+        ) : showLocalModelPicker ? (
           <div>
             <Select
               label="Model"
@@ -246,6 +395,67 @@ export function AgentRuntimeEditor({
           />
         )}
       </div>
+      {runtimeProvider === "local" && (
+        <div className="mt-4 space-y-3 rounded-md border border-white/5 bg-surface px-3 py-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <div className="flex-1">
+              <Select
+                label="Local model runtime"
+                value={selectedLocalRunnerId}
+                onChange={(event) =>
+                  setSelectedLocalRunnerId(event.target.value)
+                }
+                disabled={
+                  runtimeProfileLoading ||
+                  localRuntimesQuery.isLoading ||
+                  onlineLocalRunnerOptions.length === 0
+                }
+                options={buildLocalRuntimeRunnerOptions(
+                  onlineLocalRunnerOptions,
+                  selectedLocalRunnerId,
+                )}
+              />
+            </div>
+            <Button
+              size="sm"
+              loading={localRuntimeSaving}
+              disabled={
+                runtimeProfileLoading ||
+                localRuntimesQuery.isLoading ||
+                !selectedLocalRunner ||
+                !selectedLocalRunner.runtime.localExecution.helperOnline
+              }
+              onClick={handleUseLocalRunner}
+            >
+              Use for this agent
+            </Button>
+          </div>
+          {assignedLocalRunner && (
+            <p className="text-xs text-green-400">
+              Bound to {localRunnerLabel(assignedLocalRunner)}.
+            </p>
+          )}
+          {!localRuntimesQuery.isLoading &&
+            onlineLocalRunnerOptions.length === 0 && (
+              <p className="text-xs text-amber-400">
+                No online local model runtime is registered for this workspace.{" "}
+                <Link
+                  to="/settings/local-runtimes"
+                  className="underline hover:text-amber-300"
+                >
+                  Set up local runtime
+                </Link>
+              </p>
+            )}
+          {selectedLocalRunner && (
+            <p className="text-xs text-slate-500">
+              {selectedLocalRunner.runner.endpoint} ·{" "}
+              {selectedLocalRunner.runner.toolCallCapability ??
+                "tool support unknown"}
+            </p>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -273,4 +483,25 @@ function buildLocalModelOptions(
     return [{ value: "", label: "No local models installed" }];
   }
   return options;
+}
+
+function localRunnerLabel(option: LocalRuntimeRunnerOption) {
+  return `${option.runner.model} on ${option.runtime.machineDisplayName}`;
+}
+
+function buildLocalRuntimeRunnerOptions(
+  options: LocalRuntimeRunnerOption[],
+  current: string,
+): Array<{ value: string; label: string }> {
+  if (options.length === 0) {
+    return [{ value: "", label: "No online local runtimes" }];
+  }
+  const selectOptions = options.map((option) => ({
+    value: option.id,
+    label: localRunnerLabel(option),
+  }));
+  if (current && !selectOptions.some((option) => option.value === current)) {
+    selectOptions.unshift({ value: current, label: "Current local runtime" });
+  }
+  return selectOptions;
 }
