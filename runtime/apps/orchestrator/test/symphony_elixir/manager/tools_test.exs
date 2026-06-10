@@ -3,6 +3,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
 
   alias SymphonyElixir.AgentRunner
   alias SymphonyElixir.Routing.IntentVocabulary
+  alias SymphonyElixir.Schema.ExecutionProfile
   alias SymphonyElixir.ToolRegistry
 
   @expected_tools ~w(
@@ -99,9 +100,10 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
 
     assert schema["required"] == ["work_item_id", "intent"]
     assert intents == IntentVocabulary.intents()
-    assert runner_kinds == IntentVocabulary.manager_dispatch_runner_kinds() ++ [nil]
+    assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
     refute "openclaw_ws" in runner_kinds
-    refute "local_relay" in runner_kinds
+    refute "llm_tool_runner" in runner_kinds
+    assert "local_model_coding" in runner_kinds
   end
 
   test "list_plans scopes to the session workspace" do

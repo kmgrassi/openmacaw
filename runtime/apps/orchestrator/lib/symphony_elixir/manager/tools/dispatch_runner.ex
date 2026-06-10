@@ -3,6 +3,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
 
   alias SymphonyElixir.Manager.ToolSupport
   alias SymphonyElixir.Routing.IntentVocabulary
+  alias SymphonyElixir.Schema.ExecutionProfile
 
   @impl true
   def name, do: "dispatch_runner"
@@ -20,7 +21,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
         "work_item_id" => ToolSupport.string_schema("Work item database UUID."),
         "runner_kind" =>
           ToolSupport.nullable_enum_schema(
-            IntentVocabulary.manager_dispatch_runner_kinds(),
+            ExecutionProfile.supported_runner_kinds(),
             "Optional concrete runner override. Omit this unless an upstream route or human explicitly names a backend; dispatch normally chooses from intent."
           ),
         "intent" =>
