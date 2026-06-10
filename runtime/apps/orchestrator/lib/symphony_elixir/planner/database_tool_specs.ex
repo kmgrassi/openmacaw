@@ -113,6 +113,10 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
               "enum" => ExecutionProfile.supported_runner_kinds() ++ [nil],
               "description" => "Optional canonical runtime runner kind for this work item. Stored in work_items.runner_kind and mirrored into metadata.runner_kind for routing context."
             },
+            "intent" =>
+              nullable_string_schema(
+                "Optional dispatch intent such as implement, review, test, plan, browse, remediate, or manage. When runner_kind is omitted, the orchestrator resolves a canonical runner kind from this intent."
+              ),
             "repository" =>
               nullable_string_schema(
                 "Optional repository identifier for this work item, using the same shape as repository tools and RepositoryIndex. Stored in work_items.repository and mirrored into metadata.repository for routing context."
@@ -284,16 +288,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         },
         "runner_kind" => %{
           "type" => ["string", "null"],
-          "enum" => [
-            "codex",
-            "openclaw",
-            "computer_use",
-            "manager",
-            "planner",
-            "local_relay",
-            "local_model_coding",
-            nil
-          ],
+          "enum" => ExecutionProfile.supported_runner_kinds() ++ [nil],
           "description" =>
             "Concrete backend preference when known. Use codex/local_model_coding for coding work, manager/planner for orchestration, computer_use for browser/desktop tasks, openclaw for OpenClaw work, and local_relay for local relay dispatch."
         },

@@ -133,4 +133,26 @@ defmodule SymphonyElixir.WorkItem.MapperTest do
       assert item.updated_at == now
     end
   end
+
+  describe "normalize_intake_payload/1" do
+    test "case-folds enums and wraps scalar lists" do
+      assert {:ok, normalized, feedback} =
+               Mapper.normalize_intake_payload(%{
+                 runner_kind: "Codex",
+                 state: "Awaiting-Review",
+                 labels: %{name: "runtime"},
+                 depends_on: "work-1",
+                 routing: %{intent: "Code Review", execution_location: "Local"}
+               })
+
+      assert normalized["runner_kind"] == "codex"
+      assert normalized["state"] == "awaiting_review"
+      assert normalized["labels"] == ["runtime"]
+      assert normalized["depends_on"] == ["work-1"]
+      assert normalized["routing"]["intent"] == "code_review"
+      assert normalized["routing"]["execution_location"] == "local"
+      assert Enum.any?(feedback, &(&1["field"] == "runner_kind"))
+      assert Enum.any?(feedback, &(&1["field"] == "labels"))
+    end
+  end
 end

@@ -151,6 +151,42 @@ defmodule SymphonyElixir.Planner.DatabaseToolsTaskCreateTest do
              )
   end
 
+  test "task.create normalizes mechanical intake near misses before insert" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/rest/v1/work_items"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = Jason.decode!(body)
+
+      assert payload["runner_kind"] == "codex"
+      assert payload["state"] == "running"
+      assert payload["labels"] == ["runtime"]
+      assert get_in(payload, ["metadata", "routing", "intent"]) == "implement"
+      assert get_in(payload, ["metadata", "routing", "execution_location"]) == "cloud"
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(201, Jason.encode!([%{"id" => "work-item-1"}]))
+    end)
+
+    assert {:ok, task} =
+             DatabaseTools.execute("task.create", %{
+               "workspace_id" => "workspace-1",
+               "name" => "Draft implementation",
+               "runner_kind" => "Codex",
+               "state" => "Running",
+               "labels" => "runtime",
+               "intent" => "Implement",
+               "routing" => %{"execution_location" => "Cloud"}
+             })
+
+    assert Enum.any?(task["validation_feedback"], &(&1["field"] == "runner_kind"))
+    assert Enum.any?(task["validation_feedback"], &(&1["field"] == "labels"))
+    assert task["dispatch"]["reason"] == "ready"
+    assert task["dispatch"]["intent"] == "implement"
+  end
+
   test "task.create derives a missing name from description and reports validation feedback" do
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "POST"
