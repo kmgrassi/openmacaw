@@ -104,9 +104,7 @@ describe("local runtime route probes", () => {
         },
       ],
     };
-    const supabase = createMockSupabaseClient(db) as never;
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
-    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/probe?workspaceId=${workspaceId}`,
