@@ -12,7 +12,8 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     "task.update",
     "task.schedule",
     "plan.read",
-    "task.read"
+    "task.read",
+    "task.status"
   ]
 
   @spec tool_names() :: [String.t()]
@@ -205,6 +206,11 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         "task.read",
         "task_id",
         "Read a work item row scoped by work item id and workspace id."
+      ),
+      read_tool_spec(
+        "task.status",
+        "task_id",
+        "Read a work item row plus dispatch eligibility and expected manager pickup reasoning."
       )
     ]
   end

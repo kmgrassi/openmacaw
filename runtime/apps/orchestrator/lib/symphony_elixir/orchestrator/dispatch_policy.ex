@@ -10,6 +10,7 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
   require Logger
 
   alias SymphonyElixir.{Config, WorkItem}
+  alias SymphonyElixir.Manager.SchedulerConfig
   alias SymphonyElixir.Orchestrator.State
   alias SymphonyElixir.Schema.ExecutionProfile
 
@@ -42,7 +43,8 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
       "reason" => reason,
       "blocked_by" => dispatch_blockers(row),
       "runner_kind" => runner_kind,
-      "repository" => row_repository(row)
+      "repository" => row_repository(row),
+      "expected_pickup" => expected_pickup_summary(row, reason)
     }
     |> maybe_put_summary_value("intent", row_intent(row))
   end
@@ -54,7 +56,8 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
       "blocked_by" => [],
       "runner_kind" => nil,
       "intent" => nil,
-      "repository" => nil
+      "repository" => nil,
+      "expected_pickup" => expected_pickup_summary(%{}, "invalid_for_orchestrator")
     }
   end
 
@@ -379,6 +382,82 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
     end
   end
 
+  defp expected_pickup_summary(row, "ready") do
+    cadence_ms = SchedulerConfig.default_min_cadence_ms()
+
+    if manager_runnable_row?(row) do
+      %{
+        "status" => "eligible",
+        "message" => "eligible at next manager tick (~#{ceil(cadence_ms / 1000)}s)",
+        "eligible_at" => row_next_poll_at(row),
+        "cadence_ms" => cadence_ms,
+        "failed_gates" => []
+      }
+    else
+      %{
+        "status" => "planned",
+        "message" => "not manager-runnable: #{manager_not_runnable_message(row)}",
+        "eligible_at" => row_next_poll_at(row),
+        "cadence_ms" => cadence_ms,
+        "failed_gates" => manager_pickup_failed_gates(row)
+      }
+    end
+  end
+
+  defp expected_pickup_summary(row, "blocked_by_dependencies") do
+    blockers = dispatch_blockers(row)
+
+    %{
+      "status" => "blocked",
+      "message" => "blocked: depends_on #{Enum.join(blockers, ", ")} unresolved",
+      "eligible_at" => nil,
+      "cadence_ms" => SchedulerConfig.default_min_cadence_ms(),
+      "failed_gates" => ["dependencies"]
+    }
+  end
+
+  defp expected_pickup_summary(row, "waiting_until_next_poll_at") do
+    next_poll_at = row_next_poll_at(row)
+
+    %{
+      "status" => "waiting",
+      "message" => "eligible after next_poll_at #{next_poll_at}",
+      "eligible_at" => next_poll_at,
+      "cadence_ms" => SchedulerConfig.default_min_cadence_ms(),
+      "failed_gates" => ["next_poll_at"]
+    }
+  end
+
+  defp expected_pickup_summary(row, "missing_route") do
+    %{
+      "status" => "blocked",
+      "message" => "blocked: no runner_kind resolved for dispatch",
+      "eligible_at" => row_next_poll_at(row),
+      "cadence_ms" => SchedulerConfig.default_min_cadence_ms(),
+      "failed_gates" => ["runner_kind"]
+    }
+  end
+
+  defp expected_pickup_summary(row, "draft_or_paused") do
+    %{
+      "status" => "blocked",
+      "message" => "not manager-runnable: state=#{row_state(row)}",
+      "eligible_at" => row_next_poll_at(row),
+      "cadence_ms" => SchedulerConfig.default_min_cadence_ms(),
+      "failed_gates" => ["state"]
+    }
+  end
+
+  defp expected_pickup_summary(row, _reason) do
+    %{
+      "status" => "blocked",
+      "message" => "not manager-runnable: invalid work item shape",
+      "eligible_at" => row_next_poll_at(row),
+      "cadence_ms" => SchedulerConfig.default_min_cadence_ms(),
+      "failed_gates" => ["shape"]
+    }
+  end
+
   defp valid_dispatch_row?(row) do
     present_string?(Map.get(row, "id")) and
       present_string?(Map.get(row, "title") || Map.get(row, "name")) and
@@ -391,6 +470,50 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
   end
 
   defp dependency_blocked?(row), do: dispatch_blockers(row) != []
+
+  defp manager_runnable_row?(row) do
+    manager_due_state?(row) and manager_next_poll_due?(row)
+  end
+
+  defp manager_due_state?(row) do
+    row
+    |> row_state()
+    |> normalize_issue_state()
+    |> then(&(&1 in SchedulerConfig.default_due_task_query().states))
+  end
+
+  defp manager_next_poll_due?(row) do
+    case row_next_poll_at(row) do
+      nil ->
+        false
+
+      next_poll_at ->
+        case DateTime.from_iso8601(next_poll_at) do
+          {:ok, datetime, _offset} -> DateTime.compare(datetime, DateTime.utc_now()) != :gt
+          {:error, _reason} -> false
+        end
+    end
+  end
+
+  defp manager_not_runnable_message(row) do
+    row
+    |> manager_pickup_failed_gates()
+    |> Enum.map(fn
+      "manager_state" -> "state=#{row_state(row)}"
+      "next_poll_at" -> "next_poll_at not set or not due"
+      gate -> gate
+    end)
+    |> Enum.join(", ")
+  end
+
+  defp manager_pickup_failed_gates(row) do
+    []
+    |> maybe_append_failed_gate("manager_state", !manager_due_state?(row))
+    |> maybe_append_failed_gate("next_poll_at", !manager_next_poll_due?(row))
+  end
+
+  defp maybe_append_failed_gate(gates, gate, true), do: gates ++ [gate]
+  defp maybe_append_failed_gate(gates, _gate, false), do: gates
 
   defp waiting_until_next_poll_at?(row) do
     case Map.get(row, "next_poll_at") do
@@ -478,6 +601,13 @@ defmodule SymphonyElixir.Orchestrator.DispatchPolicy do
   end
 
   defp row_state(row), do: Map.get(row, "state") || Map.get(row, "status") || ""
+
+  defp row_next_poll_at(row) do
+    case Map.get(row, "next_poll_at") do
+      value when is_binary(value) and value != "" -> value
+      _ -> nil
+    end
+  end
 
   defp row_metadata(row) do
     case Map.get(row, "metadata") do
