@@ -21,11 +21,11 @@ defmodule SymphonyElixir.Manager.Prompt do
 
   @version "v1"
 
-  @prompt_path Path.expand(
-                 Path.join([__DIR__, "..", "..", "..", "priv", "prompts", "manager-system-#{@version}.md"])
-               )
+  @prompt_path Path.expand(Path.join([__DIR__, "..", "..", "..", "priv", "prompts", "manager-system-#{@version}.md"]))
 
   @external_resource @prompt_path
+
+  alias SymphonyElixir.Routing.IntentVocabulary
 
   @prompt @prompt_path |> File.read!() |> String.trim()
 
@@ -33,5 +33,18 @@ defmodule SymphonyElixir.Manager.Prompt do
   def version, do: @version
 
   @spec load!() :: String.t()
-  def load!, do: @prompt
+  def load! do
+    """
+    #{@prompt}
+
+    ## Dispatch intent vocabulary
+
+    Use `dispatch_runner` with the intent that describes the next unit of work.
+    Omit `runner_kind` unless an upstream route or human explicitly names a
+    backend; runtime routing maps intent to the concrete runner.
+
+    #{IntentVocabulary.tool_description()}
+    """
+    |> String.trim()
+  end
 end

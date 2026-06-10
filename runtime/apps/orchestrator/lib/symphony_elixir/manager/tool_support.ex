@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Manager.ToolSupport do
   alias SymphonyElixir.{AgentRunner, PostgRESTClient, WorkItem, WorkItemSnooze}
   alias SymphonyElixir.WorkItem.Mapper, as: WorkItemMapper
   alias SymphonyElixir.Launcher.GatewayConfig.Database, as: GatewayConfigDatabase
+  alias SymphonyElixir.Routing.IntentVocabulary
 
   @plan_table "plan"
   @work_items_table "work_items"
@@ -21,8 +22,7 @@ defmodule SymphonyElixir.Manager.ToolSupport do
          {:ok, client} <- client(context) do
       query =
         %{
-          "select" =>
-            "id,workspace_id,name,description,type,status,is_ongoing,created_at,updated_at",
+          "select" => "id,workspace_id,name,description,type,status,is_ongoing,created_at,updated_at",
           "order" => "updated_at.desc.nullslast",
           "limit" => Integer.to_string(limit),
           "workspace_id" => "eq.#{session_workspace_id}"
@@ -47,8 +47,7 @@ defmodule SymphonyElixir.Manager.ToolSupport do
          {:ok, client} <- client(context) do
       query =
         %{
-          "select" =>
-            "id,workspace_id,identifier,title,state,source,url,labels,metadata,next_poll_at,last_polled_at,poll_cadence_seconds,created_at,updated_at",
+          "select" => "id,workspace_id,identifier,title,state,source,url,labels,metadata,next_poll_at,last_polled_at,poll_cadence_seconds,created_at,updated_at",
           "order" => "updated_at.desc.nullslast",
           "limit" => Integer.to_string(limit),
           "workspace_id" => "eq.#{session_workspace_id}"
@@ -69,8 +68,8 @@ defmodule SymphonyElixir.Manager.ToolSupport do
   def dispatch_runner(arguments, context) do
     with {:ok, args} <- normalize_arguments(arguments),
          {:ok, work_item_id} <- required_string(args, "work_item_id"),
-         {:ok, runner_kind} <- required_string(args, "runner_kind"),
          {:ok, intent} <- required_string(args, "intent"),
+         {:ok, runner_kind} <- dispatch_runner_kind(args, intent),
          {:ok, dispatch_context} <- optional_map(args, "context"),
          {:ok, client} <- client(context),
          {:ok, row} <- read_work_item(client, work_item_id),
@@ -288,6 +287,13 @@ defmodule SymphonyElixir.Manager.ToolSupport do
     case Map.get(args, key) do
       value when is_binary(value) and value != "" -> value
       _ -> nil
+    end
+  end
+
+  defp dispatch_runner_kind(args, intent) do
+    case optional_string(args, "runner_kind") || IntentVocabulary.manager_dispatch_runner_kind(intent) do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> {:error, {:unsupported_dispatch_intent, intent}}
     end
   end
 
@@ -557,9 +563,7 @@ defmodule SymphonyElixir.Manager.ToolSupport do
     config =
       Application.get_env(:symphony_elixir, :manager_tools, [])
       |> normalize_config()
-      |> Map.merge(
-        normalize_config(Map.get(context, :config) || Map.get(context, "config") || [])
-      )
+      |> Map.merge(normalize_config(Map.get(context, :config) || Map.get(context, "config") || []))
 
     req_options =
       Map.get(context, :req_options) || Map.get(context, "req_options") || req_options()

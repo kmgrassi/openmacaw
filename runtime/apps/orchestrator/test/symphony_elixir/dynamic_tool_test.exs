@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
   use SymphonyElixir.TestSupport
 
   alias SymphonyElixir.Codex.DynamicTool
+  alias SymphonyElixir.Schema.ExecutionProfile
 
   test "tool_specs advertises the linear_graphql input contract" do
     assert [
@@ -88,8 +89,14 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              "description" => task_create_description,
              "inputSchema" => %{
                "properties" => %{
+                 "when" => %{
+                   "properties" => %{
+                     "mode" => %{"enum" => when_modes}
+                   }
+                 },
                  "routing" => %{
                    "properties" => %{
+                     "intent" => %{"enum" => routing_intents},
                      "runner_family" => %{"enum" => runner_families},
                      "execution_location" => %{"enum" => execution_locations},
                      "transport" => %{"enum" => transports},
@@ -100,27 +107,20 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              }
            } = Enum.find(specs, &(&1["name"] == "task.create"))
 
-    assert task_create_description =~ "capability loop"
-    assert task_create_description =~ "For manager-agent pickup"
-    assert task_create_description =~ "todo items are planned but not manager-runnable"
+    assert task_create_description =~ "routing.intent"
+    assert task_create_description =~ "set when to"
+    assert task_create_description =~ "not manager-runnable"
+    assert when_modes == ["planned", "now", "at"]
+    assert "implement" in routing_intents
+    assert "address_review" in routing_intents
     assert "workspace_coding" in runner_families
     assert "tool_calling_llm" in runner_families
     assert "local" in execution_locations
     assert "local_relay" in transports
 
-    assert runner_kinds == [
-             "codex",
-             "openclaw",
-             "computer_use",
-             "manager",
-             "planner",
-             "local_relay",
-             "local_model_coding",
-             nil
-           ]
+    assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
 
     refute "local_runtime" in runner_kinds
-    refute "claude_code" in runner_kinds
     refute "llm_tool_runner" in runner_kinds
     refute "openclaw_ws" in runner_kinds
     refute "openclaw_http_sse" in runner_kinds

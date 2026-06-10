@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
   use ExUnit.Case, async: false
 
   alias SymphonyElixir.AgentRunner
+  alias SymphonyElixir.Routing.IntentVocabulary
   alias SymphonyElixir.ToolRegistry
 
   @expected_tools ~w(
@@ -25,13 +26,9 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
       api_key: "secret"
     )
 
-    Application.put_env(:symphony_elixir, :manager_tools_req_options,
-      plug: {Req.Test, __MODULE__}
-    )
+    Application.put_env(:symphony_elixir, :manager_tools_req_options, plug: {Req.Test, __MODULE__})
 
-    Application.put_env(:symphony_elixir, :launcher_gateway_config_req_options,
-      plug: {Req.Test, __MODULE__}
-    )
+    Application.put_env(:symphony_elixir, :launcher_gateway_config_req_options, plug: {Req.Test, __MODULE__})
 
     Application.put_env(:symphony_elixir, :launcher_gateway_config,
       endpoint: "https://test.supabase.co",
@@ -94,11 +91,16 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     assert properties["candidate_options"]["items"]["required"] == ["id", "label"]
   end
 
-  test "dispatch_runner advertises only currently resolvable runner kinds" do
+  test "dispatch_runner advertises intent-first routing with optional canonical runner override" do
     spec = Enum.find(tool_specs(), &(&1["name"] == "dispatch_runner"))
-    runner_kinds = spec["inputSchema"]["properties"]["runner_kind"]["enum"]
+    schema = spec["inputSchema"]
+    runner_kinds = schema["properties"]["runner_kind"]["enum"]
+    intents = schema["properties"]["intent"]["enum"]
 
-    assert runner_kinds == ["codex", "planner", "openclaw", "openclaw_ws", "computer_use"]
+    assert schema["required"] == ["work_item_id", "intent"]
+    assert intents == IntentVocabulary.intents()
+    assert runner_kinds == IntentVocabulary.manager_dispatch_runner_kinds() ++ [nil]
+    refute "openclaw_ws" in runner_kinds
     refute "local_relay" in runner_kinds
   end
 
@@ -281,7 +283,6 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
 
     args = %{
       "work_item_id" => "wi-1",
-      "runner_kind" => "codex",
       "intent" => "address_review",
       "context" => %{"review_id" => "review-1"}
     }
@@ -517,9 +518,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
           |> Plug.Conn.send_resp(200, Jason.encode!([]))
 
         _ ->
-          flunk(
-            "supabase patch/event_log should not be called when workspace scoping rejects the row"
-          )
+          flunk("supabase patch/event_log should not be called when workspace scoping rejects the row")
       end
     end)
 

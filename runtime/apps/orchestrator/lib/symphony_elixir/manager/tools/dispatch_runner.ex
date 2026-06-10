@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
   @behaviour SymphonyElixir.Tool
 
   alias SymphonyElixir.Manager.ToolSupport
+  alias SymphonyElixir.Routing.IntentVocabulary
 
   @impl true
   def name, do: "dispatch_runner"
@@ -14,15 +15,19 @@ defmodule SymphonyElixir.Manager.Tools.DispatchRunner do
     %{
       "type" => "object",
       "additionalProperties" => false,
-      "required" => ["work_item_id", "runner_kind", "intent"],
+      "required" => ["work_item_id", "intent"],
       "properties" => %{
         "work_item_id" => ToolSupport.string_schema("Work item database UUID."),
         "runner_kind" =>
-          ToolSupport.enum_schema(
-            ["codex", "planner", "openclaw", "openclaw_ws", "computer_use"],
-            "Runner kind to dispatch."
+          ToolSupport.nullable_enum_schema(
+            IntentVocabulary.manager_dispatch_runner_kinds(),
+            "Optional concrete runner override. Omit this unless an upstream route or human explicitly names a backend; dispatch normally chooses from intent."
           ),
-        "intent" => ToolSupport.string_schema("Short machine-readable reason for the dispatch, such as address_review."),
+        "intent" =>
+          ToolSupport.enum_schema(
+            IntentVocabulary.intents(),
+            "Machine-readable dispatch intent. #{IntentVocabulary.tool_description()}"
+          ),
         "context" => %{
           "type" => ["object", "null"],
           "description" => "Structured context to pass to the dispatched runner.",

@@ -593,20 +593,22 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
 
     Work item table guidance:
     - A work item with state "todo" is planned but not manager-runnable.
-    - To make a work item available to the manager agent, set state to "running" or "awaiting_review" and set next_poll_at to an absolute ISO timestamp. Use a time at or before now when the manager should pick it up immediately.
+    - To make a new work item available to the manager agent, set task.create when to {"mode":"now"} for immediate pickup or {"mode":"at","at":"<absolute ISO timestamp>"} for scheduled pickup. This writes state and next_poll_at together.
+    - Use when state "awaiting_review" only when the manager should review completed work; otherwise omit state and let it default to "running".
     - Do not set poll_cadence_seconds for one-shot manager tests. Only set it when the user explicitly asks for recurring follow-up.
-    - Example: create a manager-runnable item for now with task.create using state "running", next_poll_at "#{DateTime.utc_now() |> DateTime.to_iso8601()}", routing runner_family "tool_calling_llm", execution_location "cloud", transport "launcher", and runner_kind "manager".
+    - Example: create a manager-runnable item for now with task.create using when {"mode":"now"} and routing intent "follow_up".
     - Example: make an existing item manager-runnable by calling task.update with state "running", then task.schedule with the resolved next_poll_at.
 
     Work item routing guidance:
     - For multi-task plans, give each task.create call a stable author_task_id such as "A" or "implement-api". When a later task depends on earlier tasks created in the same planner session, pass depends_on_author_ids instead of guessing database ids.
-    - task.create accepts optional top-level repository and runner_kind fields. Use them when the user names a repository, the request spans multiple repositories, or the task needs a specific execution backend.
+    - task.create routing.intent is the primary dispatch hint. Use one of: #{Enum.join(SymphonyElixir.Routing.IntentVocabulary.intents(), ", ")}.
+    - task.create accepts optional top-level repository and runner_kind fields. Use repository when the user names a repository or the request spans multiple repositories. Use runner_kind only when the user, agent context, or repository routing explicitly names a backend.
     - task.create returns validation_feedback when the runtime applied a smart default and dispatch.eligible/reason to summarize whether the created row is ready for orchestrator polling. Treat this as advisory feedback; the orchestrator re-checks policy at poll time.
     - If a tool failure includes validation_feedback with recoverable true and ask_user false, retry once with the suggested_default. If ask_user is true, ask exactly one concise question before retrying.
     #{repository_routing_guidance(tool_names)}
     - Set repository to the stable repository identifier visible in the user request, agent context, or repository tool results. Do not invent aliases.
     - Use only canonical runtime runner_kind values: #{Enum.join(ExecutionProfile.supported_runner_kinds(), ", ")}.
-    - Use runner_kind "codex" for normal cloud coding work, "local_model_coding" when the user asks for a local model/local workspace coding runner, "manager" for follow-up orchestration or polling work, "planner" for additional planning work, "computer_use" for browser/desktop UI work, "openclaw" for OpenClaw work, and "local_relay" only when the requested backend is specifically the relay adapter.
+    - Prefer routing.intent over runner_kind. Use runner_kind "codex" for normal cloud coding work, "local_model_coding" when the user asks for a local model/local workspace coding runner, "manager" for follow-up orchestration or polling work, "planner" for additional planning work, "computer_use" for browser/desktop UI work, "openclaw" for OpenClaw work, and "local_relay" only when the requested backend is specifically the relay adapter.
     - If the correct repository or runner is unclear, create the plan and ask a concise clarifying question before creating routed work items.
 
     Stored agent type: #{settings.stored_agent.type || "planning"}
