@@ -86,6 +86,7 @@ const BRIDGE_TABLES = [
   "tool_call",
   "message",
   "planning_profile",
+  "provider_failure",
   "scheduled_task",
   "scheduled_task_run",
   "workspace_settings",

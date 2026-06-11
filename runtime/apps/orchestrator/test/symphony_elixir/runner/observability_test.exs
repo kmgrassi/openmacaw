@@ -1,9 +1,23 @@
 defmodule SymphonyElixir.Runner.ObservabilityTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
   alias SymphonyElixir.Runner.Observability
+
+  setup do
+    previous_url = System.get_env("SUPABASE_URL")
+    previous_key = System.get_env("SUPABASE_SERVICE_ROLE_KEY")
+    previous_req_options = Application.get_env(:symphony_elixir, :provider_failure_persistence_req_options)
+
+    on_exit(fn ->
+      restore_env("SUPABASE_URL", previous_url)
+      restore_env("SUPABASE_SERVICE_ROLE_KEY", previous_key)
+      restore_app_env(:provider_failure_persistence_req_options, previous_req_options)
+    end)
+
+    :ok
+  end
 
   test "classifies provider status failures with request ids" do
     response = %Req.Response{
@@ -33,9 +47,89 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
                429,
                response.body,
                response,
-               %{provider: "openai", model: "gpt-test", attempt: 2, runner_kind: "manager", credential_id: "cred-12345678"},
+               %{
+                 provider: "openai",
+                 model: "gpt-test",
+                 attempt: 2,
+                 runner_kind: "manager",
+                 credential_id: "cred-12345678"
+               },
                42
              )
+  end
+
+  test "persists provider failures as typed best-effort rows" do
+    System.put_env("SUPABASE_URL", "https://test.supabase.co")
+    System.put_env("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    Application.put_env(:symphony_elixir, :provider_failure_persistence_req_options, plug: {Req.Test, __MODULE__})
+
+    parent = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/rest/v1/provider_failure"
+      assert {"prefer", "return=minimal"} in conn.req_headers
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(parent, {:provider_failure_payload, Jason.decode!(body)})
+
+      Plug.Conn.send_resp(conn, 201, "{}")
+    end)
+
+    classification =
+      Observability.provider_status_failure(
+        429,
+        %{"error" => %{"message" => "slow down"}},
+        nil,
+        %{
+          workspace_id: "workspace-1",
+          agent_id: "agent-1",
+          work_item_id: nil,
+          run_id: "run-1",
+          runner_kind: "manager",
+          provider: "openai",
+          model: "gpt-5",
+          attempt: 2
+        },
+        15
+      )
+
+    assert ^classification = Observability.log_provider_failure(classification)
+
+    assert_receive {:provider_failure_payload,
+                    %{
+                      "workspace_id" => "workspace-1",
+                      "agent_id" => "agent-1",
+                      "run_id" => "run-1",
+                      "runner_kind" => "manager",
+                      "provider" => "openai",
+                      "model" => "gpt-5",
+                      "error_code" => "provider_rate_limited",
+                      "status_code" => 429,
+                      "attempt" => 2
+                    }}
+  end
+
+  test "does not fail provider logging when provider_failure persistence fails" do
+    System.put_env("SUPABASE_URL", "https://test.supabase.co")
+    System.put_env("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    Application.put_env(:symphony_elixir, :provider_failure_persistence_req_options, plug: {Req.Test, __MODULE__})
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      Plug.Conn.send_resp(conn, 503, Jason.encode!(%{"message" => "nope"}))
+    end)
+
+    classification = %{
+      event: "model_call_failed",
+      workspace_id: "workspace-1",
+      runner_kind: "manager",
+      provider: "openai",
+      model: "gpt-5",
+      error_code: "provider_rate_limited",
+      attempt: 1
+    }
+
+    assert ^classification = Observability.log_provider_failure(classification)
   end
 
   test "classifies provider request timeouts" do
@@ -126,4 +220,10 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
     assert %{"error_code" => "tool_invalid_args", "retryable" => false} =
              Observability.classify_tool_result(result, %{tool_name: "snooze"}, 3)
   end
+
+  defp restore_env(name, nil), do: System.delete_env(name)
+  defp restore_env(name, value), do: System.put_env(name, value)
+
+  defp restore_app_env(key, nil), do: Application.delete_env(:symphony_elixir, key)
+  defp restore_app_env(key, value), do: Application.put_env(:symphony_elixir, key, value)
 end

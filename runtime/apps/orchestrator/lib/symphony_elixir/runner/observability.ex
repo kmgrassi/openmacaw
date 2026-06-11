@@ -3,7 +3,7 @@ defmodule SymphonyElixir.Runner.Observability do
   Failure classification and structured runtime logs for runner boundaries.
   """
 
-  alias SymphonyElixir.RuntimeLog
+  alias SymphonyElixir.{ProviderFailurePersistence, RuntimeLog}
 
   @provider_request_headers [
     "x-request-id",
@@ -94,6 +94,7 @@ defmodule SymphonyElixir.Runner.Observability do
       trace_id: Map.get(context, :trace_id),
       workspace_id: Map.get(context, :workspace_id),
       agent_id: Map.get(context, :agent_id),
+      work_item_id: Map.get(context, :work_item_id),
       run_id: Map.get(context, :run_id),
       turn_id: Map.get(context, :turn_id),
       reason: inspect(reason)
@@ -127,6 +128,7 @@ defmodule SymphonyElixir.Runner.Observability do
       trace_id: Map.get(context, :trace_id),
       workspace_id: Map.get(context, :workspace_id),
       agent_id: Map.get(context, :agent_id),
+      work_item_id: Map.get(context, :work_item_id),
       run_id: Map.get(context, :run_id),
       turn_id: Map.get(context, :turn_id),
       provider_request_id: provider_request_id(response),
@@ -157,6 +159,7 @@ defmodule SymphonyElixir.Runner.Observability do
       trace_id: Map.get(context, :trace_id),
       workspace_id: Map.get(context, :workspace_id),
       agent_id: Map.get(context, :agent_id),
+      work_item_id: Map.get(context, :work_item_id),
       run_id: Map.get(context, :run_id),
       turn_id: Map.get(context, :turn_id),
       reason: inspect(reason)
@@ -167,6 +170,7 @@ defmodule SymphonyElixir.Runner.Observability do
   @spec log_provider_failure(map()) :: map()
   def log_provider_failure(classification) when is_map(classification) do
     RuntimeLog.log(:error, :model_call_failed, classification)
+    ProviderFailurePersistence.write(classification)
     classification
   end
 

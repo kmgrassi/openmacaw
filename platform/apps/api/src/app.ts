@@ -28,6 +28,7 @@ import { registerModelCatalogRoutes } from "./routes/models.js";
 import { registerPlanReviewRoutes } from "./routes/plan-reviews.js";
 import { registerPlanRoutes } from "./routes/plans.js";
 import { registerPlannerLocalModelSmokeRoutes } from "./routes/planner-local-model-smoke.js";
+import { registerProviderFailureRoutes } from "./routes/provider-failures.js";
 import { registerProxyRoutes } from "./routes/proxy.js";
 import { registerResourceCredentialRoutes } from "./routes/resource-credentials.js";
 import { registerSetupRoutes } from "./routes/setup.js";
@@ -111,6 +112,7 @@ export function createApp(config: ApiConfig) {
   registerAgentDashboardRoutes(app);
   registerAgentDispatchProbeRoutes(app, launcherClient);
   registerPlanReviewRoutes(app);
+  registerProviderFailureRoutes(app);
   registerPlanRoutes(app, config, launcherRequest);
   registerScheduledTaskRoutes(app);
   registerMemoryItemRoutes(app);
