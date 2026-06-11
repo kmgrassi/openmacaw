@@ -127,6 +127,15 @@ export const queryKeys = {
     lists: () => [...queryKeys.workItems.all, "list"] as const,
     list: (workspaceId: string) =>
       [...queryKeys.workItems.lists(), { workspaceId }] as const,
+    cutovers: () => [...queryKeys.workItems.all, "cutovers"] as const,
+    cutover: (workItemId: string) =>
+      [...queryKeys.workItems.cutovers(), { workItemId }] as const,
+    recentCutovers: (workspaceId: string, limit: number) =>
+      [
+        ...queryKeys.workItems.cutovers(),
+        "recent",
+        { workspaceId, limit },
+      ] as const,
   },
   manager: {
     all: ["manager"] as const,
