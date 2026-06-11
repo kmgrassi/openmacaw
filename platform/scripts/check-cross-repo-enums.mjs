@@ -138,6 +138,34 @@ function extractTsStringTuple(source, name) {
     .filter((entry) => entry.length > 0);
 }
 
+function extractProviderRegistryKeys(source) {
+  const registryMatch = source.match(
+    /export const PROVIDER_REGISTRY\s*=\s*\{([\s\S]*?)\}\s*as\s*const;/m,
+  );
+  if (!registryMatch) {
+    throw new Error("Could not find PROVIDER_REGISTRY in platform contracts");
+  }
+  return [...registryMatch[1].matchAll(/^\s{2}([a-z_]+):\s*\{/gm)].map(
+    (match) => match[1],
+  );
+}
+
+function extractModelTierRegistryProviders(source) {
+  const registryMatch = source.match(
+    /export const MODEL_TIER_REGISTRY:[\s\S]*?=\s*\[([\s\S]*?)\]\s*as\s*const;/m,
+  );
+  if (!registryMatch) {
+    throw new Error("Could not find MODEL_TIER_REGISTRY in platform contracts");
+  }
+  return [
+    ...new Set(
+      [...registryMatch[1].matchAll(/provider:\s*"([^"]+)"/g)].map(
+        (match) => match[1],
+      ),
+    ),
+  ].sort();
+}
+
 /**
  * Pull the values out of a SQL `check (column in ('a', 'b', ...))` clause.
  * Tolerates the `column is null or column in (...)` form.
@@ -338,6 +366,8 @@ async function main() {
   const providerRegistry = readPlatformContract(
     "contracts/provider-registry.ts",
   );
+  const platformRegisteredProviders =
+    extractProviderRegistryKeys(providerRegistry);
   const platformExecutionProviders = extractTsStringTuple(
     providerRegistry,
     "KNOWN_EXECUTION_PROVIDER_IDS",
@@ -349,6 +379,17 @@ async function main() {
   const platformManagerProviders = extractTsStringTuple(
     providerRegistry,
     "MANAGER_PROVIDER_IDS",
+  );
+  const modelTiers = readPlatformContract("contracts/model-tiers.ts");
+  const modelTierRegistryProviders =
+    extractModelTierRegistryProviders(modelTiers);
+  const modelTierExecutionProviders = modelTierRegistryProviders.filter(
+    (provider) => platformExecutionProviders.includes(provider),
+  );
+  const modelTierCredentialProviders = modelTierRegistryProviders.filter(
+    (provider) =>
+      platformCredentialProviders.includes(provider) ||
+      provider === "openai_compatible",
   );
 
   const runnerKinds = readPlatformContract("contracts/runner-kinds.ts");
@@ -386,6 +427,18 @@ async function main() {
   console.log(
     `  platform DiagnosticErrorCodes:         ${platformDiagnosticErrorCodes.length}`,
   );
+  console.log(
+    `  platform MODEL_TIER_REGISTRY providers: ${modelTierRegistryProviders.length}`,
+  );
+
+  const localModelTierOk = assertSuperset({
+    name: "PROVIDER_REGISTRY keys ⊇ MODEL_TIER_REGISTRY providers",
+    allowed: platformRegisteredProviders,
+    required: modelTierRegistryProviders,
+  });
+  if (!localModelTierOk) {
+    process.exit(1);
+  }
 
   if (!hasCrossRepoToken()) {
     console.warn(
@@ -448,6 +501,16 @@ async function main() {
       // compatible_endpoint credential shape even though it is not part of
       // CREDENTIAL_PROVIDER_IDS.
       required: [...platformCredentialProviders, "openai_compatible"],
+    }),
+    assertSuperset({
+      name: "routing_rule.provider ⊇ executable MODEL_TIER_REGISTRY providers",
+      allowed: dbProviderAllowed,
+      required: modelTierExecutionProviders,
+    }),
+    assertSuperset({
+      name: "credential.provider ⊇ credential-backed MODEL_TIER_REGISTRY providers",
+      allowed: dbCredentialProviderAllowed,
+      required: modelTierCredentialProviders,
     }),
     dbTrackerKindAllowed
       ? assertSuperset({

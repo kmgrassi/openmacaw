@@ -68,8 +68,6 @@ defmodule SymphonyElixir.ExecutionProfile do
       |> maybe_put("model_provider", Map.get(profile, "provider"))
       |> maybe_put("provider", Map.get(profile, "provider"))
       |> maybe_put("credential_ref", Map.get(profile, "credential_ref"))
-      |> maybe_put_non_empty_list("fallbacks", Map.get(profile, "fallbacks"))
-      |> maybe_put_non_default_floor(Map.get(profile, "model_tier_floor"))
       |> maybe_put_target_runner_kind(profile)
 
     Map.merge(base_config, profile_config)
@@ -119,6 +117,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       "provider" => provider_for_runner(runner_kind, codex.model_provider),
       "model" => model_for_runner(runner_kind, codex.model),
       "credential_ref" => nil,
+      "fallbacks" => [],
+      "model_tier_floor" => "any",
       "tool_profile" => "coding",
       "capabilities" => %{},
       "source_metadata" => %{
@@ -135,12 +135,12 @@ defmodule SymphonyElixir.ExecutionProfile do
       |> Map.update("source_metadata", %{}, &normalize_map/1)
       |> Map.update("capabilities", %{}, &normalize_map/1)
       |> Map.update("adapter_config", %{}, &normalize_map/1)
+      |> Map.update("fallbacks", [], &normalize_fallbacks/1)
       |> Map.update("runner_kind", nil, &normalize_string/1)
       |> Map.update("role", nil, &normalize_string/1)
       |> Map.update("provider", nil, &normalize_string/1)
       |> Map.update("model", nil, &normalize_string/1)
       |> Map.update("credential_ref", nil, &normalize_string/1)
-      |> Map.update("fallbacks", [], &normalize_fallbacks/1)
       |> Map.update("model_tier_floor", "any", &normalize_model_tier_floor/1)
       |> Map.update("tool_profile", nil, &normalize_string/1)
       |> normalize_family_runner_kind()
@@ -294,6 +294,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       |> maybe_put_normalized("model")
       |> maybe_put_normalized("role")
       |> maybe_put_normalized("tool_profile")
+      |> Map.update("fallbacks", [], &normalize_fallbacks/1)
+      |> Map.update("model_tier_floor", "any", &normalize_model_tier_floor/1)
       |> normalize_source_metadata()
 
     case ExecutionProfileSchema.validate(profile) do
@@ -346,6 +348,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       "runner_kind" => runner_kind,
       "provider" => fallback_provider(config, model, runner_kind),
       "model" => normalize_codex_model(model),
+      "fallbacks" => [],
+      "model_tier_floor" => "any",
       "role" => get_in(config, ["stored_agent", "type"]),
       "source_metadata" => %{
         "fallback_used" => true,
@@ -510,11 +514,31 @@ defmodule SymphonyElixir.ExecutionProfile do
   defp canonical_key("runnerKind"), do: "runner_kind"
   defp canonical_key("toolProfile"), do: "tool_profile"
   defp canonical_key("credentialRef"), do: "credential_ref"
-  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("adapterConfig"), do: "adapter_config"
   defp canonical_key("sourceMetadata"), do: "source_metadata"
+  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("modelProvider"), do: "model_provider"
   defp canonical_key(key), do: key
+
+  defp normalize_fallbacks(fallbacks) when is_list(fallbacks) do
+    fallbacks
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(fn fallback ->
+      fallback
+      |> normalize_keys()
+      |> maybe_put_normalized("provider")
+      |> maybe_put_normalized("model")
+    end)
+  end
+
+  defp normalize_fallbacks(_fallbacks), do: []
+
+  defp normalize_model_tier_floor(value) do
+    case normalize_string(value) do
+      floor when floor in ~w(any frontier mid local) -> floor
+      _ -> "any"
+    end
+  end
 
   defp normalize_value(value) when is_map(value), do: normalize_keys(value)
   defp normalize_value(value) when is_list(value), do: Enum.map(value, &normalize_value/1)
@@ -560,30 +584,9 @@ defmodule SymphonyElixir.ExecutionProfile do
 
   defp normalize_string(_value), do: nil
 
-  defp normalize_fallbacks(value) when is_list(value) do
-    value
-    |> Enum.filter(&is_map/1)
-    |> Enum.map(&normalize_map/1)
-  end
-
-  defp normalize_fallbacks(_value), do: []
-
-  defp normalize_model_tier_floor(value) do
-    case normalize_string(value) do
-      floor when floor in ["frontier", "mid", "local"] -> floor
-      _ -> "any"
-    end
-  end
-
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  defp maybe_put_non_empty_list(map, _key, value) when value in [nil, []], do: map
-  defp maybe_put_non_empty_list(map, key, value), do: Map.put(map, key, value)
-
-  defp maybe_put_non_default_floor(map, floor) when floor in [nil, "", "any"], do: map
-  defp maybe_put_non_default_floor(map, floor), do: Map.put(map, "model_tier_floor", floor)
 
   defp metadata_value(metadata, key) when is_map(metadata), do: Map.get(metadata, key)
   defp metadata_value(_metadata, _key), do: nil

@@ -56,9 +56,7 @@ const {
 } = vi.mocked(await import("../services/agent-control.js"));
 const { assertRuntimePrepareSupported } = vi.mocked(await import("../services/runtime-prepare.js"));
 const { assertAgentAccess } = vi.mocked(await import("../services/agent-tools/access.js"));
-const { assertCredentialReferenceBelongsToWorkspace } = vi.mocked(
-  await import("./stored-agent-credentials/authz.js"),
-);
+const { assertCredentialReferenceBelongsToWorkspace } = vi.mocked(await import("./stored-agent-credentials/authz.js"));
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const targetAgentId = "33333333-3333-4333-8333-333333333333";

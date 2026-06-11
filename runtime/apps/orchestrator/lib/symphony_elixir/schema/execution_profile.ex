@@ -131,6 +131,7 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
     |> validate_required([:runner_kind, :provider])
     |> validate_inclusion(:runner_kind, @supported_runner_kinds)
     |> validate_inclusion(:provider, @supported_providers)
+    |> validate_inclusion(:model_tier_floor, SymphonyElixir.ModelTiers.supported_floors())
     |> apply_action(:validate)
   end
 
@@ -164,7 +165,7 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
       "tool_profile",
       "model_tier_floor"
     ])
-    |> normalize_list_field("fallbacks")
+    |> normalize_fallbacks()
     |> normalize_map_field("adapter_config")
     |> normalize_map_field("capabilities")
     |> normalize_map_field("source_metadata")
@@ -183,11 +184,24 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   defp canonical_key("runnerKind"), do: "runner_kind"
   defp canonical_key("toolProfile"), do: "tool_profile"
   defp canonical_key("credentialRef"), do: "credential_ref"
-  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("adapterConfig"), do: "adapter_config"
   defp canonical_key("sourceMetadata"), do: "source_metadata"
+  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("modelProvider"), do: "model_provider"
   defp canonical_key(key), do: key
+
+  defp normalize_fallbacks(attrs) do
+    case Map.get(attrs, "fallbacks") do
+      fallbacks when is_list(fallbacks) ->
+        Map.put(attrs, "fallbacks", Enum.filter(fallbacks, &is_map/1))
+
+      nil ->
+        attrs
+
+      _value ->
+        Map.put(attrs, "fallbacks", [])
+    end
+  end
 
   defp normalize_value(value) when is_map(value), do: normalize_keys(value)
   defp normalize_value(value) when is_list(value), do: Enum.map(value, &normalize_value/1)
@@ -214,14 +228,6 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   defp normalize_map_field(attrs, field) do
     case Map.get(attrs, field) do
       value when is_map(value) -> Map.put(attrs, field, value)
-      nil -> attrs
-      _value -> Map.delete(attrs, field)
-    end
-  end
-
-  defp normalize_list_field(attrs, field) do
-    case Map.get(attrs, field) do
-      value when is_list(value) -> Map.put(attrs, field, value)
       nil -> attrs
       _value -> Map.delete(attrs, field)
     end

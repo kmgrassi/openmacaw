@@ -5,11 +5,13 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
 
   @behaviour SymphonyElixir.Runner
 
-  alias SymphonyElixir.{Attention, Cutover, MessageHistory, ToolRegistry, WorkItem}
+  alias SymphonyElixir.{AgentInventory, Attention, Cutover, MessageHistory, ToolRegistry, WorkItem}
+  alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Manager.Prompt, as: ManagerPrompt
   alias SymphonyElixir.Manager.ModelClient
   alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.Runner.Observability
+  alias SymphonyElixir.WorkerBridge.SecretResolver
 
   @responses_url "https://api.openai.com/v1/responses"
   @openai_compatible_base_url "http://127.0.0.1:11434/v1"
@@ -38,6 +40,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
            api_key: credential.api_key,
            agent_id: config_value(config, "agent_id"),
            credential_id: credential.credential_id,
+           credential_ref: credential_ref(config),
            credential_scope: Map.get(credential, :credential_scope),
            workspace_id: config_value(config, "workspace_id"),
            model: provider_model(config_value(config, "model")) || @default_model,
@@ -56,6 +59,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
            max_tool_iterations: config_integer(config, "max_tool_iterations", @default_max_tool_iterations),
            base_url: config_value(config, "base_url") || default_base_url(model_client),
            req_options: req_options(config, model_client),
+           credentials: credentials(config),
            history_window: config_non_negative_integer(config, "history_window", MessageHistory.default_limit()),
            user_id: config_value(config, "user_id"),
            trace_id: config_value(config, "trace_id") || Process.get(:symphony_trace_id),
@@ -344,6 +348,13 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     end
   end
 
+  defp credentials(config) do
+    case config_value(config, "credentials") do
+      %{} = credentials -> credentials
+      _ -> %{}
+    end
+  end
+
   defp config_value(config, key) when is_map(config) do
     Map.get(config, key) || Map.get(config, String.to_atom(key))
   end
@@ -398,17 +409,28 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   end
 
   defp normalize_fallback_link(link) do
+    credential_ref = credential_ref(link)
+
     %{
       "provider" => config_value(link, "provider"),
       "model" => provider_model(config_value(link, "model")),
-      "credential_id" => config_value(link, "credential_id"),
-      "credential_ref" => config_value(link, "credential_ref"),
-      "api_key" => config_value(link, "api_key"),
-      "base_url" => config_value(link, "base_url"),
-      "model_client" => config_value(link, "model_client")
+      "credential_ref" => credential_ref
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
+  end
+
+  defp credential_ref(config) do
+    cond do
+      ref = config_value(config, "credential_ref") ->
+        ref
+
+      id = config_value(config, "credential_id") ->
+        %{"type" => "credential_id", "value" => id}
+
+      true ->
+        nil
+    end
   end
 
   defp model_client_initial_request(session, due_tasks_payload, work_item) do
@@ -435,9 +457,13 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     }
 
     case Cutover.walk(session, context, fn link ->
-           link_session = session_for_cutover_link(session, link)
-           client = link_session.model_client
-           client.create_response(link_session, request_for_cutover_link(request, link_session), attempt + link.attempt - 1)
+           with {:ok, link_session} <- session_for_cutover_link(session, link) do
+             client = link_session.model_client
+
+             link_session
+             |> client.create_response(request_for_cutover_link(request, link_session), attempt + link.position)
+             |> normalize_cutover_call_result()
+           end
          end) do
       {:ok, response, _decision} ->
         {:ok, response}
@@ -448,7 +474,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       {:error, :exhausted, decision} ->
         Attention.escalate(:cutover_exhausted, decision, session)
 
-      {:error, {:fatal, reason}, _decision} ->
+      {:error, {:non_retryable, reason}, _decision} ->
         passthrough_provider_error(reason)
     end
   end
@@ -460,23 +486,138 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp passthrough_provider_error({kind, _classification} = error) when kind in [:fatal, :retryable], do: {:error, error}
   defp passthrough_provider_error(reason), do: {:error, {:fatal, reason}}
 
-  defp session_for_cutover_link(session, %Cutover.Link{} = link) do
-    provider = link.provider || session.provider
-    model_client = link.model_client || model_client(%{"provider" => provider})
+  defp normalize_cutover_call_result({:error, {_kind, classification}}) when is_map(classification), do: {:error, classification}
+  defp normalize_cutover_call_result(result), do: result
 
-    session
-    |> Map.put(:provider, provider)
-    |> Map.put(:model, provider_model(link.model) || session.model)
-    |> Map.put(:credential_id, link.credential_id)
-    |> Map.put(:model_client, model_client)
-    |> maybe_put_session_value(:api_key, link.api_key)
-    |> maybe_put_session_value(:base_url, link.base_url || default_base_url(model_client))
+  defp session_for_cutover_link(session, %Cutover.CutoverLink{} = link) do
+    provider = link.provider || session.provider
+    model_client = model_client(%{"provider" => provider})
+
+    with {:ok, credential} <- resolve_cutover_credential(session, link, model_client) do
+      {:ok,
+       session
+       |> Map.put(:provider, provider)
+       |> Map.put(:model, provider_model(link.model) || session.model)
+       |> Map.put(:credential_ref, link.credential_ref)
+       |> Map.put(:model_client, model_client)
+       |> Map.put(:base_url, default_base_url(model_client))
+       |> Map.put(:api_key, credential.api_key)
+       |> Map.put(:credential_id, credential.credential_id)
+       |> Map.put(:credential_scope, Map.get(credential, :credential_scope))}
+    end
   end
 
   defp request_for_cutover_link(request, session) when is_map(request), do: Map.put(request, "model", session.model)
 
-  defp maybe_put_session_value(session, _key, nil), do: session
-  defp maybe_put_session_value(session, key, value), do: Map.put(session, key, value)
+  defp resolve_cutover_credential(session, %Cutover.CutoverLink{source: :primary}, _model_client) do
+    {:ok,
+     %{
+       api_key: Map.get(session, :api_key),
+       credential_id: Map.get(session, :credential_id),
+       credential_scope: Map.get(session, :credential_scope)
+     }}
+  end
+
+  defp resolve_cutover_credential(_session, %Cutover.CutoverLink{} = link, ModelClient.LocalRelay) do
+    {:ok, %{api_key: "local-runtime", credential_id: link.credential_id}}
+  end
+
+  defp resolve_cutover_credential(session, %Cutover.CutoverLink{} = link, ModelClient.OpenAICompatibleChat) do
+    case resolve_stored_cutover_credential(session, link) do
+      {:ok, credential} -> {:ok, credential}
+      {:error, _reason} -> {:ok, %{api_key: nil, credential_id: link.credential_id}}
+    end
+  end
+
+  defp resolve_cutover_credential(session, %Cutover.CutoverLink{} = link, _model_client) do
+    resolve_stored_cutover_credential(session, link)
+  end
+
+  defp resolve_stored_cutover_credential(session, %Cutover.CutoverLink{} = link) do
+    cond do
+      same_credential?(session, link) ->
+        {:ok,
+         %{
+           api_key: Map.get(session, :api_key),
+           credential_id: Map.get(session, :credential_id),
+           credential_scope: Map.get(session, :credential_scope)
+         }}
+
+      not is_binary(Map.get(session, :agent_id)) ->
+        {:error, credential_failure(link, :missing_agent_id)}
+
+      true ->
+        with {:ok, credentials} <- AgentInventory.list_credentials(Map.fetch!(session, :agent_id)),
+             {:ok, %StoredCredential{} = credential} <- find_cutover_credential(credentials, link),
+             {:ok, env} <- SecretResolver.resolve(credential),
+             {:ok, api_key} <- api_key_from_env(env, link.provider) do
+          {:ok, %{api_key: api_key, credential_id: credential.id, credential_scope: credential.provider}}
+        else
+          {:error, reason} -> {:error, credential_failure(link, reason)}
+          nil -> {:error, credential_failure(link, :credential_not_found)}
+        end
+    end
+  end
+
+  defp same_credential?(session, %Cutover.CutoverLink{credential_id: credential_id}) when is_binary(credential_id) do
+    credential_id == Map.get(session, :credential_id)
+  end
+
+  defp same_credential?(_session, _link), do: false
+
+  defp find_cutover_credential(credentials, %Cutover.CutoverLink{} = link) when is_list(credentials) do
+    credentials
+    |> Enum.find(&credential_matches_link?(&1, link))
+    |> case do
+      %StoredCredential{} = credential -> {:ok, credential}
+      nil -> nil
+    end
+  end
+
+  defp credential_matches_link?(%StoredCredential{} = credential, %Cutover.CutoverLink{} = link) do
+    id = link.credential_id
+
+    (is_binary(id) and (credential.id == id or credential_row_id(credential.id) == id)) or
+      credential_alias(link.credential_ref) in credential.aliases
+  end
+
+  defp credential_row_id(id) when is_binary(id), do: id |> String.split(":", parts: 2) |> List.first()
+  defp credential_row_id(_id), do: nil
+
+  defp credential_alias(%{"type" => "credential_alias", "value" => value}), do: value
+  defp credential_alias(%{"type" => "credential_alias", "credential_alias" => value}), do: value
+  defp credential_alias(%{type: "credential_alias", value: value}), do: value
+  defp credential_alias(%{type: :credential_alias, value: value}), do: value
+  defp credential_alias(_ref), do: nil
+
+  defp api_key_from_env(env, provider) when is_map(env) do
+    candidates =
+      case provider do
+        "openai_compatible" -> ["OPENAI_COMPATIBLE_API_KEY", "LOCAL_MODEL_API_KEY", "OPENAI_API_KEY"]
+        "local" -> ["LOCAL_MODEL_API_KEY", "OPENAI_COMPATIBLE_API_KEY", "OPENAI_API_KEY"]
+        "anthropic" -> ["ANTHROPIC_API_KEY"]
+        _ -> ["OPENAI_API_KEY"]
+      end
+
+    candidates
+    |> Enum.map(&Map.get(env, &1))
+    |> Enum.find(&(is_binary(&1) and &1 != ""))
+    |> case do
+      value when is_binary(value) -> {:ok, value}
+      _ -> {:error, :credential_secret_missing}
+    end
+  end
+
+  defp credential_failure(%Cutover.CutoverLink{} = link, reason) do
+    %{
+      error_code: "provider_auth_failed",
+      retryable: false,
+      provider: link.provider,
+      model: link.model,
+      credential_id: link.credential_id,
+      reason: inspect(reason)
+    }
+  end
 
   defp model_client_follow_up_request(session, response, tool_outputs) do
     client = session.model_client

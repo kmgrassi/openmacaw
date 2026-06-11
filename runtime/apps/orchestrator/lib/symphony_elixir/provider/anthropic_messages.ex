@@ -21,6 +21,7 @@ defmodule SymphonyElixir.Provider.AnthropicMessages do
                            "provider_timeout",
                            "provider_capacity",
                            "provider_unavailable",
+                           "provider_content_refused",
                            "provider_stream_interrupted",
                            "provider_unknown"
                          ])
@@ -66,12 +67,23 @@ defmodule SymphonyElixir.Provider.AnthropicMessages do
 
       case Req.post(req, json: request) do
         {:ok, %Req.Response{status: status, body: body} = response} when status in 200..299 ->
-          Observability.log_model_call_completed(context, elapsed_ms(started_at),
-            status_code: status,
-            provider_request_id: Observability.provider_request_id(response)
-          )
+          if Observability.provider_content_refusal?(body) do
+            classification =
+              Observability.provider_content_refusal_failure(body, context, elapsed_ms(started_at))
+              |> Map.put(:status_code, status)
+              |> Map.put(:provider_status, status)
+              |> Map.put(:provider_request_id, Observability.provider_request_id(response))
+              |> Observability.log_provider_failure()
 
-          {:ok, normalize_response(body, model)}
+            {:error, {:retryable, classification}}
+          else
+            Observability.log_model_call_completed(context, elapsed_ms(started_at),
+              status_code: status,
+              provider_request_id: Observability.provider_request_id(response)
+            )
+
+            {:ok, normalize_response(body, model)}
+          end
 
         {:ok, %Req.Response{status: status, body: body} = response} ->
           classification =
@@ -448,6 +460,8 @@ defmodule SymphonyElixir.Provider.AnthropicMessages do
   defp anthropic_error_type_code("rate_limit_error"), do: "provider_rate_limited"
   defp anthropic_error_type_code("overloaded_error"), do: "provider_capacity"
   defp anthropic_error_type_code("api_error"), do: "provider_unavailable"
+  defp anthropic_error_type_code("refusal"), do: "provider_content_refused"
+  defp anthropic_error_type_code("content_policy_error"), do: "provider_content_refused"
   defp anthropic_error_type_code("not_found_error"), do: "provider_invalid_request"
   defp anthropic_error_type_code("invalid_request_error"), do: "provider_invalid_request"
   defp anthropic_error_type_code(_type), do: nil

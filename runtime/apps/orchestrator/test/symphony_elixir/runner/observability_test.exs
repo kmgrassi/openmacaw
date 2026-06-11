@@ -52,6 +52,126 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
              )
   end
 
+  test "classifies Anthropic refusal blocks as retryable content refusals" do
+    body = %{
+      "type" => "message",
+      "content" => [
+        %{"type" => "refusal", "refusal" => "I cannot help with that request."}
+      ],
+      "stop_reason" => "end_turn"
+    }
+
+    assert Observability.provider_content_refusal?(body)
+
+    assert %{
+             error_code: "provider_content_refused",
+             retryable: true,
+             provider: "anthropic",
+             model: "claude-test"
+           } =
+             Observability.provider_content_refusal_failure(
+               body,
+               %{provider: "anthropic", model: "claude-test"},
+               17
+             )
+  end
+
+  test "classifies Anthropic top-level refusal stop reasons as content refusals" do
+    body = %{
+      "type" => "message",
+      "content" => [%{"type" => "text", "text" => ""}],
+      "stop_reason" => "refusal"
+    }
+
+    assert Observability.provider_content_refusal?(body)
+  end
+
+  test "classifies OpenAI content_filter finish reasons as retryable content refusals" do
+    body = %{
+      "choices" => [
+        %{"finish_reason" => "content_filter", "message" => %{"content" => ""}}
+      ]
+    }
+
+    assert Observability.provider_content_refusal?(body)
+
+    assert %{
+             error_code: "provider_content_refused",
+             retryable: true,
+             provider: "openai",
+             model: "gpt-test"
+           } =
+             Observability.provider_content_refusal_failure(
+               body,
+               %{provider: "openai", model: "gpt-test"},
+               23
+             )
+  end
+
+  test "classifies OpenClaw content-policy 4xx responses as retryable content refusals" do
+    body = %{"error" => %{"code" => "content_policy_violation", "message" => "blocked by content policy"}}
+
+    assert Observability.content_policy_status_failure?(403, body)
+
+    assert %{
+             error_code: "provider_content_refused",
+             retryable: true,
+             provider: "openclaw",
+             runner_kind: "openclaw"
+           } =
+             Observability.provider_status_failure(
+               403,
+               body,
+               nil,
+               %{provider: "openclaw", runner_kind: "openclaw"},
+               31
+             )
+  end
+
+  test "classifies ComputerUse content-policy 4xx responses as retryable content refusals" do
+    body = %{"message" => "request refused by safety policy"}
+
+    assert Observability.content_policy_status_failure?(422, body)
+
+    assert %{
+             error_code: "provider_content_refused",
+             retryable: true,
+             provider: "computer_use",
+             runner_kind: "computer_use"
+           } =
+             Observability.provider_status_failure(
+               422,
+               body,
+               nil,
+               %{provider: "computer_use", runner_kind: "computer_use"},
+               31
+             )
+  end
+
+  test "classifies Codex AppServer refusal-shaped RPC errors as retryable content refusals" do
+    reason =
+      {:response_error,
+       %{
+         "code" => "content_filter",
+         "message" => "model refused the prompt",
+         "data" => %{"type" => "content_policy"}
+       }}
+
+    assert Observability.codex_content_refusal_error?(reason)
+
+    assert %{
+             error_code: "provider_content_refused",
+             retryable: true,
+             provider: "openai_codex",
+             runner_kind: "codex"
+           } =
+             Observability.provider_error_failure(
+               reason,
+               %{provider: "openai_codex", runner_kind: "codex"},
+               44
+             )
+  end
+
   test "emits redacted structured model call lifecycle logs" do
     log =
       capture_log(fn ->
