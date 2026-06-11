@@ -1,4 +1,5 @@
 import { isValidUuid, type RuntimeScope, type WsConnectQuery } from "../ws-types";
+import { resolveBrokerBase } from "../broker";
 
 function normalizeGatewayWsUrl(rawUrl: string): string {
   const base = rawUrl.trim();
@@ -15,6 +16,22 @@ function normalizeGatewayWsUrl(rawUrl: string): string {
   }
 }
 
+function deriveWsUrlFromHttpBase(rawUrl: string): string {
+  const base = rawUrl.trim();
+  if (!base) return "";
+
+  try {
+    const url = new URL(base);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = "/ws";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
 /** Resolve the gateway WebSocket URL for the React app. */
 export function resolveGatewayWsUrl(): string {
   // Explicit override
@@ -26,7 +43,7 @@ export function resolveGatewayWsUrl(): string {
     return "ws://localhost:3100/ws";
   }
 
-  return "";
+  return deriveWsUrlFromHttpBase(resolveBrokerBase());
 }
 
 /**
