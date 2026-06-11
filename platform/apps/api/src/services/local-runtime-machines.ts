@@ -250,6 +250,16 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
     });
   }
 
+  if (!modelAdvertised) {
+    return LocalRuntimeTestDispatchResponseSchema.parse({
+      helperConnected,
+      modelAdvertised: false,
+      dispatchSucceeded: false,
+      error:
+        runtime.lastError ?? runtime.localExecution.lastError ?? "Configured model is not advertised by the helper.",
+    });
+  }
+
   if (runner.kind !== "openai_compatible") {
     return LocalRuntimeTestDispatchResponseSchema.parse({
       helperConnected,

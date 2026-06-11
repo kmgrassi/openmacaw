@@ -7,8 +7,12 @@ vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
 }));
 
-const { deleteLocalRuntimeForWorkspace, listLocalRuntimesForWorkspace, registerLocalRuntimeForWorkspace } =
-  await import("./local-runtime-machines.js");
+const {
+  deleteLocalRuntimeForWorkspace,
+  listLocalRuntimesForWorkspace,
+  registerLocalRuntimeForWorkspace,
+  testLocalRuntimeDispatchForWorkspace,
+} = await import("./local-runtime-machines.js");
 
 describe("registerLocalRuntimeForWorkspace", () => {
   beforeEach(() => {
@@ -553,6 +557,78 @@ describe("listLocalRuntimesForWorkspace", () => {
           ],
         },
       ],
+    });
+  });
+});
+
+describe("testLocalRuntimeDispatchForWorkspace", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("fails before probing when the configured model is no longer advertised", async () => {
+    const workspaceId = "workspace-1";
+    const tables = {
+      routing_rule: [
+        {
+          id: "rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "machine-match",
+          workspace_id: workspaceId,
+          rule_id: "rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+        {
+          id: "endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          user_id: "user-1",
+          display_name: "Kevin's MacBook",
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          last_seen_at: new Date().toISOString(),
+          revoked_at: null,
+        },
+      ],
+      local_runtime_model: [
+        {
+          id: "model-1",
+          machine_id: "machine-1",
+          runner_kind: "local_runtime",
+          model: "llama3.1:8b",
+          provider: "openai_compatible",
+          capabilities: {},
+          last_advertised_at: new Date().toISOString(),
+        },
+      ],
+      agent: [] as Array<Record<string, unknown>>,
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(tables) as never);
+
+    await expect(testLocalRuntimeDispatchForWorkspace(workspaceId, "machine-1")).resolves.toMatchObject({
+      helperConnected: true,
+      modelAdvertised: false,
+      dispatchSucceeded: false,
+      error: "Configured model is not currently advertised by the helper.",
     });
   });
 });

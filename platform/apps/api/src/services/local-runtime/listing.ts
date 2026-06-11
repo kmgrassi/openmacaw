@@ -221,7 +221,10 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     });
     const status = localExecution.status;
     const hasMissingAdvertisedModel =
-      liveModelRowsAvailable && runners.some((runner) => runner.liveModels?.length === 0 && Boolean(runner.model));
+      liveModelRowsAvailable &&
+      runners.some(
+        (runner) => Boolean(runner.model) && !runner.liveModels?.some((model) => model.model === runner.model),
+      );
     const lastError =
       hasMissingAdvertisedModel && status === "online"
         ? "Configured model is not currently advertised by the helper."
