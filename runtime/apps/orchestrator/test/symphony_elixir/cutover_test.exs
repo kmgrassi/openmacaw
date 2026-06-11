@@ -16,6 +16,8 @@ defmodule SymphonyElixir.CutoverTest do
   test "model tier mirror classifies explicit and wildcard entries" do
     assert SymphonyElixir.ModelTiers.tier_of("anthropic", "claude-opus-4-7") == :frontier
     assert SymphonyElixir.ModelTiers.tier_of("openai_compatible", "qwen-2.5") == :local
+    assert SymphonyElixir.ModelTiers.meets_floor?(nil, "local")
+    refute SymphonyElixir.ModelTiers.meets_floor?(nil, "mid")
   end
 
   test "walk returns primary success without trying fallbacks" do
@@ -94,6 +96,27 @@ defmodule SymphonyElixir.CutoverTest do
     assert decision.outcome == "escalated_exhausted"
     assert decision.trigger_error_code == "provider_overloaded"
     assert length(decision.attempts) == 2
+  end
+
+  test "walk reports normal exhaustion when an eligible link failed before a floor skip" do
+    profile =
+      profile(%{
+        "model_tier_floor" => "frontier",
+        "provider" => "openai",
+        "model" => "gpt-4o",
+        "fallbacks" => [
+          %{"provider" => "openai", "model" => "gpt-4o-mini", "credential_ref" => credential("mid")}
+        ]
+      })
+
+    assert {:error, :exhausted, decision} =
+             Cutover.walk(profile, context(), fn _link ->
+               retryable_failure("provider_rate_limited", 429)
+             end)
+
+    assert decision.outcome == "escalated_exhausted"
+    assert [%{reason: "below_model_tier_floor"}] = decision.skipped
+    assert length(decision.attempts) == 1
   end
 
   test "walk reports floor exhaustion when no eligible link meets the floor" do

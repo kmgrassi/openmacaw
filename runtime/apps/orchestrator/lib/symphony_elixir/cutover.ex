@@ -103,8 +103,9 @@ defmodule SymphonyElixir.Cutover do
   end
 
   defp walk_chain([], _floor, _call_fn, state) do
-    outcome = if state.floor_skipped?, do: "escalated_floor", else: "escalated_exhausted"
-    reason = if state.floor_skipped?, do: :floor_exhausted, else: :exhausted
+    floor_only_exhaustion? = state.floor_skipped? and state.attempts == []
+    outcome = if floor_only_exhaustion?, do: "escalated_floor", else: "escalated_exhausted"
+    reason = if floor_only_exhaustion?, do: :floor_exhausted, else: :exhausted
     {:error, reason, decision(state, nil, outcome)}
   end
 

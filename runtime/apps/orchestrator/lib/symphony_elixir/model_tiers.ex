@@ -86,6 +86,8 @@ defmodule SymphonyElixir.ModelTiers do
   @spec meets_floor?(tier() | nil, floor() | String.t() | atom() | nil) :: boolean()
   def meets_floor?(_tier, floor) when floor in [nil, "", :any, "any"], do: true
 
+  def meets_floor?(nil, floor), do: meets_floor?(:local, floor)
+
   def meets_floor?(tier, floor) do
     with tier when tier in [:frontier, :mid, :local] <- normalize_tier(tier),
          floor when floor in [:frontier, :mid, :local] <- normalize_tier(floor) do
