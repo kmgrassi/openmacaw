@@ -27,32 +27,48 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAICompatibleChat do
       {:ok, %Req.Response{status: status, body: body} = provider_response} when status in 200..299 ->
         response = normalize_response(body, request)
 
-        if unsupported_tool_call_shape?(response) do
-          classification = %{
-            error_code: "provider_invalid_request",
-            message: "OpenAI-compatible manager backend returned tool_calls finish_reason without native tool_calls.",
-            provider: "openai_compatible",
-            model: session.model,
-            runner_kind: "manager",
-            status_code: status,
-            provider_status: status,
-            provider_request_id: Observability.provider_request_id(provider_response),
-            duration_ms: duration_since(started_at),
-            attempt: attempt,
-            retry_count: max(attempt - 1, 0),
-            retryable: false
-          }
+        cond do
+          Observability.provider_content_refusal?(body) ->
+            classification =
+              Observability.provider_content_refusal_failure(
+                body,
+                context,
+                duration_since(started_at)
+              )
+              |> Map.put(:status_code, status)
+              |> Map.put(:provider_status, status)
+              |> Map.put(:provider_request_id, Observability.provider_request_id(provider_response))
+              |> Observability.log_provider_failure()
 
-          Observability.log_provider_failure(Map.merge(context, classification))
+            {:error, {:retryable, classification}}
 
-          {:error, {:fatal, Map.put(classification, :error_code, "unsupported_manager_tool_call_format")}}
-        else
-          Observability.log_model_call_completed(context, duration_since(started_at),
-            status_code: status,
-            provider_request_id: Observability.provider_request_id(provider_response)
-          )
+          unsupported_tool_call_shape?(response) ->
+            classification = %{
+              error_code: "provider_invalid_request",
+              message: "OpenAI-compatible manager backend returned tool_calls finish_reason without native tool_calls.",
+              provider: "openai_compatible",
+              model: session.model,
+              runner_kind: "manager",
+              status_code: status,
+              provider_status: status,
+              provider_request_id: Observability.provider_request_id(provider_response),
+              duration_ms: duration_since(started_at),
+              attempt: attempt,
+              retry_count: max(attempt - 1, 0),
+              retryable: false
+            }
 
-          {:ok, response}
+            Observability.log_provider_failure(Map.merge(context, classification))
+
+            {:error, {:fatal, Map.put(classification, :error_code, "unsupported_manager_tool_call_format")}}
+
+          true ->
+            Observability.log_model_call_completed(context, duration_since(started_at),
+              status_code: status,
+              provider_request_id: Observability.provider_request_id(provider_response)
+            )
+
+            {:ok, response}
         end
 
       {:ok, %Req.Response{status: status, body: body} = response} ->
