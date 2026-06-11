@@ -1,95 +1,127 @@
-# Intelligent Cutovers — PR Plan
+# Intelligent Cutovers + Router Agent — PR Plan
 
 PR-level decomposition of the work scoped in
 [`intelligent-cutovers-scope.md`](./intelligent-cutovers-scope.md)
 (platform-side) and its runtime companion
-[`intelligent-cutovers-runtime-scope.md`](https://github.com/kmgrassi/parallel-agent-runtime/blob/main/docs/intelligent-cutovers-runtime-scope.md).
-DB migrations land via
-[`harper-server/docs/vision-gaps-migrations-scope.md`](https://github.com/harper-hq/harper-server/blob/main/docs/vision-gaps-migrations-scope.md)
-(M5, M6, M7).
+[`intelligent-cutovers-runtime-scope.md`](../../../runtime/docs/intelligent-cutovers-runtime-scope.md),
+**extended (2026-06-11) with the router agent** — a scheduled,
+LLM-driven supervisor that tunes the deterministic routing config over
+time.
 
 This doc closes [vision-gap 3.4](../vision-gaps/03-intelligent-routing.md#34-intelligent-cutovers).
 
+> **Note on staleness fixes (2026-06-11):** the original plan predated
+> the monorepo merge. Repository references have been updated:
+> `parallel-agent-platform` → `platform/`, `parallel-agent-runtime` →
+> `runtime/`. DB migrations no longer land in `harper-server` — new
+> OpenMacaw-owned schema changes live in `platform/supabase/migrations/`
+> per platform CLAUDE.md, with reference SQL in
+> `docs/supabase/openmacaw-schema.sql`.
+
 ## Goal
 
-Land the cutover engine + audit + UI through 12 reviewable PRs that
-build on each other in a clear dependency order. Where adjacent PRs
-touch the same files or must merge together to ship value, they're
-bundled per the runtime CLAUDE.md PR-bundling guidance. Where they
-have independent rollout risk or different review surfaces, they
-stay split.
+Two cooperating loops:
 
-The plan covers:
+- **Fast loop (deterministic, in-task).** When a provider call fails
+  with a cutover-eligible error (rate limit, overload, timeout, stream
+  interruption, content refusal), the runtime walks a pre-declared
+  fallback chain mechanically — no LLM in the hot path. This is the
+  original cutover engine (PR1–PR11).
+- **Slow loop (intelligent, scheduled).** A **router agent** — a
+  regular agent created at workspace bootstrap, granted routing tools,
+  and driven by a recurring scheduled task — periodically reads
+  provider-failure history, cutover audit rows, transcripts, and the
+  local-model registry, then **rewrites the deterministic config**:
+  reorders fallback chains, switches an agent's primary to a cheaper
+  local model, disables rules for chronically failing providers. Its
+  optimization criteria are the scheduled task's user-editable
+  `instructions` (e.g. "prefer my local machine for low-stakes tasks;
+  never let the coding agent drop below mid-tier"). Every change it
+  makes is a config write — audited and revertible.
+
+The split keeps LLM judgment out of the failure path (fast, cheap,
+predictable) while still getting adaptive behavior over time. Hard
+constraints — most importantly the **adequacy floor** — are user-owned;
+the router agent can edit chains and primaries but can never lower the
+floor.
+
+The plan covers 15 PRs:
 
 - **Foundation** (registry, DB) — 2 PRs
 - **Platform reads + runtime engine** (no call sites yet) — 2 PRs
 - **Error classification** — 1 PR
 - **Runner integration** (wiring the engine into provider call sites) — 3 PRs
 - **Audit + dashboard** (visibility of cutover decisions) — 3 PRs
-- **Editor UI** — 1 PR
+- **Router agent (slow loop)** — 3 PRs (failure history, routing tools,
+  bootstrap + scheduled task)
+- **Routing policy UI** — 1 PR
 
-## Cross-repo dependency graph
+## Dependency graph
 
 ```
-                       ┌───────────────────────────────┐
-PR1  platform          │  Model-tier registry          │
-                       │  contracts/model-tiers.ts     │
-                       └──────────────┬────────────────┘
-                                      │ unblocks resolver typing
-                                      ▼
-PR2  harper-server     ┌───────────────────────────────┐
-                       │  DDL: provider_cutover + M6/M7│
-                       └──────────────┬────────────────┘
-                                      │ schema sync
-                  ┌───────────────────┴───────────────────┐
-                  ▼                                       ▼
-PR3  platform     PR4  runtime
-   exec profile +    Cutover module +
-   routing reads     ModelTiers mirror
-                  │                                       │
-                  │ profile shape ready                   │ engine ready
-                  └───────────────────┬───────────────────┘
-                                      ▼
-PR5  runtime          ┌───────────────────────────────┐
-                      │  Content-refusal classifier   │
-                      └──────────────┬────────────────┘
-                                     │ all triggers detected
-                                     ▼
-                  ┌───────────────────┴───────────────────┐
-                  ▼                                       ▼
-PR6  runtime       PR7  runtime
-   LlmToolRunner      OpenClaw + ComputerUse + Codex
-                  │                                       │
-                  └───────────────────┬───────────────────┘
-                                      ▼
-PR8  runtime + helper ┌───────────────────────────────┐
-                      │  LocalRelay + protocol codes  │
-                      └──────────────┬────────────────┘
-                                     ▼
-                  ┌───────────────────┴───────────────────┐
-                  ▼                                       ▼
-PR9  platform       PR10 runtime
-   audit repo + GET     audit row writes
-                  │                                       │
-                  └───────────────────┬───────────────────┘
-                                      ▼
-PR11 platform         ┌───────────────────────────────┐
-                      │  WorkItemDetail fallback badge│
-                      └──────────────┬────────────────┘
-                                     ▼
-PR12 platform         ┌───────────────────────────────┐
-                      │  Routing-rule editor: chain + │
-                      │  floor builder                │
-                      └───────────────────────────────┘
+            FAST LOOP                                  SLOW LOOP
+┌───────────────────────────────┐
+│ PR1  platform                 │            ┌───────────────────────────────┐
+│  Model-tier registry          │            │ PR13 runtime + platform       │
+│  contracts/model-tiers.ts     │            │  Provider-failure events →    │
+└──────────────┬────────────────┘            │  event_log + read API         │
+               │                             └──────────────┬────────────────┘
+               ▼                                            │
+┌───────────────────────────────┐                           │
+│ PR2  platform (migrations)    │                           │
+│  provider_cutover + M6/M7     │                           │
+└──────────────┬────────────────┘                           │
+       ┌───────┴────────┐                                   │
+       ▼                ▼                                   │
+PR3  platform      PR4  runtime                             │
+ exec profile +     Cutover module +                        │
+ routing reads      ModelTiers mirror                       │
+       │                │                                   │
+       │   ┌────────────┘                                   │
+       │   ▼                                                │
+       │ PR5  runtime — content-refusal classifier          │
+       │   │                                                │
+       │   ▼                                                │
+       │ PR6  runtime — LlmToolRunner                       │
+       │   ▼                                                │
+       │ PR7  runtime — OpenClaw + ComputerUse + Codex      │
+       │   ▼                                                │
+       │ PR8  runtime + helper — LocalRelay + protocol      │
+       │   ▼                                                │
+       │ PR9  platform — audit repo + GET                   │
+       │ PR10 runtime — audit row writes                    │
+       │   ▼                                                │
+       │ PR11 platform — WorkItemDetail fallback badge      │
+       │                                                    │
+       └──────────────┐                                     │
+                      ▼                                     ▼
+            ┌───────────────────────────────────────────────────┐
+            │ PR14 platform + runtime                           │
+            │  routing_rule.* agent tools + routing_rule_change │
+            │  audit table (needs PR1, PR2, PR3)                │
+            └──────────────────────┬────────────────────────────┘
+                                   ▼
+            ┌───────────────────────────────────────────────────┐
+            │ PR15 platform                                     │
+            │  Router agent bootstrap + scheduled task          │
+            │  (needs PR13 + PR14)                              │
+            └──────────────────────┬────────────────────────────┘
+                                   ▼
+            ┌───────────────────────────────────────────────────┐
+            │ PR12 platform                                     │
+            │  Routing policy UI: floor editor + chain view +   │
+            │  change history (needs PR3, PR9, PR14)            │
+            └───────────────────────────────────────────────────┘
 ```
 
-Boxes that share a row can be reviewed and merged in parallel.
+Boxes that share a row can be reviewed and merged in parallel. PR13 is
+independent of the entire fast loop and can land any time.
 
 ## Suggested PR Sequence
 
 ### PR1: Model-tier registry
 
-Repository: `parallel-agent-platform`
+Area: `platform/`
 
 Scope:
 
@@ -102,11 +134,10 @@ Scope:
 - Extend the schema-sync script
   (`scripts/append-supabase-jsdoc-types.mjs` or a sibling)
   to regenerate the runtime mirror at
-  `apps/orchestrator/lib/symphony_elixir/model_tiers.ex` from
+  `runtime/apps/orchestrator/lib/symphony_elixir/model_tiers.ex` from
   `contracts/model-tiers.ts`. The actual `.ex` file lands in a
   separate runtime PR (PR4) that uses it.
-- No DB change. No behavior change. Purely a registry +
-  generator.
+- No DB change. No behavior change. Purely a registry + generator.
 
 Acceptance:
 
@@ -120,14 +151,15 @@ Acceptance:
 Parallelism:
 
 - Blocks PR3 (the resolver wants `RegisteredProvider` from this
-  file) and PR4 (runtime cutover engine reads tiers).
+  file), PR4 (runtime cutover engine reads tiers), and PR14 (routing
+  tools validate against the registry).
 - Independent of PR2; can land in parallel.
 
 ---
 
 ### PR2: DB schema for cutover (M5 + M6 + M7)
 
-Repository: `harper-server`
+Area: `platform/supabase/migrations/`
 
 Scope:
 
@@ -137,18 +169,18 @@ Scope:
 - M6 migration: create `routing_rule_fallback` join table + add
   `routing_rule.model_tier_floor` column with CHECK constraint.
   Fallback table's `provider` CHECK mirrors `routing_rule.provider`
-  but excludes `bedrock` until PR8 in the adapter-rollout plan
-  (which is the M8 migration in this scope's terminology).
+  but excludes `bedrock` until PR8 in the adapter-rollout plan.
 - M7 migration: drop `routing_rule.next_fallback_rule_id` (replaced
   by the M6 join table per the no-backwards-compat rule).
-- Run `supabase db push --dry-run` and
-  `supabase db push --include-all --dry-run` per harper-server
-  CLAUDE.md.
+- Land as timestamped migration files under
+  `platform/supabase/migrations/` with the matching reference SQL in
+  `docs/supabase/openmacaw-schema.sql`; apply through the documented
+  workflow in `docs/supabase/README.md`.
 
 Acceptance:
 
-- Dry-run migrations apply cleanly on a fresh database with the
-  existing schema as of the most recent harper-server main.
+- Migrations apply cleanly on a fresh database with the existing
+  schema as of the most recent main.
 - RLS policies use canonical helpers (`public.is_workspace_member`,
   `public.current_app_user_id`), not bare `auth.uid()`.
 - No new entries in `routing_rule_fallback.provider` CHECK beyond
@@ -160,19 +192,19 @@ Parallelism:
 
 - Independent of PR1. Can land in parallel.
 - Blocks PR3 (platform code needs the columns to exist before
-  reading them) and PR9 (platform repo needs `provider_cutover`).
+  reading them), PR9 (platform repo needs `provider_cutover`), and
+  PR14 (routing tools write `routing_rule_fallback`).
 - After merge: platform + runtime regenerate types via
-  `pnpm run db:schema:sync` (platform) and
-  `pnpm run supabase:schema:sync` (runtime). Add
-  `provider_cutover` and `routing_rule_fallback` to
-  `BRIDGE_TABLES` in `scripts/append-supabase-jsdoc-types.mjs` in
+  `pnpm run db:schema:sync` (platform) and the runtime schema-sync.
+  Add `provider_cutover` and `routing_rule_fallback` to
+  `BRIDGE_TABLES` in `scripts/append-supabase-jsdoc-types.mjs` on
   the runtime side (lands in PR4).
 
 ---
 
 ### PR3: Platform — execution profile + routing rule reads
 
-Repository: `parallel-agent-platform`
+Area: `platform/`
 
 Scope:
 
@@ -213,7 +245,7 @@ Parallelism:
 
 ### PR4: Runtime — Cutover module + cooldown ETS + ModelTiers mirror
 
-Repository: `parallel-agent-runtime`
+Area: `runtime/`
 
 Scope:
 
@@ -258,7 +290,7 @@ Parallelism:
 
 ### PR5: Runtime — content-refusal classification
 
-Repository: `parallel-agent-runtime`
+Area: `runtime/`
 
 Scope:
 
@@ -297,7 +329,7 @@ Parallelism:
 
 ### PR6: Runtime — wire Cutover into LLM tool runner
 
-Repository: `parallel-agent-runtime`
+Area: `runtime/`
 
 Scope:
 
@@ -335,7 +367,7 @@ Parallelism:
 
 ### PR7: Runtime — wire Cutover into OpenClaw + ComputerUse + Codex
 
-Repository: `parallel-agent-runtime`
+Area: `runtime/`
 
 Scope:
 
@@ -373,8 +405,7 @@ Parallelism:
 
 ### PR8: Runtime + Helper — LocalRelay integration + relay protocol error codes
 
-Repository: `parallel-agent-runtime` + `local-runtime-helper`
-(cross-repo PR pair)
+Area: `runtime/` + `local-runtime-helper/`
 
 Scope:
 
@@ -388,9 +419,9 @@ Scope:
   `apps/orchestrator/lib/symphony_elixir/runner/local_relay.ex`
   parses the new failure-frame field; on failure, builds a
   `%ProviderFailure{}` and delegates to `Cutover.walk/3`.
-- Update relay-protocol doc
-  (`parallel-agent-runtime/docs/local-relay-protocol.md`) with the
-  new failure-frame shape.
+- Update the relay-protocol doc
+  (`runtime/docs/local-relay-protocol.md`) with the new
+  failure-frame shape.
 
 Acceptance:
 
@@ -406,16 +437,15 @@ Acceptance:
 Parallelism:
 
 - Depends on PR7 (consistent integration pattern across runners).
-- Cross-repo coordination: helper PR merges first (no consumer of
-  the new field until runtime parses it); runtime PR follows.
-  Could alternatively land as a single PR per repo opened
-  simultaneously with the helper PR review being a prerequisite.
+- Helper changes merge first (no consumer of the new field until
+  the runtime parses it); runtime changes follow — or land both in
+  one monorepo PR with the helper review as a prerequisite.
 
 ---
 
 ### PR9: Platform — provider_cutover repository + API endpoints
 
-Repository: `parallel-agent-platform`
+Area: `platform/`
 
 Scope:
 
@@ -430,7 +460,7 @@ Scope:
   - `GET /api/work-items/:id/cutovers`
   - `GET /api/workspaces/:workspaceId/cutovers/recent`
 - Tests: round-trip create, filter by work item, filter by recency.
-- No UI yet — that's PR11.
+- No UI yet — that's PR11/PR12.
 
 Acceptance:
 
@@ -444,14 +474,15 @@ Acceptance:
 Parallelism:
 
 - Depends on PR2 (table must exist).
-- Blocks PR11 (the badge consumes this endpoint).
+- Blocks PR11 (the badge consumes this endpoint) and feeds the
+  router agent's read set (PR15 grants a read tool over it).
 - Independent of PR3, PR4, PR5–PR8. Can be reviewed in parallel.
 
 ---
 
 ### PR10: Runtime — cutover audit row writes
 
-Repository: `parallel-agent-runtime`
+Area: `runtime/`
 
 Scope:
 
@@ -459,7 +490,7 @@ Scope:
   `Cutover.Audit.write/1` posts to
   `/api/work-items/:id/cutovers` using the existing best-effort
   persistence pattern from
-  [`best-effort-persistence-logging.md`](https://github.com/kmgrassi/parallel-agent-runtime/blob/main/docs/best-effort-persistence-logging.md).
+  [`best-effort-persistence-logging.md`](../../../runtime/docs/best-effort-persistence-logging.md).
 - Wire `Cutover.walk/3` to emit an audit row at end of walk:
   one row per cutover decision (success or exhausted), with
   `outcome` correctly set to `fallback_succeeded` /
@@ -490,7 +521,7 @@ Parallelism:
 
 ### PR11: Platform — WorkItemDetail "ran on fallback" badge
 
-Repository: `parallel-agent-platform`
+Area: `platform/`
 
 Scope:
 
@@ -518,112 +549,301 @@ Parallelism:
 
 ---
 
-### PR12: Platform — routing rule editor with fallback chain + floor builder
+### PR13: Runtime + Platform — provider-failure event persistence + read API
 
-Repository: `parallel-agent-platform`
+Area: `runtime/` + `platform/`
+
+This is the router agent's primary sensor. Today provider failures
+land only in stdout logs and loose `message.metadata` JSON; the
+`event_log` table exists in the schema
+(`platform/supabase/migrations/20260604133000_openmacaw_initial_schema.sql:194`)
+but nothing writes to it. This PR is a narrow, self-contained slice of
+the broader end-to-end-logging plan
+([`end-to-end-logging-improvement-pr-plan.md`](../../../runtime/docs/end-to-end-logging-improvement-pr-plan.md))
+— coordinate so the two don't diverge on event shape.
 
 Scope:
 
-- Update `apps/web/src/pages/settings/RoutingRules.tsx` (or the
-  current editor location) with:
-  - **Fallback chain builder**: ordered list of
-    `{provider, model, credential}` rows. Add / remove / reorder
-    via drag handle.
-  - **Adequacy floor select**: `any` / `local` / `mid` /
-    `frontier` dropdown.
-  - **Model picker**: dropdown of models filtered by selected
-    provider; populated from `MODEL_TIER_REGISTRY`.
-  - **Credential picker**: reuses
-    `apps/web/src/components/settings/CredentialPicker.tsx`.
-- Editor validations:
-  - Warn if `modelTierFloor: frontier` but the primary is a
-    mid-tier model (e.g. `claude-haiku-4-5`).
-  - Warn if a fallback link references a not-yet-executable
-    provider (link to the adapter-rollout scope).
-- Save flow: POST `/api/workspaces/:id/routing-rules` with the
-  inline `fallbacks` and `modelTierFloor` (the API endpoint maps
-  to `routing_rule_fallback` rows on the backend; that mapping
-  may need a small API-side change here too).
-- Tests: editor renders, save round-trips, validations fire.
+- **Runtime**: extend `Observability.log_provider_failure/…` to also
+  write an `event_log` row (best-effort persistence pattern) with
+  `event_type: "provider_failure"`, `workspace_id`, `agent_id`,
+  `run_id`, and metadata carrying `error_code`, `provider`, `model`,
+  `status_code`, `attempt`, `runner_kind`.
+- **Platform**: add
+  `apps/api/src/repositories/provider-failures.ts` and routes:
+  - `GET /api/workspaces/:workspaceId/provider-failures/recent`
+    (cursor-paginated raw rows)
+  - `GET /api/workspaces/:workspaceId/provider-failures/summary?since=…`
+    (counts grouped by `(provider, model, error_code)`)
+- Zod contracts in `contracts/provider-failures.ts` (camelCase).
+- Tests: a classified failure round-trips into `event_log` and out
+  through both endpoints.
 
 Acceptance:
 
-- A user can build a 3-link fallback chain through the UI and
-  save it; reading the routing rule back via the API shows the
-  same chain.
-- Setting `modelTierFloor: frontier` on a rule whose primary is
-  mid-tier triggers a warning, not a blocking error (warnings
-  are advisory — the cutover engine enforces the floor at walk
-  time).
-- The model picker shows models filtered to the selected
-  provider, drawing from the registry.
+- A simulated 429 in any runner produces one queryable
+  `provider_failure` event row.
+- The summary endpoint groups correctly and respects workspace RLS.
+- Event-write failures never fail the agent turn (best-effort).
+- `pnpm -C apps/api run validate` and `mix test` pass.
 
 Parallelism:
 
-- Depends on PR3 (resolver emits the new fields).
+- Independent of the entire fast loop (PR1–PR11) — can land first.
+- Blocks PR15 (the router agent's instructions assume this data
+  exists) and feeds PR14's `provider_failure.list` tool.
+
+---
+
+### PR14: Platform + Runtime — routing tools for agents + change audit
+
+Area: `platform/` + `runtime/`
+
+Gives agents a safe, audited tool surface over routing config, per
+the tool CRUD conventions
+([`tool-crud-conventions.md`](../reference/tool-crud-conventions.md)) —
+contracts, API routes/services, runtime tool registry +
+implementation, platform tool catalog, grant defaults, restricted
+allowlists, tests, and prompts all land in this PR series.
+
+Scope:
+
+- **Migration** (`platform/supabase/migrations/`): create
+  `routing_rule_change` audit table — `id`, `workspace_id`,
+  `routing_rule_id`, `actor_agent_id`, `change_kind`
+  (`primary_model` | `fallback_chain` | `enabled`), `old_provider` /
+  `old_model` / `new_provider` / `new_model` (nullable), `reason`
+  (required text — the agent's stated justification), `created_at`.
+  Typed columns, not jsonb, per the project rule. Workspace-scoped
+  RLS.
+- **New tools** (snake_case CRUD shape):
+  - `routing_rule.list` / `routing_rule.read` — current rules with
+    fallback chains and floors, resolved per agent.
+  - `routing_rule.update` — set primary `{provider, model,
+    credentialRef}` and/or replace the ordered `fallbacks` array.
+    **Hard guardrails enforced server-side, not by prompt:** cannot
+    modify `model_tier_floor` (user-owned); every link must resolve
+    in `MODEL_TIER_REGISTRY` (fail closed, same rule as PR3); every
+    write requires `reason` and produces a `routing_rule_change`
+    row. The agent MAY update its own routing rule (see OQ-RA-1 —
+    self-rerouting is intended, e.g. moving itself to a newly
+    capable local model), but a **no-self-brick validation** rejects
+    any update that would leave the acting agent's own rule disabled
+    or with zero resolvable links.
+  - `provider_failure.list` — reads the PR13 summary/recent
+    endpoints.
+  - `local_model.list` — reads `local_runtime_machine` +
+    `local_runtime_model` (machine status, advertised models) so the
+    agent knows what is actually available on the user's machines.
+  - `provider_cutover.list` — reads PR9's recent-cutovers endpoint.
+- **Tool policy template**: add a `router` template bundling the
+  five tools above plus the existing `scheduled_task.read`.
+- Runtime: register implementations in `tool_registry.ex` (same
+  pattern as `scheduled_task/tools.ex`).
+- Tests: guardrail matrix (floor change rejected, unknown model
+  rejected, missing reason rejected, self-brick update rejected,
+  self-reroute to a valid chain accepted, happy-path update writes
+  the audit row).
+
+Acceptance:
+
+- An agent granted the `router` template can read failures, models,
+  cutovers, and rules, and update a rule's primary + chain.
+- An attempted `model_tier_floor` change via the tool returns a
+  structured error and writes nothing.
+- Every successful mutation has a matching `routing_rule_change`
+  row with the actor agent id and reason.
+- Cross-repo enum drift check and `pnpm -C apps/api run validate`
+  pass.
+
+Parallelism:
+
+- Depends on PR1 (registry validation), PR2 (`routing_rule_fallback`
+  table), PR3 (resolver emits chains the tools read/write).
+- Depends on PR13 only for the `provider_failure.list` tool — if
+  sequencing demands, that one tool can ship inside PR13 instead.
+- Blocks PR15 (bootstrap grants these tools) and PR12 (change
+  history panel reads `routing_rule_change`).
+
+---
+
+### PR15: Platform — router agent bootstrap + scheduled task
+
+Area: `platform/`
+
+Makes the router agent a default per-workspace agent, the same way
+Planning / Coding / Manager are bootstrapped today — and fixes the
+"seed per workspace including future workspaces" gap that the
+distillation migration seed has (it only covered workspaces existing
+at migration time).
+
+Scope:
+
+- Add `apps/api/src/services/setup/store/router-agent.ts` with
+  `ensureWorkspaceRouterAgent()` — deterministic agent id (same
+  derivation pattern as `manager-agent.ts`), `agent_type: "router"`,
+  name "Router Agent", tool policy from the PR14 `router` template.
+- Call it from `listSetupAuthState()` in
+  `apps/api/src/services/setup/default-agents.ts` alongside the
+  existing ensures. Because this path runs on every login, existing
+  workspaces get the router agent on their next `GET /api/auth/state`
+  — no backfill migration needed.
+- Ensure (idempotently, keyed on `metadata.kind =
+  "router_optimization"`) a recurring scheduled task targeting the
+  router agent — default twice daily, `{ kind: "every", interval:
+  12, unit: "hour" }`, delivery `scheduled_agent_message`. The task's
+  `instructions` are the **user-editable optimization criteria**,
+  seeded with a default template along the lines of: review provider
+  failures, cutover outcomes, and local-model availability since the
+  last run; rewrite fallback chains and primaries to maximize task
+  success first, then prefer cheaper/local models where the floor
+  allows; explain every change via the tool's `reason` field; change
+  nothing if the data doesn't justify it. The ensure must not
+  overwrite user edits to `instructions` or `schedule` — only create
+  when missing.
+- The router agent runs on the workspace's configured execution
+  profile like any other agent (no hardcoded model, per platform
+  CLAUDE.md).
+- Tests: fresh-workspace bootstrap creates agent + task; second call
+  is a no-op; user-edited instructions survive re-ensure.
+
+Acceptance:
+
+- A new signup ends up with four default agents — Planning, Coding,
+  Manager, Router — and one `router_optimization` scheduled task.
+- An existing workspace gains both on next `GET /api/auth/state`.
+- Editing the task's instructions in the UI persists across
+  subsequent logins.
+- A manual `run-now` of the task produces a router-agent run that
+  reads via the PR14 tools (verified against a stubbed history).
+
+Parallelism:
+
+- Depends on PR14 (tools + template) and PR13 (failure data worth
+  reading).
+- Blocks nothing — PR12 benefits from real `routing_rule_change`
+  rows but doesn't require them.
+
+---
+
+### PR12: Platform — routing policy UI: floor editor + chain view + change history
+
+Area: `platform/`
+
+Re-scoped from the original "full chain builder" — the router agent
+is now the primary author of fallback chains, so the UI's job shifts
+to **owning the floor, seeing the current policy, and reviewing what
+the router agent changed**, with manual override as the escape hatch.
+
+Scope:
+
+- Update the routing-rule editor surface
+  (`apps/web/src/pages/settings/…`) with:
+  - **Adequacy floor select**: `any` / `local` / `mid` / `frontier`.
+    This is the user-owned control the router agent cannot touch.
+  - **Chain view**: the current primary + ordered fallback chain per
+    agent, read from the resolver (PR3 fields), with tier badges
+    from `MODEL_TIER_REGISTRY`. Manual edit (add / remove / reorder)
+    stays available as an override; provenance label shows whether
+    the current chain was last written by the user or the router
+    agent.
+  - **Change history panel**: `routing_rule_change` rows (PR14) —
+    who (user / router agent), what, when, and the stated reason.
+    Link each entry to related `provider_cutover` rows where
+    relevant.
+  - **Model picker** filtered by provider, populated from
+    `MODEL_TIER_REGISTRY`; **credential picker** reuses
+    `apps/web/src/components/settings/CredentialPicker.tsx`.
+- Editor validations:
+  - Warn if `modelTierFloor: frontier` but the primary is mid-tier.
+  - Warn if a link references a not-yet-executable provider (link to
+    the adapter-rollout scope).
+- React Query integration; tests for render, save round-trip,
+  validations, and history rendering with 0/1/N change rows.
+
+Acceptance:
+
+- A user can set the floor and see/override the current chain; the
+  read-back matches what the API resolves.
+- The history panel shows router-agent changes with reasons.
+- Floor warnings are advisory, not blocking (the cutover engine
+  enforces the floor at walk time).
+
+Parallelism:
+
+- Depends on PR3 (resolver fields), PR9 (cutover read endpoint),
+  PR14 (`routing_rule_change` table).
 - Independent of PR11 — both touch web UI but different surfaces.
-- Largest single PR in this plan (~600 lines); consider splitting
-  the chain builder and the model picker if review velocity
-  matters.
 
 ## Cross-PR Guardrails
 
 - **No `routing_rule.next_fallback_rule_id` references** anywhere in
-  platform or runtime code after PR2 lands. Grep in CI on
-  parallel-agent-platform and parallel-agent-runtime for any
-  references; fail if found.
-- **No new uses of jsonb for cutover state** — the `fallbacks`
-  data lives in the `routing_rule_fallback` table; the audit lives
-  in `provider_cutover`. If a future PR is tempted to add a
-  `cutover_*` column with jsonb shape, push back per the project
-  rule against jsonb for fields the application validates.
+  platform or runtime code after PR2 lands. Grep in CI; fail if
+  found.
+- **No new uses of jsonb for cutover or routing-change state** — the
+  `fallbacks` data lives in the `routing_rule_fallback` table; the
+  cutover audit lives in `provider_cutover`; router-agent changes
+  live in `routing_rule_change` with typed columns. Push back on any
+  jsonb-shaped alternative per the project rule.
+- **The adequacy floor is user-owned.** Enforced in two independent
+  places: the cutover walker skips below-floor links at run time
+  (PR4), and the `routing_rule.update` tool rejects floor mutations
+  at write time (PR14). The router agent's prompt also says so, but
+  the prompt is not the enforcement mechanism.
+- **Router-agent writes are always audited.** `routing_rule.update`
+  requires a `reason` and writes `routing_rule_change`
+  unconditionally — there is no unaudited mutation path exposed to
+  agents.
+- **Self-rerouting is allowed; self-bricking is not.** The router
+  agent may rewrite its own routing rule (OQ-RA-1), but
+  `routing_rule.update` rejects any update that would leave the
+  acting agent's own rule disabled or with zero resolvable links.
+  Its runtime resilience comes from the fast loop — its own rule
+  carries a fallback chain like any agent's.
 - **Bridge-table list**: when adding `provider_cutover` and
   `routing_rule_fallback` to `BRIDGE_TABLES` (PR4), include a
   smoke test that confirms the runtime's `SupabaseSchema` module
-  loads them at startup. Otherwise the
-  `function_clause` runtime crashes (runtime CLAUDE.md "Database
-  Schema Sync — REQUIRED") catch this only at boot.
+  loads them at startup (runtime CLAUDE.md "Database Schema Sync —
+  REQUIRED").
 - **Cross-repo enum drift check** runs on every platform PR. New
   providers added to the cutover registry but not to the
   `routing_rule.provider` CHECK (or vice versa) fail CI.
 - **OQ-CR-1 placeholder**: the `Attention.escalate/3` placeholder
   introduced in PR6 will be replaced by the real implementation
   when the
-  [policy-trust-dial-runtime-scope](https://github.com/kmgrassi/parallel-agent-runtime/blob/main/docs/policy-trust-dial-runtime-scope.md)
+  [policy-trust-dial-runtime-scope](../../../runtime/docs/policy-trust-dial-runtime-scope.md)
   R-2 phase lands. PR6 should mark the placeholder with a
-  `# TODO(4.6): replace with Attention.escalate` comment so the
-  follow-up PR is easy to find.
+  `# TODO(4.6): replace with Attention.escalate` comment.
 - **Provider adapter dependency**: the cutover audit's
   `skipped_no_adapter` outcome surfaces when a fallback link
   references a provider whose execution adapter has not shipped
-  (Gemini, Mistral, etc. before the
-  [provider-execution-adapter-rollout](./provider-execution-adapter-rollout-scope.md)
-  PRs land). PR10's tests should cover this outcome explicitly
-  so we don't regress when adapters do land and start exercising
-  these chains.
+  (see
+  [provider-execution-adapter-rollout](./provider-execution-adapter-rollout-scope.md)).
+  PR10's tests should cover this outcome explicitly. The PR14 tool
+  should likewise warn (not reject) when the router agent adds a
+  link for an adapter-less provider.
 
 ## First Slice Recommendation
 
-Land **PR1 (registry)** and **PR2 (DB schema)** in parallel as the
-foundation. Both are small, independent, and unblock the rest of
-the plan.
+Land **PR1 (registry)**, **PR2 (DB schema)**, and **PR13
+(failure-event persistence)** in parallel as the foundation — PR13 has
+no dependencies and starts accumulating the history the router agent
+will need from day one.
 
-Then land **PR3 (platform reads)** and **PR4 (runtime engine + mirror)**
-in parallel. PR3 is a contract + repo change; PR4 is the runtime
-GenServer + cooldown.
+Then **PR3 (platform reads)** and **PR4 (runtime engine + mirror)** in
+parallel. The first user-visible fast-loop behavior is **PR6** (LLM
+tool runner walks a chain on a real 429).
 
-The first slice that actually changes user-visible behavior is
-**PR6 (wire Cutover into LLM tool runner)** — that's when a
-fallback chain starts mattering for real agent turns. Aim for PR1–PR6
-in the first 2-week iteration. Audit + UI (PR9–PR12) can fast-follow
-once the engine is live.
+The first slow-loop slice is **PR14 + PR15** — at that point a new
+workspace has a Router Agent that wakes daily, reads real failure
+history, and tunes the chains the fast loop executes. Aim for PR1–PR6 +
+PR13 in the first iteration; PR14/PR15 in the second; audit + UI
+(PR9–PR12) fast-follow.
 
 ## Open Questions
 
-These reference the platform scope's OQ-CU-* and the runtime scope's
-OQ-CR-* lists; nothing new added here. The PR plan does not pre-empt
-those decisions — each PR lands with the tentative answer noted in
-the scope docs, and a follow-up PR amends if needed.
+Fast-loop OQs reference the platform scope's OQ-CU-* and the runtime
+scope's OQ-CR-* lists; router-agent OQs are new (OQ-RA-*).
 
 - **OQ-CR-1** (Attention.escalate placeholder) — resolved by the
   policy-trust-dial PR plan, not this one. PR6 ships the
@@ -632,7 +852,34 @@ the scope docs, and a follow-up PR amends if needed.
   ships per-orchestrator. Revisit if Redis-backed cooldown becomes
   necessary.
 - **OQ-CU-3** (cost tracking on cutover) — out of scope here; defer
-  to OQ-04.
+  to OQ-04. Note the router agent would benefit directly from
+  per-call cost data when weighing "cheaper local model" decisions;
+  revisit priority once PR15 is live.
 - **OQ-CU-5** (wildcard registry entries) — PR1 ships the wildcard
   pattern for `openai_compatible`. Other providers must list
   models explicitly.
+- **OQ-RA-1** (can the router agent reroute itself) — **DECIDED
+  2026-06-11: yes.** Self-rerouting is intended behavior — e.g. when
+  a local model becomes capable enough, the router agent moves its
+  own rule to the cheaper model. The failure mode this raised ("its
+  provider is down so it can't run to fix itself") is handled by the
+  fast loop, not by a write restriction: the router agent's own rule
+  carries a fallback chain like any agent's, so the deterministic
+  cutover walk keeps it runnable when its primary provider fails.
+  The remaining guardrail is narrow: the `routing_rule.update` tool
+  rejects a self-update that would leave the agent's own rule
+  disabled or with zero resolvable links (no self-bricking, enforced
+  in PR14). If its entire chain still exhausts, that escalates to
+  the attention path like any other exhaustion.
+- **OQ-RA-2** (apply vs propose) — **DECIDED 2026-06-11:
+  auto-apply, no user approval step.** Changes are audited
+  (`routing_rule_change` with reasons) and revertible, and the floor
+  is enforced server-side. If the
+  [policy-trust-dial-scope](./policy-trust-dial-scope.md) later
+  wants to offer propose-for-approval as an opt-in, that's a
+  follow-up — not part of this plan.
+- **OQ-RA-3** (cadence) — **DECIDED 2026-06-11: twice daily**
+  (every 12 hours). A failure-triggered wake (e.g. N failures within
+  an hour schedules an immediate run via `scheduled_task.run_now`)
+  is a natural follow-up once PR13's event stream exists; out of
+  scope for this plan.
