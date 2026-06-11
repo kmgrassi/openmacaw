@@ -2,6 +2,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { AgentLocalRuntimeAssignResponseSchema } from "../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../http.js";
 import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
+import { findStoredAgentRowById } from "../repositories/agents.js";
 import { getRoutingRuleLocalEndpointUrl } from "../repositories/routing-rules.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { updateAgentRuntimeProfileForAuthenticatedUser } from "./agent-runtime-profile.js";
@@ -9,6 +10,14 @@ import {
   LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX,
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
 } from "./local-runtime/routing-metadata.js";
+
+async function assertAgentAccessForWorkspace(input: { accessToken: string; agentId: string; workspaceId: string }) {
+  const agent = await findStoredAgentRowById(input.accessToken, input.agentId);
+  if (!agent || agent.workspace_id !== input.workspaceId) {
+    throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
+  }
+  return agent;
+}
 
 type LocalRuntimeRuleColumnQuery = {
   eq(column: string, value: string): LocalRuntimeRuleColumnQuery;
@@ -35,6 +44,12 @@ export async function assignLocalModelToAgent(input: {
     userId: string;
   };
 }) {
+  await assertAgentAccessForWorkspace({
+    accessToken: input.auth.accessToken,
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+  });
+
   const supabase = getServiceRoleSupabase();
 
   const { data: rule, error: ruleError } = await supabase

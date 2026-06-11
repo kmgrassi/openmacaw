@@ -11,13 +11,7 @@ vi.mock("../supabase-client.js", () => ({
 
 type MockTables = Parameters<typeof createMockSupabaseClient>[0];
 
-function mockSupabase(
-  serviceRoleDb: MockTables,
-  userScopedDb: MockTables = {
-    gateway_config: [],
-    gateway_config_versions: [],
-  },
-) {
+function mockSupabase(serviceRoleDb: MockTables, userScopedDb: MockTables = serviceRoleDb) {
   vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(serviceRoleDb) as never);
   vi.mocked(getUserScopedSupabase).mockReturnValue(createMockSupabaseClient(userScopedDb) as never);
 }
@@ -202,13 +196,19 @@ describe("local runtime route assignments", () => {
       agent: [
         {
           id: "planning-agent-1",
+          name: "Planning",
           workspace_id: workspaceId,
           type: "planning",
+          model_settings: {},
+          tool_policy: {},
         },
         {
           id: "coding-agent-1",
+          name: "Coding",
           workspace_id: workspaceId,
           type: "coding",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };
@@ -267,12 +267,15 @@ describe("local runtime route assignments", () => {
       agent: [
         {
           id: "coding-agent-1",
+          name: "Coding",
           workspace_id: workspaceId,
           type: "coding",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    mockSupabase(db);
 
     const response = await fetch(`${baseUrl}/api/agents/coding-agent-1/assign-local-model?workspaceId=${workspaceId}`, {
       method: "POST",
@@ -371,8 +374,11 @@ describe("local runtime route assignments", () => {
       agent: [
         {
           id: "planning-agent-1",
+          name: "Planning",
           workspace_id: workspaceId,
           type: "planning",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };
@@ -457,8 +463,11 @@ describe("local runtime route assignments", () => {
       agent: [
         {
           id: "planning-agent-1",
+          name: "Planning",
           workspace_id: workspaceId,
           type: "planning",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };

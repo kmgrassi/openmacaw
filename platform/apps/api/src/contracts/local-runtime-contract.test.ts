@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AgentLocalRuntimeAssignRequestSchema,
   LocalModelProbeRequestSchema,
   LocalRuntimeRegistrationRequestSchema,
 } from "../../../../contracts/local-runtime.js";
+import { agentAssignLocalModelRoute } from "../../../../contracts/routes.js";
 
 describe("local runtime contract", () => {
   it("rejects local model providers outside the execution provider enum", () => {
@@ -129,5 +131,20 @@ describe("local runtime contract", () => {
         model: "qwen3-coder:30b",
       }).success,
     ).toBe(false);
+  });
+
+  it("defines the canonical agent local model assignment request", () => {
+    const parsed = AgentLocalRuntimeAssignRequestSchema.parse({
+      machineId: "machine-1",
+      localRuntimeId: "local-rule-1",
+    });
+
+    expect(parsed).toEqual({
+      machineId: "machine-1",
+      localRuntimeId: "local-rule-1",
+    });
+    expect(agentAssignLocalModelRoute("agent-1", "workspace-1")).toBe(
+      "/api/agents/agent-1/assign-local-model?workspaceId=workspace-1",
+    );
   });
 });

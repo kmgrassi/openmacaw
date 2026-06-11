@@ -26,8 +26,6 @@ export function LocalRuntimesSection() {
     probingRunnerId,
     registration,
     removingId,
-    savingBindings,
-    selectedRunnerByAgent,
     testDispatchResults,
     testingMachineId,
     wizardState,
@@ -35,8 +33,6 @@ export function LocalRuntimesSection() {
     handleProbeRunner,
     handleTestDispatch,
     handleRemove,
-    handleSaveBindings,
-    toggleAgent,
     loadRuntimes,
     setConfigResult,
   } = useLocalRuntimesPage();
@@ -147,10 +143,6 @@ export function LocalRuntimesSection() {
             agents={agents}
             assignedRunnerByAgent={assignedRunnerByAgent}
             runtime={currentRuntime}
-            selectedRunnerByAgent={selectedRunnerByAgent}
-            saving={savingBindings}
-            onToggleAgent={toggleAgent}
-            onSave={() => void handleSaveBindings()}
           />
         )}
 

@@ -1,5 +1,5 @@
 import {
-  localRuntimeAssignRunnerRoute,
+  agentAssignLocalModelRoute,
   localRuntimeConfigRoute,
   localRuntimeEventsRoute,
   localRuntimeProbeRoute,
@@ -8,7 +8,6 @@ import {
   localRuntimeRoute,
   localRuntimeRunnerProbeRoute,
   localRuntimeTestDispatchRoute,
-  localRuntimeUnassignRunnerRoute,
 } from "../../../../contracts/routes";
 import { workspaceScopedFetch } from "./workspace-scoped-fetch";
 
@@ -144,6 +143,11 @@ export type LocalModelProbeResponse = {
   error: string | null;
 };
 
+export type AssignLocalModelInput = {
+  machineId: string;
+  localRuntimeId: string;
+};
+
 export type LocalRuntimeEvent = {
   id: string;
   machineId: string;
@@ -176,13 +180,10 @@ export type LocalRuntimeTestDispatchResponse = {
   error: LocalRuntimeTestDispatchError | null;
 };
 
-export type AssignLocalRuntimeInput = {
-  agentId: string;
-};
-
 export type AssignLocalRuntimeResponse = {
   routingRuleId: string;
   agentId: string;
+  machineId: string;
   model: string;
 };
 
@@ -197,8 +198,6 @@ export const LOCAL_RUNTIME_ROUTES = {
   events: localRuntimeEventsRoute,
   testDispatch: localRuntimeTestDispatchRoute,
   rotateToken: localRuntimeRotateTokenRoute,
-  assignRunner: localRuntimeAssignRunnerRoute,
-  unassignRunner: localRuntimeUnassignRunnerRoute,
 } as const;
 
 // ── API functions ──────────────────────────────────────────────────────
@@ -371,14 +370,14 @@ export async function rotateLocalRuntimeToken(
   return (await response.json()) as LocalRuntimeConfigResponse;
 }
 
-export async function assignLocalRuntimeRunnerToAgent(
+export async function assignLocalModelToAgent(
   workspaceId: string,
-  runnerId: string,
-  input: AssignLocalRuntimeInput,
+  agentId: string,
+  input: AssignLocalModelInput,
 ): Promise<AssignLocalRuntimeResponse> {
   const response = await workspaceScopedFetch(
     workspaceId,
-    LOCAL_RUNTIME_ROUTES.assignRunner(runnerId),
+    agentAssignLocalModelRoute(agentId),
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -388,28 +387,8 @@ export async function assignLocalRuntimeRunnerToAgent(
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
-      `Failed to assign local runtime (${response.status})${body ? `: ${body}` : ""}`,
+      `Failed to assign local model (${response.status})${body ? `: ${body}` : ""}`,
     );
   }
   return (await response.json()) as AssignLocalRuntimeResponse;
-}
-
-export async function unassignLocalRuntimeRunnerFromAgent(
-  workspaceId: string,
-  runnerId: string,
-  agentId: string,
-): Promise<void> {
-  const response = await workspaceScopedFetch(
-    workspaceId,
-    LOCAL_RUNTIME_ROUTES.unassignRunner(runnerId, agentId),
-    {
-      method: "DELETE",
-    },
-  );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to unassign local runtime (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
 }
