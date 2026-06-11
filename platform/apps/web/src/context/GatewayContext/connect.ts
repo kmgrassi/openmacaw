@@ -155,6 +155,10 @@ export async function initializeWebSocket({
   }
   ensureCurrentConnection();
   const wsUrl = withGatewayRuntimeScope(baseWsUrl, resolvedScope);
+  if (!wsUrl.trim()) {
+    setStatus("error");
+    throw new Error("Gateway websocket URL is not configured");
+  }
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
