@@ -81,7 +81,44 @@ with router_tools(slug, name, description, parameters) as (
       'routing_rule.update',
       'Update routing rule',
       'Update a routing rule primary model and enabled state. A non-empty reason is required and every successful write creates a routing_rule_change row.',
-      '{"type":"object","required":["routingRuleId","reason"],"properties":{"routingRuleId":{"type":"string","format":"uuid"},"provider":{"type":"string"},"model":{"type":"string"},"credentialRef":{"type":"object","properties":{"type":{"type":"string","enum":["credential_id","alias"]},"value":{"type":"string"}}},"fallbacks":{"type":"array","items":{"type":"object","required":["provider","model"],"properties":{"provider":{"type":"string"},"model":{"type":"string"},"credentialRef":{"type":"object","properties":{"type":{"type":"string","enum":["credential_id","alias"]},"value":{"type":"string"}}}}},"enabled":{"type":"boolean"},"reason":{"type":"string","minLength":1}}}'::jsonb
+      $${
+        "type": "object",
+        "required": ["routingRuleId", "reason"],
+        "properties": {
+          "routingRuleId": { "type": "string", "format": "uuid" },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "credentialRef": {
+            "type": "object",
+            "required": ["type", "value"],
+            "properties": {
+              "type": { "type": "string", "enum": ["credential_id", "alias"] },
+              "value": { "type": "string" }
+            }
+          },
+          "fallbacks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["provider", "model"],
+              "properties": {
+                "provider": { "type": "string" },
+                "model": { "type": "string" },
+                "credentialRef": {
+                  "type": "object",
+                  "required": ["type", "value"],
+                  "properties": {
+                    "type": { "type": "string", "enum": ["credential_id", "alias"] },
+                    "value": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "enabled": { "type": "boolean" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }$$::jsonb
     ),
     (
       'provider_failure.list',
@@ -134,7 +171,44 @@ with router_tools(slug, name, description, parameters) as (
       'routing_rule.update',
       'Update routing rule',
       'Update a routing rule primary model and enabled state. A non-empty reason is required and every successful write creates a routing_rule_change row.',
-      '{"type":"object","required":["routingRuleId","reason"],"properties":{"routingRuleId":{"type":"string","format":"uuid"},"provider":{"type":"string"},"model":{"type":"string"},"credentialRef":{"type":"object","properties":{"type":{"type":"string","enum":["credential_id","alias"]},"value":{"type":"string"}}},"fallbacks":{"type":"array","items":{"type":"object","required":["provider","model"],"properties":{"provider":{"type":"string"},"model":{"type":"string"},"credentialRef":{"type":"object","properties":{"type":{"type":"string","enum":["credential_id","alias"]},"value":{"type":"string"}}}}},"enabled":{"type":"boolean"},"reason":{"type":"string","minLength":1}}}'::jsonb
+      $${
+        "type": "object",
+        "required": ["routingRuleId", "reason"],
+        "properties": {
+          "routingRuleId": { "type": "string", "format": "uuid" },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "credentialRef": {
+            "type": "object",
+            "required": ["type", "value"],
+            "properties": {
+              "type": { "type": "string", "enum": ["credential_id", "alias"] },
+              "value": { "type": "string" }
+            }
+          },
+          "fallbacks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["provider", "model"],
+              "properties": {
+                "provider": { "type": "string" },
+                "model": { "type": "string" },
+                "credentialRef": {
+                  "type": "object",
+                  "required": ["type", "value"],
+                  "properties": {
+                    "type": { "type": "string", "enum": ["credential_id", "alias"] },
+                    "value": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "enabled": { "type": "boolean" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }$$::jsonb
     ),
     (
       'provider_failure.list',
