@@ -21,6 +21,7 @@
     "logs": "cat .run-logs/api.log && echo '---' && cat .run-logs/web.log",
     "logs:summary": "node scripts/logs-summary.mjs",
     "check:cross-repo-enums": "node scripts/check-cross-repo-enums.mjs",
+    "model-tiers:generate-runtime": "node scripts/generate-runtime-model-tiers.mjs",
     "agent:test-seed": "pnpm -C apps/api exec tsx scripts/agent-test-state.ts seed",
     "agent:test-reset": "pnpm -C apps/api exec tsx scripts/agent-test-state.ts reset",
     "smoke:agent-tool-call": "node scripts/smoke-agent-tool-call.mjs",
