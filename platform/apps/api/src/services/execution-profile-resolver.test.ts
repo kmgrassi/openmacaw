@@ -92,9 +92,9 @@ function setupMockDatabase(overrides: Partial<Record<string, Array<Record<string
         runner_kind: "llm_tool_runner",
         provider: "anthropic",
         model: "claude-sonnet-4-5",
+        model_tier_floor: "any",
         credential_id: null,
         credential_alias: "default-anthropic",
-        next_fallback_rule_id: null,
       },
       {
         id: "66666666-6666-4666-8666-666666666666",
@@ -104,11 +104,12 @@ function setupMockDatabase(overrides: Partial<Record<string, Array<Record<string
         runner_kind: "codex",
         provider: "openai_codex",
         model: "gpt-5.1-codex",
+        model_tier_floor: "any",
         credential_id: codexCredentialId,
         credential_alias: null,
-        next_fallback_rule_id: null,
       },
     ],
+    routing_rule_fallback: [],
     routing_rule_match: [
       {
         rule_id: "55555555-5555-4555-8555-555555555555",
@@ -180,6 +181,9 @@ function setupMockDatabase(overrides: Partial<Record<string, Array<Record<string
     if (query.order === "priority.desc,created_at.asc") {
       rows.sort((left, right) => Number(right.priority) - Number(left.priority));
     }
+    if (query.order === "position.asc") {
+      rows.sort((left, right) => Number(left.position) - Number(right.position));
+    }
 
     const limit = query.limit ? Number(query.limit) : null;
     return (limit ? rows.slice(0, limit) : rows) as never;
@@ -214,6 +218,8 @@ describe("resolveExecutionProfile", () => {
       credentialAlias: "default-anthropic",
       fallbackUsed: false,
     });
+    expect(planning.profile?.fallbacks).toEqual([]);
+    expect(planning.profile?.modelTierFloor).toBe("any");
 
     expect(coding.profile).toMatchObject({
       agentId: codingAgentId,
@@ -240,7 +246,6 @@ describe("resolveExecutionProfile", () => {
           model: "sonnet",
           credential_id: null,
           credential_alias: "default-anthropic",
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -293,7 +298,6 @@ describe("resolveExecutionProfile", () => {
           model: "anthropic/claude-sonnet-4-6",
           credential_id: anthropicCredentialId,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -458,7 +462,7 @@ describe("resolveExecutionProfile", () => {
     });
   });
 
-  it("evaluates explicit fallback rules before returning an unresolved profile", async () => {
+  it("emits explicit fallback rows in position order on the resolved profile", async () => {
     setupMockDatabase({
       routing_rule: [
         {
@@ -469,21 +473,29 @@ describe("resolveExecutionProfile", () => {
           runner_kind: "llm_tool_runner",
           provider: "anthropic",
           model: "claude-sonnet-4-5",
+          model_tier_floor: "frontier",
           credential_id: null,
           credential_alias: "missing-alias",
-          next_fallback_rule_id: "88888888-8888-4888-8888-888888888888",
         },
+      ],
+      routing_rule_fallback: [
         {
-          id: "88888888-8888-4888-8888-888888888888",
+          routing_rule_id: "77777777-7777-4777-8777-777777777777",
           workspace_id: workspaceId,
-          priority: 1,
-          enabled: true,
-          runner_kind: "codex",
-          provider: "openai_codex",
-          model: "gpt-5.1-codex",
+          position: 2,
+          provider: "openai",
+          model: "gpt-4o",
           credential_id: codexCredentialId,
           credential_alias: null,
-          next_fallback_rule_id: null,
+        },
+        {
+          routing_rule_id: "77777777-7777-4777-8777-777777777777",
+          workspace_id: workspaceId,
+          position: 1,
+          provider: "anthropic",
+          model: "claude-opus-4-7",
+          credential_id: null,
+          credential_alias: "default-anthropic",
         },
       ],
       routing_rule_match: [
@@ -495,18 +507,73 @@ describe("resolveExecutionProfile", () => {
           value: "planning",
         },
       ],
-      credential_alias: [],
     });
 
     const resolution = await resolveExecutionProfile({ agentId: planningAgentId });
 
     expect(resolution.profile).toMatchObject({
-      runnerKind: "codex",
-      provider: "openai_codex",
-      credentialRef: { type: "credential_id", value: codexCredentialId },
+      runnerKind: "llm_tool_runner",
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      modelTierFloor: "frontier",
+      fallbacks: [
+        {
+          provider: "anthropic",
+          model: "claude-opus-4-7",
+          credentialRef: { type: "credential_id", value: anthropicCredentialId },
+        },
+        {
+          provider: "openai",
+          model: "gpt-4o",
+          credentialRef: { type: "credential_id", value: codexCredentialId },
+        },
+      ],
     });
-    expect(resolution.missing).toEqual([]);
-    expect(resolution.source.routingRuleId).toBe("88888888-8888-4888-8888-888888888888");
+    expect(resolution.missing).toEqual(["credential"]);
+    expect(resolution.source.routingRuleId).toBe("77777777-7777-4777-8777-777777777777");
+  });
+
+  it("fails closed when a fallback row references an unknown model tier", async () => {
+    setupMockDatabase({
+      routing_rule: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          workspace_id: workspaceId,
+          priority: 100,
+          enabled: true,
+          runner_kind: "llm_tool_runner",
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          model_tier_floor: "any",
+          credential_id: anthropicCredentialId,
+          credential_alias: null,
+        },
+      ],
+      routing_rule_fallback: [
+        {
+          routing_rule_id: "77777777-7777-4777-8777-777777777777",
+          workspace_id: workspaceId,
+          position: 1,
+          provider: "anthropic",
+          model: "not-in-registry",
+          credential_id: anthropicCredentialId,
+          credential_alias: null,
+        },
+      ],
+      routing_rule_match: [
+        {
+          rule_id: "77777777-7777-4777-8777-777777777777",
+          workspace_id: workspaceId,
+          kind: "agent_type",
+          key: null,
+          value: "planning",
+        },
+      ],
+    });
+
+    await expect(resolveExecutionProfile({ agentId: planningAgentId })).rejects.toMatchObject({
+      code: "unknown_model_in_fallback_chain",
+    });
   });
 
   it("resolves local model coding routing rules without credential drift", async () => {
@@ -522,7 +589,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen2.5-coder:latest",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -577,7 +643,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen2.5-coder:latest",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
         {
           id: "34343434-3434-4434-8434-343434343434",
@@ -589,7 +654,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen3-coder:30b",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -641,7 +705,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen3-coder:30b",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
         {
           id: "34343434-3434-4434-8434-343434343434",
@@ -653,7 +716,6 @@ describe("resolveExecutionProfile", () => {
           model: "claude-sonnet-4-5",
           credential_id: anthropicCredentialId,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -717,7 +779,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen2.5-coder:7b",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -773,7 +834,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen3-coder:30b",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -831,7 +891,6 @@ describe("resolveExecutionProfile", () => {
           model: "qwen3-coder:30b",
           credential_id: null,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [
@@ -880,7 +939,6 @@ describe("resolveExecutionProfile", () => {
           model: null,
           credential_id: null,
           credential_alias: "missing-alias",
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [],
@@ -916,7 +974,6 @@ describe("resolveExecutionProfile", () => {
           model: "gpt-5.1-codex",
           credential_id: codexCredentialId,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
         {
           id: "99999999-9999-4999-8999-999999999999",
@@ -928,7 +985,6 @@ describe("resolveExecutionProfile", () => {
           model: "claude-sonnet-4-5",
           credential_id: anthropicCredentialId,
           credential_alias: null,
-          next_fallback_rule_id: null,
         },
       ],
       routing_rule_match: [

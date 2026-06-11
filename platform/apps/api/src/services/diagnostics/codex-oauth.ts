@@ -107,12 +107,13 @@ export function buildCodexOAuthDiagnostic(input: {
 }): CodexOAuthDiagnostic {
   const profile = input.executionProfile.profile;
   const applicable =
-    (input.requestedRunnerKind === "codex" || profile?.runnerKind === "codex") &&
-    profile?.provider === "openai_codex";
+    (input.requestedRunnerKind === "codex" || profile?.runnerKind === "codex") && profile?.provider === "openai_codex";
   const credentialRowId = credentialRefValue(profile?.credentialRef);
   const credential =
     input.credentials.find((candidate) => candidate.credentialRowId === credentialRowId) ??
-    input.credentials.find((candidate) => candidate.provider === "openai_codex" && candidate.launchableKind === "codex") ??
+    input.credentials.find(
+      (candidate) => candidate.provider === "openai_codex" && candidate.launchableKind === "codex",
+    ) ??
     null;
 
   const expiresAt = credential?.oauth?.expiresAt ?? null;

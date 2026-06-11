@@ -9,11 +9,12 @@ import {
   getAgent,
   getAgentCredentialId,
   getAgentGatewayConfig,
+  getRoutingRuleFallbacks,
   getRoutingRulesWithFallback,
   getRuleMatchesWithFallback,
   hasScopedCredential,
 } from "./execution-profile-resolver/queries.js";
-import { resolveRoutingRuleChain, selectRoutingRule } from "./execution-profile-resolver/routing-rules.js";
+import { resolveRoutingRule, selectRoutingRule } from "./execution-profile-resolver/routing-rules.js";
 import type { ResolveExecutionProfileInput } from "./execution-profile-resolver/types.js";
 
 export type { ResolveExecutionProfileInput } from "./execution-profile-resolver/types.js";
@@ -33,6 +34,11 @@ export async function resolveExecutionProfile(
     rules.map((rule) => rule.id),
     input.accessToken,
   );
+  const fallbacks = await getRoutingRuleFallbacks(
+    agent.workspace_id,
+    rules.map((rule) => rule.id),
+    input.accessToken,
+  );
   if (process.env.NODE_ENV === "development") {
     console.log(`[resolver] agent=${input.agentId} rules=${rules.length} matches=${matches.length}`);
     for (const m of matches) {
@@ -46,15 +52,15 @@ export async function resolveExecutionProfile(
   }
 
   if (rule) {
-    const resolution = await resolveRoutingRuleChain({
+    const resolution = await resolveRoutingRule({
       agent,
       role,
       rule,
-      rulesById: new Map(rules.map((candidate) => [candidate.id, candidate])),
       matches,
+      fallbacks,
       accessToken: input.accessToken,
     });
-    if (resolution) return resolution;
+    return resolution;
   }
 
   const gatewayConfig = await getAgentGatewayConfig(input);
