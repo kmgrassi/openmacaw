@@ -115,6 +115,7 @@ type CompleteFrame struct {
 type ErrorFrame struct {
 	CorrelatedFrame
 	Code      string       `json:"code"`
+	ErrorCode string       `json:"error_code,omitempty"`
 	Message   string       `json:"message"`
 	Retryable bool         `json:"retryable,omitempty"`
 	Detail    *ErrorDetail `json:"detail,omitempty"`

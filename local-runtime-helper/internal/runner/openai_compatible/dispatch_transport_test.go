@@ -219,6 +219,34 @@ func TestDispatchMapsProviderErrors(t *testing.T) {
 	}
 }
 
+func TestDispatchMapsContentFilterFinishReason(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "local-model"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages: []runner.ChatMessage{{Role: "user", Content: "hi"}},
+	}, func(event any) error { return nil })
+	if err == nil {
+		t.Fatal("Dispatch() error = nil")
+	}
+	var runnerErr *runner.Error
+	if !errors.As(err, &runnerErr) {
+		t.Fatalf("error type = %T, want *runner.Error", err)
+	}
+	if runnerErr.Code != "provider_content_refused" {
+		t.Fatalf("code = %q, want provider_content_refused", runnerErr.Code)
+	}
+}
+
 func TestDispatchDoesNotMapPlainNotFoundToModelNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

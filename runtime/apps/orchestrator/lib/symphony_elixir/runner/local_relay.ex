@@ -26,7 +26,15 @@ defmodule SymphonyElixir.Runner.LocalRelay do
     "capability_missing" => :capability_missing,
     "context_overflow" => :context_overflow,
     "generation_timeout" => :generation_timeout,
-    "local_runner_protocol_error" => :local_runner_protocol_error
+    "local_runner_protocol_error" => :local_runner_protocol_error,
+    "provider_rate_limited" => :provider_rate_limited,
+    "provider_timeout" => :provider_timeout,
+    "provider_overloaded" => :provider_overloaded,
+    "provider_stream_interrupted" => :provider_stream_interrupted,
+    "provider_content_refused" => :provider_content_refused,
+    "provider_unknown" => :provider_unknown,
+    "provider_invalid_request" => :provider_invalid_request,
+    "provider_auth_failed" => :provider_auth_failed
   }
 
   @impl true

@@ -254,8 +254,9 @@ func (d *Dispatcher) runDispatch(ctx context.Context, frame *protocol.DispatchFr
 		var runnerErr *runner.Error
 		if errors.As(err, &runnerErr) {
 			code = string(runnerErr.Kind)
+			errorCode := providerErrorCode(runnerErr)
 			log.Error("dispatch failed", "error", err)
-			_ = d.sendTerminalErrorWithDetail(ctx, frame.CorrelationID, code, err.Error(), protocolErrorDetail(runnerErr.Detail))
+			_ = d.sendTerminalErrorWithDetail(ctx, frame.CorrelationID, code, errorCode, err.Error(), providerErrorRetryable(errorCode), protocolErrorDetail(runnerErr.Detail))
 			return
 		}
 		log.Error("dispatch failed", "error", err)
@@ -339,14 +340,16 @@ func (d *Dispatcher) sendError(ctx context.Context, correlationID, code, message
 }
 
 func (d *Dispatcher) sendTerminalError(ctx context.Context, correlationID, code, message string) error {
-	return d.sendTerminalErrorWithDetail(ctx, correlationID, code, message, nil)
+	return d.sendTerminalErrorWithDetail(ctx, correlationID, code, "", message, false, nil)
 }
 
-func (d *Dispatcher) sendTerminalErrorWithDetail(ctx context.Context, correlationID, code, message string, detail *protocol.ErrorDetail) error {
+func (d *Dispatcher) sendTerminalErrorWithDetail(ctx context.Context, correlationID, code, errorCode, message string, retryable bool, detail *protocol.ErrorDetail) error {
 	return d.sendTerminalFrame(ctx, &protocol.ErrorFrame{
 		CorrelatedFrame: correlated(protocol.TypeError, correlationID),
 		Code:            code,
+		ErrorCode:       errorCode,
 		Message:         message,
+		Retryable:       retryable,
 		Detail:          detail,
 	})
 }
@@ -362,6 +365,74 @@ func protocolErrorDetail(detail runner.ErrorDetail) *protocol.ErrorDetail {
 		RawMessage: detail.RawMessage,
 	}
 }
+
+func providerErrorCode(err *runner.Error) string {
+	if err == nil {
+		return ""
+	}
+	if strings.HasPrefix(err.Code, "provider_") {
+		return err.Code
+	}
+	text := strings.ToLower(strings.Join([]string{err.Code, err.Message, err.Detail.RawMessage}, " "))
+	if contentRefused(text) {
+		return "provider_content_refused"
+	}
+
+	switch err.StatusCode {
+	case httpStatusTooManyRequests:
+		return "provider_rate_limited"
+	case httpStatusRequestTimeout:
+		return "provider_timeout"
+	case httpStatusUnauthorized, httpStatusForbidden:
+		return "provider_auth_failed"
+	case httpStatusBadRequest, httpStatusUnprocessableEntity:
+		return "provider_invalid_request"
+	case httpStatusInternalServerError, httpStatusBadGateway, httpStatusServiceUnavailable, httpStatusGatewayTimeout:
+		return "provider_overloaded"
+	}
+
+	switch err.Kind {
+	case runner.ErrorKindEndpointUnavailable:
+		return "provider_timeout"
+	case runner.ErrorKindModelNotFound:
+		return ""
+	case runner.ErrorKindProvider:
+		return "provider_unknown"
+	default:
+		return ""
+	}
+}
+
+func contentRefused(text string) bool {
+	return strings.Contains(text, "content_filter") ||
+		strings.Contains(text, "content filter") ||
+		strings.Contains(text, "content policy") ||
+		strings.Contains(text, "policy_violation") ||
+		strings.Contains(text, "refusal") ||
+		strings.Contains(text, "refused")
+}
+
+func providerErrorRetryable(code string) bool {
+	switch code {
+	case "provider_rate_limited", "provider_timeout", "provider_overloaded", "provider_stream_interrupted", "provider_content_refused", "provider_unknown":
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	httpStatusBadRequest          = 400
+	httpStatusUnauthorized        = 401
+	httpStatusForbidden           = 403
+	httpStatusRequestTimeout      = 408
+	httpStatusUnprocessableEntity = 422
+	httpStatusTooManyRequests     = 429
+	httpStatusInternalServerError = 500
+	httpStatusBadGateway          = 502
+	httpStatusServiceUnavailable  = 503
+	httpStatusGatewayTimeout      = 504
+)
 
 func (d *Dispatcher) sendTerminalFrame(ctx context.Context, frame protocol.Frame) error {
 	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.terminalSendTimeout)

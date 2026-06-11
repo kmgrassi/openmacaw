@@ -495,6 +495,13 @@ func parseStream(ctx context.Context, body io.Reader, definitionsByName map[stri
 		}
 		return nil
 	}
+	if isContentRefusalFinishReason(finishReason) {
+		return &runner.Error{
+			Kind:    runner.ErrorKindProvider,
+			Message: "openai_compatible provider refused the request due to content policy",
+			Code:    "provider_content_refused",
+		}
+	}
 	if err := emit(runner.CompleteEvent{Kind: "complete", FinishReason: finishReason}); err != nil {
 		return &runner.Error{Kind: runner.ErrorKindEmitFailed, Message: err.Error()}
 	}
@@ -559,8 +566,19 @@ func parseCompletion(body io.Reader, definitionsByName map[string]runner.ToolDef
 		}
 		return nil
 	}
+	if isContentRefusalFinishReason(finishReason) {
+		return &runner.Error{
+			Kind:    runner.ErrorKindProvider,
+			Message: "openai_compatible provider refused the request due to content policy",
+			Code:    "provider_content_refused",
+		}
+	}
 	if err := emit(runner.CompleteEvent{Kind: "complete", FinishReason: finishReason}); err != nil {
 		return &runner.Error{Kind: runner.ErrorKindEmitFailed, Message: err.Error()}
 	}
 	return nil
+}
+
+func isContentRefusalFinishReason(finishReason string) bool {
+	return strings.EqualFold(strings.TrimSpace(finishReason), "content_filter")
 }
