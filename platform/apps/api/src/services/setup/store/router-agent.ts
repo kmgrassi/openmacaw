@@ -1,11 +1,9 @@
-import { randomUUID } from "node:crypto";
-
 import { ApiRouteError } from "../../../http.js";
 import { getServiceRoleSupabase, getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
 import { computeScheduledTaskNextRunAt } from "../../scheduled-tasks.js";
 import { asJson, routerToolPolicyDefaults } from "../builders.js";
 import { getSetupDefaults } from "../defaults.js";
-import { workspaceRouterAgentId } from "../identity.js";
+import { workspaceRouterAgentId, workspaceRouterOptimizationTaskId } from "../identity.js";
 import type { AgentRow } from "../types.js";
 import { DEFAULT_AGENT_SELECT } from "./selects.js";
 
@@ -90,6 +88,10 @@ function metadataKind(metadata: unknown) {
   return typeof kind === "string" ? kind : null;
 }
 
+function isDuplicateKeyError(error: unknown) {
+  return (error as { code?: unknown } | null)?.code === "23505";
+}
+
 export async function ensureRouterOptimizationScheduledTask(input: {
   workspaceId: string;
   userId: string;
@@ -111,7 +113,7 @@ export async function ensureRouterOptimizationScheduledTask(input: {
   const now = input.now ?? new Date();
   const timestamp = now.toISOString();
   const { error } = await supabase.from("scheduled_task").insert({
-    id: randomUUID(),
+    id: workspaceRouterOptimizationTaskId(input.workspaceId, input.agentId),
     workspace_id: input.workspaceId,
     agent_id: input.agentId,
     source_work_item_id: null,
@@ -130,6 +132,7 @@ export async function ensureRouterOptimizationScheduledTask(input: {
     updated_at: timestamp,
   });
 
+  if (isDuplicateKeyError(error)) return;
   if (error) throw normalizeSupabaseError("scheduled_task insert", error);
 }
 

@@ -103,6 +103,8 @@ defmodule SymphonyElixir.Runner do
       "codex" -> SymphonyElixir.Runner.Codex
       "claude_code" -> SymphonyElixir.Runner.ClaudeCode
       "manager" -> SymphonyElixir.Runner.LlmToolRunner
+      "router" -> SymphonyElixir.Runner.LlmToolRunner
+      "llm_tool_runner" -> SymphonyElixir.Runner.LlmToolRunner
       "planner" -> SymphonyElixir.Runner.Planner
       "openclaw" -> SymphonyElixir.Runner.OpenClaw
       "openclaw_ws" -> SymphonyElixir.Runner.OpenClawWS
