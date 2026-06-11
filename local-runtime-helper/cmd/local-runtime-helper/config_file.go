@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const defaultConfigPath = "~/.config/harper/runtime.toml"
+const defaultConfigPath = "~/.config/openmacaw/runtime.toml"
 
 type runtimeConfig struct {
 	Path    string

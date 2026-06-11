@@ -253,6 +253,7 @@ create table if not exists public.local_runtime_machine (
   last_seen_at timestamptz,
   revoked_at timestamptz,
   runner_kinds text[] default '{}',
+  status text not null default 'offline' check (status in ('online', 'offline', 'degraded')),
   updated_at timestamptz default now(),
   user_id uuid not null,
   workspace_id uuid not null,
@@ -260,9 +261,34 @@ create table if not exists public.local_runtime_machine (
 );
 comment on table public.local_runtime_machine is 'OpenMacaw runtime bridge table.';
 
+create table if not exists public.local_runtime_model (
+  capabilities jsonb not null default '{}'::jsonb,
+  id uuid default gen_random_uuid(),
+  last_advertised_at timestamptz not null default now(),
+  machine_id uuid not null references public.local_runtime_machine(id) on delete cascade,
+  model text not null,
+  provider text,
+  runner_kind text not null,
+  primary key (id),
+  unique (machine_id, runner_kind, model)
+);
+comment on table public.local_runtime_model is 'OpenMacaw runtime bridge table.';
+
+create table if not exists public.local_runtime_event (
+  created_at timestamptz not null default now(),
+  detail jsonb not null default '{}'::jsonb,
+  id uuid default gen_random_uuid(),
+  kind text not null,
+  machine_id uuid not null references public.local_runtime_machine(id) on delete cascade,
+  workspace_id uuid not null,
+  primary key (id)
+);
+comment on table public.local_runtime_event is 'OpenMacaw runtime bridge table.';
+
 create table if not exists public.local_runtime_token (
   created_at timestamptz default now(),
   created_by_user_id uuid,
+  expires_at timestamptz,
   id uuid default gen_random_uuid(),
   last_used_at timestamptz,
   machine_id uuid not null,
@@ -393,6 +419,9 @@ create table if not exists public.routing_rule (
   hit_count integer,
   id uuid default gen_random_uuid(),
   last_hit_at timestamptz,
+  last_error text,
+  last_error_at timestamptz,
+  machine_id uuid references public.local_runtime_machine(id) on delete set null,
   model text,
   name text not null,
   next_fallback_rule_id uuid,
@@ -915,7 +944,10 @@ create index if not exists credential_workspace_idx on public.credential (worksp
 create index if not exists engine_instance_agent_status_idx on public.engine_instance (agent_id, status);
 create unique index if not exists gateway_config_scope_key on public.gateway_config (scope_type, scope_id);
 create index if not exists local_runtime_machine_workspace_idx on public.local_runtime_machine (workspace_id);
+create index if not exists local_runtime_model_machine_idx on public.local_runtime_model (machine_id);
+create index if not exists local_runtime_event_machine_created_idx on public.local_runtime_event (machine_id, created_at desc);
 create index if not exists local_runtime_token_machine_idx on public.local_runtime_token (machine_id);
+create index if not exists routing_rule_machine_idx on public.routing_rule (machine_id);
 create index if not exists memory_items_workspace_idx on public.memory_items (workspace_id);
 create index if not exists message_thread_created_idx on public.message (thread_id, created_at);
 create index if not exists plan_workspace_idx on public.plan (workspace_id);

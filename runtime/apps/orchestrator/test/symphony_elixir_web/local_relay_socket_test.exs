@@ -33,7 +33,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
   setup do
     original_hashes = Application.get_env(:symphony_elixir, :local_relay_token_hashes)
     original_validator = Application.get_env(:symphony_elixir, :local_relay_token_validator)
-    original_recorder = Application.get_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder)
+
+    original_recorder =
+      Application.get_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder)
 
     Application.put_env(
       :symphony_elixir,
@@ -69,7 +71,12 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
         else: Application.delete_env(:symphony_elixir, :local_relay_token_validator)
 
       if original_recorder,
-        do: Application.put_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder, original_recorder),
+        do:
+          Application.put_env(
+            :symphony_elixir,
+            :local_relay_machine_heartbeat_recorder,
+            original_recorder
+          ),
         else: Application.delete_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder)
 
       Registry.reset!()
@@ -138,7 +145,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
       metadata: %{"battery" => "ac"}
     }
 
-    {:push, [{:text, reply_json}], _state} = LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+    {:push, [{:text, reply_json}], _state} =
+      LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+
     reply = Jason.decode!(reply_json)
 
     assert reply["type"] == "heartbeat_ack"
@@ -151,6 +160,54 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
 
     assert {:ok, helper} = Registry.lookup(@workspace_id, "openai_compatible")
     assert helper.metadata == %{"battery" => "ac"}
+  end
+
+  test "cancel_ack after registration is accepted and ignored" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+
+    frame = %{
+      type: "cancel_ack",
+      correlation_id: "dispatch-1",
+      outcome: "cancelled"
+    }
+
+    assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(frame), []}, state)
+    assert {:ok, helper} = Registry.lookup(@workspace_id, "openai_compatible")
+    assert helper.machine_id == @machine_id
+  end
+
+  test "structured error detail is routed unchanged" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+
+    correlation_id = "dispatch-with-detail"
+
+    assert {:ok, ^correlation_id, _helper} =
+             Registry.dispatch(
+               @workspace_id,
+               "openai_compatible",
+               %{"type" => "dispatch", "correlation_id" => correlation_id},
+               caller: self()
+             )
+
+    frame = %{
+      type: "error",
+      correlation_id: correlation_id,
+      code: "endpoint_unreachable",
+      message: "local endpoint refused connection",
+      retryable: true,
+      detail: %{
+        "dial_error" => "connect: connection refused",
+        "endpoint" => "http://127.0.0.1:11434/v1/chat/completions"
+      }
+    }
+
+    assert {:ok, _state} = LocalRelaySocket.handle_in({encode(frame), []}, state)
+
+    assert_receive {:local_relay_error, ^correlation_id, routed}
+    assert routed["detail"]["dial_error"] == "connect: connection refused"
+    assert routed["detail"]["endpoint"] == "http://127.0.0.1:11434/v1/chat/completions"
   end
 
   test "missed heartbeat closes socket and removes relay presence" do
@@ -196,7 +253,8 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     {:ok, state} = init_socket()
     frame = register_frame(%{runner_kinds: "openai_compatible"})
 
-    assert {:push, [{:text, reply_json}], ^state} = LocalRelaySocket.handle_in({encode(frame), []}, state)
+    assert {:push, [{:text, reply_json}], ^state} =
+             LocalRelaySocket.handle_in({encode(frame), []}, state)
 
     reply = Jason.decode!(reply_json)
     assert reply["type"] == "error"
@@ -226,11 +284,28 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     {:ok, state} = init_socket()
 
     {:push, [{:text, reply_json}], ^state} =
-      LocalRelaySocket.handle_in({encode(%{type: "heartbeat", correlation_id: "hb-early"}), []}, state)
+      LocalRelaySocket.handle_in(
+        {encode(%{type: "heartbeat", correlation_id: "hb-early"}), []},
+        state
+      )
 
     reply = Jason.decode!(reply_json)
     assert reply["error"]["code"] == "local_runner_protocol_error"
     assert reply["error"]["message"] == "register before heartbeat"
+  end
+
+  test "cancel ack before register is rejected as protocol error" do
+    {:ok, state} = init_socket()
+
+    {:push, [{:text, reply_json}], ^state} =
+      LocalRelaySocket.handle_in(
+        {encode(%{type: "cancel_ack", correlation_id: "cancel-early", outcome: "cancelled"}), []},
+        state
+      )
+
+    reply = Jason.decode!(reply_json)
+    assert reply["error"]["code"] == "local_runner_protocol_error"
+    assert reply["error"]["message"] == "cancel_ack is not supported before relay dispatch"
   end
 
   test "malformed JSON is rejected with an encodable protocol error" do
@@ -256,7 +331,10 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
 
   test "stale terminate does not unregister or record disconnect for a newer reconnect" do
     {:ok, stale_state} = init_socket()
-    {:push, [_reply], stale_state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, stale_state)
+
+    {:push, [_reply], stale_state} =
+      LocalRelaySocket.handle_in({encode(register_frame()), []}, stale_state)
+
     assert_received {:record_register, @machine_id, _fields}
 
     new_pid = spawn(fn -> Process.sleep(:infinity) end)
@@ -311,7 +389,8 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     {:ok, state} = init_socket()
     frame = register_frame(%{runner_kinds: [], runners: []})
 
-    assert {:push, [{:text, reply_json}], ^state} = LocalRelaySocket.handle_in({encode(frame), []}, state)
+    assert {:push, [{:text, reply_json}], ^state} =
+             LocalRelaySocket.handle_in({encode(frame), []}, state)
 
     reply = Jason.decode!(reply_json)
     assert reply["type"] == "error"
@@ -332,7 +411,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
       "prompt" => "read"
     }
 
-    assert {:ok, "corr-1", _helper} = Registry.dispatch(@workspace_id, "openai_compatible", dispatch, caller: self())
+    assert {:ok, "corr-1", _helper} =
+             Registry.dispatch(@workspace_id, "openai_compatible", dispatch, caller: self())
+
     assert_receive {:local_relay_dispatch, ^dispatch}
 
     assert {:push, [{:text, dispatch_json}], ^state} =
@@ -340,14 +421,21 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
 
     # schema_version is required by the Go helper's DecodeFrame; without it the
     # helper rejects (and silently drops) every frame the orchestrator pushes.
-    assert %{"type" => "dispatch", "protocol" => 1, "schema_version" => "1", "correlation_id" => "corr-1"} =
+    assert %{
+             "type" => "dispatch",
+             "protocol" => 1,
+             "schema_version" => "1",
+             "correlation_id" => "corr-1"
+           } =
              Jason.decode!(dispatch_json)
 
     tool_request = %{
       "type" => "tool_call_request",
       "protocol" => 1,
       "correlation_id" => "corr-1",
-      "tool_calls" => [%{"id" => "call-1", "name" => "shell.exec", "arguments" => %{"argv" => ["pwd"]}}]
+      "tool_calls" => [
+        %{"id" => "call-1", "name" => "shell.exec", "arguments" => %{"argv" => ["pwd"]}}
+      ]
     }
 
     assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(tool_request), []}, state)
@@ -366,9 +454,13 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert_receive {:local_relay_tool_execution_request, ^execution_request}
 
     assert {:push, [{:text, execution_json}], ^state} =
-             LocalRelaySocket.handle_info({:local_relay_tool_execution_request, execution_request}, state)
+             LocalRelaySocket.handle_info(
+               {:local_relay_tool_execution_request, execution_request},
+               state
+             )
 
-    assert %{"type" => "tool_execution_request", "protocol" => 1, "tool_call_id" => "call-1"} = Jason.decode!(execution_json)
+    assert %{"type" => "tool_execution_request", "protocol" => 1, "tool_call_id" => "call-1"} =
+             Jason.decode!(execution_json)
 
     tool_result = %{
       "type" => "tool_call_result",
@@ -382,13 +474,50 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(tool_result), []}, state)
     assert_receive {:local_relay_tool_call_result, "corr-1", ^tool_result}
 
-    follow_up = %{"type" => "dispatch", "protocol" => 1, "correlation_id" => "corr-1", "tool_outputs" => []}
+    follow_up = %{
+      "type" => "dispatch",
+      "protocol" => 1,
+      "correlation_id" => "corr-1",
+      "tool_outputs" => []
+    }
+
     assert :ok = Registry.send_frame("corr-1", follow_up)
     assert_receive {:local_relay_frame, ^follow_up}
 
-    complete = %{"type" => "complete", "protocol" => 1, "correlation_id" => "corr-1", "output_text" => "done"}
+    complete = %{
+      "type" => "complete",
+      "protocol" => 1,
+      "correlation_id" => "corr-1",
+      "output_text" => "done"
+    }
+
     assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(complete), []}, state)
     assert_receive {:local_relay_complete, "corr-1", ^complete}
+  end
+
+  test "routes cancel_ack frames without treating them as unknown" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+
+    dispatch = %{
+      "type" => "dispatch",
+      "protocol" => 1,
+      "correlation_id" => "corr-cancel",
+      "prompt" => "cancel"
+    }
+
+    assert {:ok, "corr-cancel", _helper} = Registry.dispatch(@workspace_id, "openai_compatible", dispatch, caller: self())
+    assert_receive {:local_relay_dispatch, ^dispatch}
+
+    cancel_ack = %{
+      "type" => "cancel_ack",
+      "protocol" => 1,
+      "correlation_id" => "corr-cancel",
+      "outcome" => "canceled"
+    }
+
+    assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(cancel_ack), []}, state)
+    assert_receive {:local_relay_cancel_ack, "corr-cancel", ^cancel_ack}
   end
 
   test "register writes machine presence with helper_version + advertised runner kinds" do
@@ -463,7 +592,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
       runner_kinds: "openai_compatible"
     }
 
-    {:push, [{:text, reply_json}], _state} = LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+    {:push, [{:text, reply_json}], _state} =
+      LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+
     reply = Jason.decode!(reply_json)
 
     assert reply["error"]["code"] == "local_runner_protocol_error"
@@ -484,7 +615,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
       runners: [%{runner_kind: "", provider: "ollama"}]
     }
 
-    {:push, [{:text, reply_json}], _state} = LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+    {:push, [{:text, reply_json}], _state} =
+      LocalRelaySocket.handle_in({encode(heartbeat), []}, state)
+
     reply = Jason.decode!(reply_json)
 
     assert reply["error"]["code"] == "local_runner_protocol_error"

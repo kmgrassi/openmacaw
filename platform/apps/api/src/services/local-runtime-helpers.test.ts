@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getServiceRoleSupabase, getUserScopedSupabase } from "../supabase-client.js";
-import { assignLocalModelByMachineToAgent } from "./local-runtime-helpers.js";
+import { assignLocalModelToAgent } from "./local-runtime-helpers.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
@@ -14,7 +14,7 @@ describe("local runtime helper assignments", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects machine/model assignment before service-role writes when the agent is outside the requested workspace", async () => {
+  it("rejects assignment before service-role writes when the agent is outside the requested workspace", async () => {
     const serviceTables = {
       routing_rule: [
         {
@@ -55,12 +55,11 @@ describe("local runtime helper assignments", () => {
     vi.mocked(getUserScopedSupabase).mockReturnValue(createMockSupabaseClient(userTables) as never);
 
     await expect(
-      assignLocalModelByMachineToAgent({
+      assignLocalModelToAgent({
         workspaceId: "workspace-1",
+        localRuntimeId: "local-rule-1",
         machineId: "machine-1",
         agentId: "agent-1",
-        model: "qwen3-coder:30b",
-        provider: "openai_compatible",
         auth: {
           accessToken: "test-token",
           userId: "user-1",

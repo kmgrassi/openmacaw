@@ -124,13 +124,13 @@ export type LocalModelProbeResponse = {
 
 export type AssignLocalModelInput = {
   machineId: string;
-  model: string;
-  provider?: string;
+  localRuntimeId: string;
 };
 
 export type AssignLocalRuntimeResponse = {
   routingRuleId: string;
   agentId: string;
+  machineId: string;
   model: string;
 };
 

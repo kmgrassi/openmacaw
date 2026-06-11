@@ -13,6 +13,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	percent := 42.5
 	now := time.Date(2026, 4, 26, 12, 34, 56, 0, time.UTC)
+	status := 503
 
 	tests := []struct {
 		name  string
@@ -104,6 +105,12 @@ func TestFrameRoundTrip(t *testing.T) {
 				Code:      "runner_unavailable",
 				Message:   "local endpoint refused connection",
 				Retryable: true,
+				Detail: &ErrorDetail{
+					HTTPStatus: &status,
+					DialError:  "connect: connection refused",
+					Endpoint:   "http://127.0.0.1:11434/v1/chat/completions",
+					RawMessage: "dial tcp 127.0.0.1:11434: connect: connection refused",
+				},
 			},
 		},
 		{
@@ -112,6 +119,14 @@ func TestFrameRoundTrip(t *testing.T) {
 				BaseFrame: BaseFrame{Type: TypeHeartbeat, SchemaVersion: SchemaVersion},
 				SentAt:    now,
 				Version:   "0.2.0-test",
+				Runners: []RunnerRegistration{{
+					RunnerKind: "openai_compatible",
+					Provider:   "openai_compatible",
+					Model:      "qwen2.5-coder:latest",
+					Capabilities: map[string]any{
+						"tool_calls": true,
+					},
+				}},
 			},
 		},
 		{
@@ -122,6 +137,16 @@ func TestFrameRoundTrip(t *testing.T) {
 					CorrelationID: "dispatch_123",
 				},
 				Reason: "user requested cancellation",
+			},
+		},
+		{
+			name: "cancel_ack",
+			frame: &CancelAckFrame{
+				CorrelatedFrame: CorrelatedFrame{
+					BaseFrame:     BaseFrame{Type: TypeCancelAck, SchemaVersion: SchemaVersion},
+					CorrelationID: "dispatch_123",
+				},
+				Outcome: "canceled",
 			},
 		},
 		{

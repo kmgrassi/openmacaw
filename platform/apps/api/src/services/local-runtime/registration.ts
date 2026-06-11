@@ -1,4 +1,5 @@
 import type { TablesInsert } from "@kmgrassi/supabase-schema";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 import type { LocalRuntimeRunnerInput, LocalToolCallCapability } from "../../../../../contracts/local-runtime.js";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
@@ -8,6 +9,20 @@ import type { RunnerRow } from "./mappers.js";
 import type { LocalRuntimeRunnerDetails } from "./routing-metadata.js";
 
 type SupabaseClient = ReturnType<typeof getServiceRoleSupabase>;
+type LocalRuntimeRuleColumnQuery = {
+  eq(column: string, value: string): LocalRuntimeRuleColumnQuery;
+  then<TResult1 = { data: unknown[] | null; error: PostgrestError | null }>(
+    onfulfilled?:
+      | ((value: { data: unknown[] | null; error: PostgrestError | null }) => TResult1 | PromiseLike<TResult1>)
+      | null,
+  ): Promise<TResult1>;
+};
+
+type LocalRuntimeUntypedSupabase = {
+  from(table: "routing_rule"): {
+    update(values: Record<string, unknown>): LocalRuntimeRuleColumnQuery;
+  };
+};
 
 export function defaultMachineDisplayName(runners: LocalRuntimeRunnerInput[]): string {
   const primary = runners[0];
@@ -104,6 +119,15 @@ export async function insertRunnerRoutingRules(input: {
 
     assertSupabaseSuccess("create routing rule for local runtime", rule, ruleError);
 
+    const { error: machineColumnError } = await (input.supabase as never as LocalRuntimeUntypedSupabase)
+      .from("routing_rule")
+      .update({ machine_id: input.machineId })
+      .eq("id", rule.id)
+      .eq("workspace_id", input.workspaceId);
+    if (machineColumnError) {
+      assertSupabaseSuccess("persist local runtime machine column", null, machineColumnError);
+    }
+
     const matches: Array<TablesInsert<"routing_rule_match">> = [
       {
         workspace_id: input.workspaceId,
@@ -164,6 +188,9 @@ export function insertedRunnerRows(inserted: InsertedRunner[]): RunnerRow[] {
     endpoint: entry.runner.endpoint,
     model: entry.runner.kind === "openclaw" ? null : entry.runner.model,
     provider: entry.provider,
+    lastError: null,
+    lastErrorAt: null,
+    models: [],
     toolCallCapability: entry.toolCallCapability,
     agents: [],
   }));

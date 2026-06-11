@@ -1,8 +1,8 @@
-# Symphony Express Server — Agent Guide
+# OpenMacaw Platform API — Agent Guide
 
 ## Project Overview
 
-Symphony Express Server is a TypeScript/Express HTTP proxy gateway to an upstream Elixir orchestration API. It provides stable REST contracts, timeout handling, and error normalization.
+The OpenMacaw platform API is a TypeScript/Express HTTP proxy gateway to an upstream Elixir orchestration API. It provides stable REST contracts, timeout handling, and error normalization.
 
 - **Runtime**: Node.js >= 20 (ES modules)
 - **Language**: TypeScript 5.x with strict mode

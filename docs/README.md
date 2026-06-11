@@ -6,7 +6,13 @@ the combined platform, runtime, and local helper repository.
 ## Start here
 
 - The root README documents `./openmacaw run`, the default command for starting
-  the local platform and runtime stack.
+  the local platform and runtime stack, plus prerequisites and environment
+  setup.
+- [Supabase setup](supabase/README.md) covers the local database quick start
+  and the hosted-project migration workflow.
+- The [end-to-end local runbook](../platform/docs/reference/end-to-end-local-runbook.md)
+  is the first-run verification checklist: login, onboarding, and sending a
+  first agent message.
 - [Open source readiness scope](open-source-readiness-scope.md) defines the
   remaining work to make OpenMacaw understandable, runnable, auditable, and
   maintainable for external developers and self-hosters.

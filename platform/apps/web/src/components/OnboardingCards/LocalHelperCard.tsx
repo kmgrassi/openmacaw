@@ -165,8 +165,7 @@ export function LocalHelperCard({ onBack, onContinue, onSkip }: Props) {
         agentIds.map((agentId) =>
           localRuntimeMutations.assignLocalModel.mutateAsync({
             machineId: registered.machine.id,
-            model: codingRunner.model,
-            provider: codingRunner.provider,
+            localRuntimeId: codingRunner.id,
             agentId,
           }),
         ),

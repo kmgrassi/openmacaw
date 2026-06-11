@@ -77,6 +77,79 @@ func (r *Runner) Kind() string {
 	return Kind
 }
 
+// ListModels returns the endpoint's current OpenAI-compatible /models list.
+func (r *Runner) ListModels(ctx context.Context) ([]runner.ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL(r.cfg.Endpoint), nil)
+	if err != nil {
+		return nil, &runner.Error{Kind: runner.ErrorKindInvalidInput, Message: fmt.Sprintf("openai_compatible models request could not be created: %v", err)}
+	}
+	if r.cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+r.cfg.APIKey)
+	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, normalizeHTTPError(ctx, err, modelsURL(r.cfg.Endpoint))
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, parseProviderError(resp)
+	}
+
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, &runner.Error{
+			Kind:    runner.ErrorKindProvider,
+			Message: fmt.Sprintf("openai_compatible models response is invalid JSON: %v", err),
+			Detail:  runner.ErrorDetail{Endpoint: modelsURL(r.cfg.Endpoint), RawMessage: err.Error()},
+		}
+	}
+
+	seen := map[string]struct{}{}
+	models := make([]runner.ModelInfo, 0, len(body.Data)+len(body.Models))
+	for _, item := range body.Data {
+		if item.ID == "" {
+			continue
+		}
+		if _, ok := seen[item.ID]; ok {
+			continue
+		}
+		seen[item.ID] = struct{}{}
+		models = append(models, modelInfo(item.ID))
+	}
+	for _, item := range body.Models {
+		if item.Name == "" {
+			continue
+		}
+		if _, ok := seen[item.Name]; ok {
+			continue
+		}
+		seen[item.Name] = struct{}{}
+		models = append(models, modelInfo(item.Name))
+	}
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	return models, nil
+}
+
+func modelInfo(id string) runner.ModelInfo {
+	return runner.ModelInfo{
+		ID:       id,
+		Provider: "openai_compatible",
+		Capabilities: map[string]any{
+			"runtime_managed_tools": true,
+			"streaming":             true,
+			"tool_calls":            true,
+		},
+	}
+}
+
 func (r *Runner) Dispatch(ctx context.Context, input any, emit func(event any) error) error {
 	req, err := normalizeInput(input)
 	if err != nil {
@@ -187,9 +260,17 @@ func (r *Runner) doChat(ctx context.Context, input runner.ChatCompletionInput, s
 
 	resp, err := r.client.Do(httpReq)
 	if err != nil {
-		return nil, normalizeHTTPError(ctx, err)
+		return nil, normalizeHTTPError(ctx, err, chatCompletionsURL(r.cfg.Endpoint))
 	}
 	return resp, nil
+}
+
+func modelsURL(endpoint string) string {
+	trimmed := strings.TrimRight(endpoint, "/")
+	if strings.HasSuffix(trimmed, "/models") {
+		return trimmed
+	}
+	return trimmed + "/models"
 }
 
 func chatCompletionsURL(endpoint string) string {
@@ -217,19 +298,29 @@ func isEventStream(contentType string) bool {
 	return strings.Contains(strings.ToLower(contentType), "text/event-stream")
 }
 
-func normalizeHTTPError(ctx context.Context, err error) error {
+func normalizeHTTPError(ctx context.Context, err error, endpoint string) error {
 	if ctx.Err() != nil {
 		return &runner.Error{Kind: runner.ErrorKindCanceled, Message: ctx.Err().Error()}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return &runner.Error{Kind: runner.ErrorKindEndpointUnavailable, Message: "openai_compatible endpoint timed out", Hint: "Check that the local model server is running and reachable."}
+		return &runner.Error{
+			Kind:    runner.ErrorKindEndpointUnavailable,
+			Message: "openai_compatible endpoint timed out",
+			Hint:    "Check that the local model server is running and reachable.",
+			Detail:  runner.ErrorDetail{Endpoint: endpoint, DialError: err.Error()},
+		}
 	}
 	var opErr *net.OpError
 	if errors.As(err, &opErr) {
-		return &runner.Error{Kind: runner.ErrorKindEndpointUnavailable, Message: "openai_compatible endpoint is unavailable", Hint: "Check that the local model server is running and reachable."}
+		return &runner.Error{
+			Kind:    runner.ErrorKindEndpointUnavailable,
+			Message: "openai_compatible endpoint is unavailable",
+			Hint:    "Check that the local model server is running and reachable.",
+			Detail:  runner.ErrorDetail{Endpoint: endpoint, DialError: err.Error()},
+		}
 	}
-	return &runner.Error{Kind: runner.ErrorKindProvider, Message: err.Error()}
+	return &runner.Error{Kind: runner.ErrorKindProvider, Message: err.Error(), Detail: runner.ErrorDetail{Endpoint: endpoint, RawMessage: err.Error()}}
 }
 
 type chatRequest struct {
@@ -260,6 +351,13 @@ type providerError struct {
 
 func parseProviderError(resp *http.Response) error {
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	rawMessage := strings.TrimSpace(string(data))
+	status := resp.StatusCode
+	detail := runner.ErrorDetail{
+		HTTPStatus: &status,
+		Endpoint:   resp.Request.URL.String(),
+		RawMessage: rawMessage,
+	}
 	var envelope errorEnvelope
 	if err := json.Unmarshal(data, &envelope); err == nil && envelope.Error.Message != "" {
 		kind := runner.ErrorKindProvider
@@ -273,9 +371,10 @@ func parseProviderError(resp *http.Response) error {
 			Message:    msg,
 			StatusCode: resp.StatusCode,
 			Code:       code,
+			Detail:     detail,
 		}
 	}
-	msg := strings.TrimSpace(string(data))
+	msg := rawMessage
 	if msg == "" {
 		msg = resp.Status
 	}
@@ -283,7 +382,7 @@ func parseProviderError(resp *http.Response) error {
 	if isModelNotFound("", msg) {
 		kind = runner.ErrorKindModelNotFound
 	}
-	return &runner.Error{Kind: kind, Message: msg, StatusCode: resp.StatusCode}
+	return &runner.Error{Kind: kind, Message: msg, StatusCode: resp.StatusCode, Detail: detail}
 }
 
 func isModelNotFound(code, msg string) bool {

@@ -1,5 +1,5 @@
 // Command local-runtime-helper is the daemon that bridges a user's
-// machine to the Harper cloud orchestrator.
+// machine to the OpenMacaw runtime orchestrator.
 //
 // Subcommands:
 //
@@ -9,9 +9,6 @@
 //	doctor      Check config, cloud reachability, and runner endpoints
 //	logout      Print local token cleanup and cloud revoke guidance
 //	version     Print the version
-//
-// The full connect/auth/register/heartbeat loop is implemented in
-// OQ-02 PR 6 (planned). This file is the scaffold's entrypoint.
 package main
 
 import (
@@ -95,10 +92,10 @@ Register flags:
                             OpenAI-compatible tool mode (default native_tools)
   --openclaw-endpoint <url> Local OpenClaw endpoint
   --openclaw-api-key <key>  Optional OpenClaw API key
-  --config <path>            Config path (default ~/.config/harper/runtime.toml)
+  --config <path>            Config path (default ~/.config/openmacaw/runtime.toml)
   --force                    Replace an existing config file
 
-See https://github.com/kmgrassi/parallel-agent-platform/blob/main/docs/oq-02-local-runtime-connector-pr-plan.md`)
+See docs/install.md in the local-runtime-helper directory for setup guidance.`)
 }
 
 func cmdRegister(args []string) {
@@ -176,7 +173,7 @@ Flags:`)
 
 func cmdStart(args []string) {
 	fs := flag.NewFlagSet("start", flag.ExitOnError)
-	configPath := fs.String("config", "", "config path (default ~/.config/harper/runtime.toml)")
+	configPath := fs.String("config", "", "config path (default ~/.config/openmacaw/runtime.toml)")
 	maxConcurrent := fs.Int("max-concurrent", relay.DefaultMaxConcurrentDispatches, "maximum simultaneous dispatches")
 	logLevel := fs.String("log-level", "info", "log level (debug, info, warn, error)")
 	if err := fs.Parse(args); err != nil {
@@ -249,6 +246,7 @@ func cmdStart(args []string) {
 	}
 
 	clientCfg := relay.NewClientFromConfig(cfg, activeRunnerKinds, version, dispatcher, logger)
+	clientCfg.RefreshRunners = relay.NewRunnerRegistrationRefresher(runners, clientCfg.Runners)
 	client, err = relay.NewClient(clientCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "start: initialize relay client: %v\n", err)

@@ -1,6 +1,6 @@
 import { forwardRef, type SelectHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
-import { FieldMessage } from "./FieldMessage";
+import { FormField } from "./FormField";
 
 type Props = SelectHTMLAttributes<HTMLSelectElement> & {
   label?: string;
@@ -12,15 +12,7 @@ export const Select = forwardRef<HTMLSelectElement, Props>(
   ({ className, label, error, id, options, ...rest }, ref) => {
     const selectId = id || label?.toLowerCase().replace(/\s+/g, "-");
     return (
-      <div className="space-y-1.5">
-        {label && (
-          <label
-            htmlFor={selectId}
-            className="block text-xs font-medium text-slate-400"
-          >
-            {label}
-          </label>
-        )}
+      <FormField label={label} htmlFor={selectId} error={error}>
         <select
           ref={ref}
           id={selectId}
@@ -37,8 +29,7 @@ export const Select = forwardRef<HTMLSelectElement, Props>(
             </option>
           ))}
         </select>
-        {error && <FieldMessage tone="error">{error}</FieldMessage>}
-      </div>
+      </FormField>
     );
   },
 );

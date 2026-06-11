@@ -1,30 +1,47 @@
 import { cn } from "../../lib/cn";
+import {
+  statusToneClass,
+  statusToneForValue,
+  type StatusTone,
+} from "./status-tones";
 
-type Variant = "default" | "success" | "warning" | "error";
+type Variant = "default" | "success" | "warning" | "error" | "info";
 
-const variantStyles: Record<Variant, string> = {
-  default: "bg-slate-700/50 text-slate-300",
-  success: "bg-green-900/40 text-green-400",
-  warning: "bg-yellow-900/40 text-yellow-400",
-  error: "bg-red-900/40 text-red-400",
+const variantTones: Record<Variant, StatusTone> = {
+  default: "neutral",
+  success: "success",
+  warning: "warning",
+  error: "error",
+  info: "info",
 };
 
 type Props = {
   variant?: Variant;
+  value?: string | null;
+  tone?: StatusTone;
   className?: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 };
 
-export function Badge({ variant = "default", className, children }: Props) {
+export function Badge({
+  variant = "default",
+  value,
+  tone,
+  className,
+  children,
+}: Props) {
+  const resolvedTone =
+    tone ?? (value ? statusToneForValue(value) : variantTones[variant]);
+
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        variantStyles[variant],
+        "inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium",
+        statusToneClass(resolvedTone, "pill"),
         className,
       )}
     >
-      {children}
+      {children ?? value ?? "unknown"}
     </span>
   );
 }

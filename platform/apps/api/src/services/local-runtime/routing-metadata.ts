@@ -63,7 +63,7 @@ export async function getLocalRuntimeMachineDetails(
 
   const { data: machine, error: machineError } = await supabase
     .from("local_runtime_machine")
-    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds")
+    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds, status")
     .eq("workspace_id", workspaceId)
     .eq("id", machineId)
     .is("revoked_at", null)
@@ -98,7 +98,7 @@ export async function getLocalRuntimeMachineDetails(
 
   const { data: rules, error: rulesError } = await supabase
     .from("routing_rule")
-    .select("id, model, provider, runner_kind")
+    .select("id, model, provider, runner_kind, machine_id, last_error, last_error_at")
     .eq("workspace_id", workspaceId)
     .in("id", ruleIds)
     .in("runner_kind", [...REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS]);
@@ -209,7 +209,7 @@ export async function getLocalRuntimeRuleDetails(
 
   const { data: rule, error: ruleError } = await supabase
     .from("routing_rule")
-    .select("id, model, provider, runner_kind")
+    .select("id, model, provider, runner_kind, machine_id, last_error, last_error_at")
     .eq("id", ruleId)
     .eq("workspace_id", workspaceId)
     .in("runner_kind", [...REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS])
@@ -246,7 +246,7 @@ export async function getLocalRuntimeRuleDetails(
 
   const { data: machine, error: machineError } = await supabase
     .from("local_runtime_machine")
-    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds")
+    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds, status")
     .eq("workspace_id", workspaceId)
     .eq("id", machineId)
     .is("revoked_at", null)

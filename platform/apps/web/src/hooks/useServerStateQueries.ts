@@ -109,13 +109,11 @@ export function useLocalRuntimeMutations(workspaceId?: string | null) {
       mutationFn: (input: {
         agentId: string;
         machineId: string;
-        model: string;
-        provider?: string;
+        localRuntimeId: string;
       }) =>
         assignLocalModelToAgent(workspaceId!, input.agentId, {
           machineId: input.machineId,
-          model: input.model,
-          provider: input.provider,
+          localRuntimeId: input.localRuntimeId,
         }),
       onSuccess: async (_result, input) => invalidate([input.agentId]),
     }),

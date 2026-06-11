@@ -21,7 +21,7 @@ func cmdLogout(args []string) {
 	fmt.Printf("Local config: %s\n", resolved)
 	fmt.Println("To disconnect this machine:")
 	fmt.Println("  1. Stop the helper service if it is running.")
-	fmt.Println("  2. Revoke this machine's local runtime token from the Harper dashboard.")
+	fmt.Println("  2. Revoke this machine's local runtime token from the OpenMacaw dashboard.")
 	fmt.Println("  3. Remove or replace the token value in runtime.toml.")
 	fmt.Println()
 	fmt.Println("The helper does not call the cloud revoke endpoint yet; token revocation is managed from the dashboard.")

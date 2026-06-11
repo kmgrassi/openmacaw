@@ -312,3 +312,38 @@ func TestDispatchMapsInFlightStreamCancellation(t *testing.T) {
 		t.Fatalf("kind = %q, want %q", runnerErr.Kind, runner.ErrorKindCanceled)
 	}
 }
+
+func TestListModelsParsesOpenAIModelsResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q, want /v1/models", req.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen2.5-coder:7b"},{"id":"qwen3-coder:30b"}]}`))
+	}))
+	defer server.Close()
+
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "qwen2.5-coder:7b"})
+	if err != nil {
+		t.Fatalf("new runner: %v", err)
+	}
+
+	models, err := r.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("models = %#v, want 2", models)
+	}
+	if models[0].ID != "qwen2.5-coder:7b" || models[1].ID != "qwen3-coder:30b" {
+		t.Fatalf("models = %#v", models)
+	}
+	if models[0].Provider != "openai_compatible" {
+		t.Fatalf("provider = %q, want openai_compatible", models[0].Provider)
+	}
+	if models[0].Capabilities["tool_calls"] != true {
+		t.Fatalf("tool_calls capability = %#v, want true", models[0].Capabilities["tool_calls"])
+	}
+}

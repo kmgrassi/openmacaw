@@ -8,10 +8,109 @@ OpenMacaw is an open-source platform for coordinating AI agents across hosted
 and local runtimes. This repository combines the web/API platform, the runtime
 orchestrator, and the installable local helper into one source tree.
 
-OpenMacaw is currently pre-release. The repository has been imported from
-separate internal projects and still needs public documentation, naming,
-security, licensing, and self-hosting cleanup before it should be treated as a
-polished open-source launch.
+> OpenMacaw is pre-release. It works for local development and self-hosting
+> experiments, but naming, docs, and packaging are still being cleaned up for
+> a polished public launch — see [Project status](#project-status).
+
+## Quick start
+
+### Prerequisites
+
+| Tool | Used by | Notes |
+| --- | --- | --- |
+| Git | everything | |
+| Node.js 20+ and [pnpm](https://pnpm.io/) 9+ | platform, runtime scripts | `npm install -g pnpm` |
+| Elixir 1.16+ / Erlang OTP 26+ (`elixir`, `mix`) | runtime | `brew install elixir` or [mise](https://mise.jdx.dev/) |
+| `curl`, `lsof`, `shasum` | dev scripts | preinstalled on macOS; standard packages on Linux |
+| Docker + [Supabase CLI](https://supabase.com/docs/guides/local-development) | local database | only if you run Supabase locally (recommended) |
+| Go 1.23+ | local runtime helper | only if you build the optional helper daemon |
+
+Verify the command-line tools with:
+
+```sh
+./openmacaw doctor
+```
+
+### 1. Set up the database (Supabase)
+
+OpenMacaw stores its state in [Supabase](https://supabase.com) (Postgres).
+The fastest path is the local stack:
+
+```sh
+cd platform
+supabase start      # starts local Postgres + auth + Studio (needs Docker)
+supabase db reset   # applies the schema from supabase/migrations/
+supabase status     # prints the URL and keys you need in the next step
+```
+
+Alternatively, create a hosted Supabase project and push the schema to it —
+see [docs/supabase/README.md](docs/supabase/README.md) for both paths in
+detail.
+
+### 2. Configure environment
+
+Copy the example env files and fill in the **Required** sections at the top
+with the values from `supabase status` (or your hosted project's dashboard):
+
+```sh
+cp platform/.env.example platform/.env
+cp runtime/.env.example runtime/.env
+```
+
+In `platform/.env`, four values must be set for the stack to boot and log in:
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_DEV_URL`, and
+`VITE_SUPABASE_DEV_ANON_KEY`. The runtime needs the same `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` pair. Everything else in the files is optional
+and feature-gated.
+
+### 3. Run the stack
+
+From the repository root:
+
+```sh
+./openmacaw run
+```
+
+That command checks prerequisites and your env file, installs missing
+JavaScript and Elixir dependencies, then starts the platform API, platform web
+app, runtime launcher, and runtime orchestrator together:
+
+- Web: `http://127.0.0.1:5173`
+- API: `http://127.0.0.1:3100`
+- Runtime orchestrator: `http://127.0.0.1:4000`
+- Runtime launcher: `http://127.0.0.1:4100`
+
+Press `Ctrl+C` to stop the stack.
+
+### 4. Log in and verify
+
+Create a user, then sign in at `http://127.0.0.1:5173`:
+
+- **Local Supabase:** open Supabase Studio (`http://127.0.0.1:54323`),
+  go to **Authentication → Users → Add user**, and create an email/password
+  user.
+- **Hosted Supabase:** create the user from the project dashboard's
+  Authentication page.
+
+Optionally set `VITE_DEV_LOGIN_EMAIL` / `VITE_DEV_LOGIN_PASSWORD` in
+`platform/.env` to get a one-click "Use dev credentials" button on the login
+page (development builds only).
+
+For a step-by-step first-run checklist — login, onboarding, sending a first
+agent message — follow the
+[end-to-end local runbook](platform/docs/reference/end-to-end-local-runbook.md).
+
+### Everyday commands
+
+```sh
+./openmacaw doctor   # check prerequisites and env configuration
+./openmacaw status   # show local service health
+./openmacaw stop     # stop a stack started by ./openmacaw run
+```
+
+Linked git worktrees automatically use an offset port range so multiple agents
+can run OpenMacaw side by side. Override ports with `API_PORT`, `WEB_PORT`,
+`ORCHESTRATOR_PORT`, `LAUNCHER_PORT`, or `LAUNCHER_START_PORT` when needed.
 
 ## What is in this repo
 
@@ -25,12 +124,6 @@ polished open-source launch.
 - `docs/` contains OpenMacaw-level planning and reference material that applies
   across the imported subsystems.
 
-The repository starts from a clean import rather than preserving the private
-commit histories of the source repositories. Local environment files, git
-metadata, dependency caches, generated build output, Terraform working
-directories, compiled binaries, and runtime logs were intentionally excluded
-from the initial import.
-
 ## How the pieces fit together
 
 At a high level:
@@ -43,76 +136,33 @@ At a high level:
    connection, advertises configured local runners, and can execute supported
    local workflows without requiring inbound network access.
 
-Some workflows can be developed inside one subsystem. Full end-to-end behavior
-requires the platform, runtime, helper, provider credentials, and a configured
-Supabase/database path.
+The local runtime helper is a separate daemon for workflows that need local
+model or local tool execution (Ollama, OpenClaw, and other local runners).
+Set it up from [`local-runtime-helper/`](local-runtime-helper/README.md) after
+the core stack is running.
 
-## Current status
+## Project status
 
-OpenMacaw is not yet ready for a public self-hosting announcement.
-
-Known launch-readiness work includes:
-
-- replacing private/internal naming and stale prototype language;
-- adding license, contribution, security, issue, and PR policy files;
-- documenting a minimal local setup and a full self-hosted Supabase path;
-- defining a stable root command surface for install, dev, doctor, validation,
-  tests, build, logs, and smoke checks;
-- documenting the local execution trust model and credential handling;
-- scrubbing public docs for private URLs, account IDs, local paths, and
-  internal process references;
-- adding CI and release guidance suitable for outside contributors.
-
-See [docs/open-source-readiness-scope.md](docs/open-source-readiness-scope.md)
-for the current readiness plan and PR breakdown.
-
-## Local development
-
-Start the local OpenMacaw stack from the repository root:
-
-```sh
-./openmacaw run
-```
-
-That command checks the required command-line tools, installs missing
-JavaScript and Elixir dependencies, then starts the platform API, platform web
-app, runtime launcher, and runtime orchestrator together.
-
-When the stack is ready, the command prints the local URLs and log paths:
-
-- Web: `http://127.0.0.1:5173`
-- API: `http://127.0.0.1:3100`
-- Runtime orchestrator: `http://127.0.0.1:4000`
-- Runtime launcher: `http://127.0.0.1:4100`
-
-Press `Ctrl+C` to stop the stack.
-
-Useful root commands:
-
-```sh
-./openmacaw doctor
-./openmacaw status
-./openmacaw stop
-```
-
-Linked git worktrees automatically use an offset port range so multiple agents
-can run OpenMacaw side by side. Override ports with `API_PORT`, `WEB_PORT`,
-`ORCHESTRATOR_PORT`, `LAUNCHER_PORT`, or `LAUNCHER_START_PORT` when needed.
-
-The local runtime helper remains a separate daemon for workflows that need
-local model or local tool execution. Configure it from `local-runtime-helper/`
-after the core stack is running.
-
-Some workflows still require local services, environment variables, provider
-credentials, or a configured Supabase/database path. The open-source readiness
-work will keep narrowing those prerequisites and making them explicit.
+OpenMacaw was imported from separate internal projects and is being prepared
+for a public launch. Some subsystem docs still carry pre-import naming and
+internal references; treat those as cleanup targets, not the final public
+position. See
+[docs/open-source-readiness-scope.md](docs/open-source-readiness-scope.md) for
+the readiness plan and remaining work.
 
 ## Documentation
 
-Start with [docs/README.md](docs/README.md) for repository-level documentation
-and the current readiness plan.
+- [docs/README.md](docs/README.md) — repository-level documentation index
+- [docs/supabase/README.md](docs/supabase/README.md) — database setup and
+  migration workflow
+- [End-to-end local runbook](platform/docs/reference/end-to-end-local-runbook.md)
+  — first-run verification checklist
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contributor workflow and validation
+  commands
+- Subsystem guides: [platform](platform/README.md),
+  [runtime](runtime/README.md),
+  [local runtime helper](local-runtime-helper/README.md)
 
-The imported subsystem docs are useful but not all of them have been rewritten
-for public OpenMacaw context yet. Treat historical planning docs, private repo
-links, old project names, and internal deployment notes as cleanup targets until
-the readiness work is complete.
+## License
+
+OpenMacaw is licensed under the [Apache License 2.0](LICENSE).

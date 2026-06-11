@@ -1,218 +1,34 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
-
-import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getServiceRoleSupabase, getUserScopedSupabase } from "../supabase-client.js";
-import { registerLocalRuntimeRoutes } from "./local-runtime.js";
+import { createLocalRuntimeTestServer, userId, workspaceId } from "./local-runtime.test-support.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
   getUserScopedSupabase: vi.fn(),
 }));
 
-const workspaceId = "22222222-2222-4222-8222-222222222222";
-const userId = "11111111-1111-4111-8111-111111111111";
+type MockTables = Parameters<typeof createMockSupabaseClient>[0];
 
-function closeServer(server: Server | undefined) {
-  if (!server) return Promise.resolve();
-  server.closeAllConnections?.();
-  server.closeIdleConnections?.();
-  return new Promise<void>((resolve) => server.close(() => resolve()));
+function mockSupabase(serviceRoleDb: MockTables, userScopedDb: MockTables = serviceRoleDb) {
+  vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(serviceRoleDb) as never);
+  vi.mocked(getUserScopedSupabase).mockReturnValue(createMockSupabaseClient(userScopedDb) as never);
 }
 
-describe("local runtime routes", () => {
-  let server: Server;
+describe("local runtime route assignments", () => {
+  let closeServer = async () => {};
   let baseUrl = "";
 
   beforeEach(async () => {
     vi.clearAllMocks();
-
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      if (req.header("authorization") === "Bearer test-token") {
-        req.userId = userId;
-      }
-      next();
-    });
-    registerLocalRuntimeRoutes(app);
-
-    server = createServer(app);
-    await new Promise<void>((resolve) => server.listen(0, resolve));
-    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const server = await createLocalRuntimeTestServer();
+    closeServer = server.close;
+    baseUrl = server.baseUrl;
   });
 
   afterEach(async () => {
-    await closeServer(server);
-  });
-
-  it("rejects probe requests for non-loopback endpoints", async () => {
-    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        endpoint: "http://169.254.169.254/latest/meta-data",
-        model: "qwen3-coder:30b",
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "invalid_request",
-        message: "Local runtime probe request is invalid",
-      },
-    });
-  });
-
-  it("accepts probe requests for bracketed IPv6 loopback endpoints", async () => {
-    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        endpoint: "http://[::1]:11434/v1",
-        model: "qwen3-coder:30b",
-      }),
-    });
-
-    expect(response.status).not.toBe(400);
-  });
-
-  it("probes a registered local runner from relay liveness instead of server-side localhost", async () => {
-    const db = {
-      routing_rule: [
-        {
-          id: "local-rule-1",
-          workspace_id: workspaceId,
-          name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
-          model: "qwen3-coder:30b",
-          provider: "openai_compatible",
-        },
-      ],
-      routing_rule_match: [
-        {
-          id: "local-endpoint-match",
-          workspace_id: workspaceId,
-          rule_id: "local-rule-1",
-          kind: "local_endpoint",
-          key: "url",
-          value: "http://127.0.0.1:11434/v1",
-        },
-        {
-          id: "local-machine-match",
-          workspace_id: workspaceId,
-          rule_id: "local-rule-1",
-          kind: "local_machine",
-          key: "id",
-          value: "machine-1",
-        },
-      ],
-      local_runtime_machine: [
-        {
-          id: "machine-1",
-          workspace_id: workspaceId,
-          display_name: "qwen3-coder:30b@localhost:11434",
-          last_seen_at: new Date().toISOString(),
-          revoked_at: null,
-          runner_kinds: ["openai_compatible"],
-          advertised_runner_kinds: ["openai_compatible"],
-        },
-      ],
-    };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
-
-    const response = await fetch(
-      `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/probe?workspaceId=${workspaceId}`,
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer test-token",
-        },
-      },
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      endpoint: "http://127.0.0.1:11434/v1",
-      model: "qwen3-coder:30b",
-      reachable: true,
-      modelFound: true,
-      error: null,
-    });
-  });
-
-  it("does not report registered local runner reachable from stale registration-time runner kinds", async () => {
-    const db = {
-      routing_rule: [
-        {
-          id: "local-rule-1",
-          workspace_id: workspaceId,
-          name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
-          model: "qwen3-coder:30b",
-          provider: "openai_compatible",
-        },
-      ],
-      routing_rule_match: [
-        {
-          id: "local-endpoint-match",
-          workspace_id: workspaceId,
-          rule_id: "local-rule-1",
-          kind: "local_endpoint",
-          key: "url",
-          value: "http://127.0.0.1:11434/v1",
-        },
-        {
-          id: "local-machine-match",
-          workspace_id: workspaceId,
-          rule_id: "local-rule-1",
-          kind: "local_machine",
-          key: "id",
-          value: "machine-1",
-        },
-      ],
-      local_runtime_machine: [
-        {
-          id: "machine-1",
-          workspace_id: workspaceId,
-          display_name: "qwen3-coder:30b@localhost:11434",
-          last_seen_at: new Date().toISOString(),
-          revoked_at: null,
-          runner_kinds: ["openai_compatible"],
-          advertised_runner_kinds: [],
-        },
-      ],
-    };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
-
-    const response = await fetch(
-      `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/probe?workspaceId=${workspaceId}`,
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer test-token",
-        },
-      },
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      endpoint: "http://127.0.0.1:11434/v1",
-      model: "qwen3-coder:30b",
-      reachable: false,
-      modelFound: false,
-      error: "Helper is online, but it is not advertising openai_compatible",
-    });
+    await closeServer();
   });
 
   it("assigns a local model to a manager agent without runner-kind filtering", async () => {
@@ -235,6 +51,14 @@ describe("local runtime routes", () => {
           kind: "local_endpoint",
           key: "url",
           value: "http://127.0.0.1:11434/v1",
+        },
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
         },
       ] as Array<Record<string, unknown>>,
       agent: [
@@ -270,6 +94,7 @@ describe("local runtime routes", () => {
     await expect(response.json()).resolves.toEqual({
       routingRuleId: "local-rule-1",
       agentId: "manager-agent-1",
+      machineId: "machine-1",
       model: "qwen3-coder:30b",
     });
     expect(db.routing_rule_match).toEqual(
@@ -347,9 +172,18 @@ describe("local runtime routes", () => {
           runner_kind: "local_runtime",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
+          machine_id: "machine-1",
         },
       ],
       routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
         {
           id: "match-1",
           workspace_id: workspaceId,
@@ -378,9 +212,7 @@ describe("local runtime routes", () => {
         },
       ],
     };
-    const supabase = createMockSupabaseClient(db) as never;
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
-    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
+    mockSupabase(db);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign?workspaceId=${workspaceId}`,
@@ -409,6 +241,72 @@ describe("local runtime routes", () => {
     );
   });
 
+  it("assigns a local model through the canonical agent route with machine id", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          machine_id: "machine-1",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+      ] as Array<Record<string, unknown>>,
+      agent: [
+        {
+          id: "coding-agent-1",
+          name: "Coding",
+          workspace_id: workspaceId,
+          type: "coding",
+          model_settings: {},
+          tool_policy: {},
+        },
+      ],
+    };
+    mockSupabase(db);
+
+    const response = await fetch(`${baseUrl}/api/agents/coding-agent-1/assign-local-model?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        machineId: "machine-1",
+        localRuntimeId: "local-rule-1",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      routingRuleId: "local-rule-1",
+      agentId: "coding-agent-1",
+      machineId: "machine-1",
+      model: "qwen3-coder:30b",
+    });
+    expect(db.routing_rule_match).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule_id: "local-rule-1",
+          kind: "agent_id",
+          value: "coding-agent-1",
+        }),
+      ]),
+    );
+  });
+
   it("preserves non-local routing matches when replacing an agent's local model assignment", async () => {
     const db = {
       routing_rule: [
@@ -419,6 +317,7 @@ describe("local runtime routes", () => {
           runner_kind: "local_runtime",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
+          machine_id: "machine-1",
         },
         {
           id: "old-local-rule",
@@ -427,6 +326,7 @@ describe("local runtime routes", () => {
           runner_kind: "local_runtime",
           model: "llama3.1:8b",
           provider: "openai_compatible",
+          machine_id: "old-machine",
         },
         {
           id: "cloud-rule-1",
@@ -438,6 +338,22 @@ describe("local runtime routes", () => {
         },
       ],
       routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+        {
+          id: "old-local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "old-local-rule",
+          kind: "local_machine",
+          key: "id",
+          value: "old-machine",
+        },
         {
           id: "old-local-match",
           workspace_id: workspaceId,
@@ -466,9 +382,7 @@ describe("local runtime routes", () => {
         },
       ],
     };
-    const supabase = createMockSupabaseClient(db) as never;
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
-    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
+    mockSupabase(db);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign?workspaceId=${workspaceId}`,
@@ -506,11 +420,6 @@ describe("local runtime routes", () => {
   });
 
   it("preserves an agent's credential-reference local_relay rule when assigning a registered runtime", async () => {
-    // Regression: previously, the cleanup query that runs before saving a
-    // local-runtime binding broadened to every workspace rule with
-    // runner_kind = local_relay, including the credential-reference rule that
-    // AgentModelPolicy writes when a user picks "Local relay". The DELETE then
-    // wiped that rule's only agent_id match and broke the execution profile.
     const credentialRuleId = "credential-ref-rule";
     const registrationRuleId = "registration-rule";
     const db = {
@@ -530,6 +439,7 @@ describe("local runtime routes", () => {
           runner_kind: "local_relay",
           model: null,
           provider: "openclaw",
+          machine_id: "machine-1",
         },
       ],
       routing_rule_match: [
@@ -561,9 +471,7 @@ describe("local runtime routes", () => {
         },
       ],
     };
-    const supabase = createMockSupabaseClient(db) as never;
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
-    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
+    mockSupabase(db);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/${registrationRuleId}/assign?workspaceId=${workspaceId}`,
@@ -680,7 +588,7 @@ describe("local runtime routes", () => {
       ] as Array<Record<string, unknown>>,
       gateway_config_versions: [] as Array<Record<string, unknown>>,
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    mockSupabase(db);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign/manager-agent-1?workspaceId=${workspaceId}`,
@@ -780,7 +688,7 @@ describe("local runtime routes", () => {
         },
       ],
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    mockSupabase(db);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign/manager-agent-1?workspaceId=${workspaceId}`,
@@ -819,234 +727,5 @@ describe("local runtime routes", () => {
         }),
       ]),
     );
-  });
-
-  it("registers a model-only runtime and emits an [runner.openai_compatible] snippet", async () => {
-    const db = {
-      local_runtime_machine: [] as Array<Record<string, unknown>>,
-      local_runtime_token: [] as Array<Record<string, unknown>>,
-      routing_rule: [] as Array<Record<string, unknown>>,
-      routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
-
-    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        runners: [
-          {
-            kind: "openai_compatible",
-            endpoint: "http://127.0.0.1:11434/v1",
-            model: "qwen3-coder:30b",
-            workspaceRoot: "/Users/me/project",
-            toolCallCapability: "native_tools",
-          },
-        ],
-      }),
-    });
-
-    expect(response.status).toBe(201);
-    const body = (await response.json()) as {
-      runners: Array<{
-        kind: string;
-        runnerKind: string;
-        provider: string;
-        model: string;
-        toolCallCapability: string | null;
-      }>;
-      configSnippet: string;
-      setupCommand: string;
-    };
-    expect(body.runners).toHaveLength(1);
-    expect(body.runners[0]).toMatchObject({
-      kind: "openai_compatible",
-      runnerKind: "local_runtime",
-      provider: "openai_compatible",
-      model: "qwen3-coder:30b",
-      toolCallCapability: "native_tools",
-    });
-    expect(body.configSnippet).toContain("[runner.openai_compatible]");
-    expect(body.configSnippet).toContain('model = "qwen3-coder:30b"');
-    expect(body.configSnippet).not.toContain("[runner.openclaw]");
-    expect(body.setupCommand).toContain('"$HELPER_BIN"');
-    expect(body.setupCommand).toContain("'register'");
-    expect(body.setupCommand).toContain("--openai-compatible-endpoint");
-    expect(body.setupCommand).toContain("--openai-compatible-model");
-    expect(body.setupCommand).toContain("--workspace-root");
-    expect(body.setupCommand).toContain('"$HELPER_BIN" start');
-
-    expect(db.routing_rule).toEqual([
-      expect.objectContaining({
-        workspace_id: workspaceId,
-        runner_kind: "local_runtime",
-        provider: "openai_compatible",
-        model: "qwen3-coder:30b",
-      }),
-    ]);
-    expect(db.local_runtime_machine[0]).toMatchObject({
-      workspace_id: workspaceId,
-      runner_kinds: expect.arrayContaining(["openai_compatible", "local_model_coding", "planner"]),
-    });
-  });
-
-  it("registers an openclaw-only runtime and emits an [runner.openclaw] snippet", async () => {
-    const db = {
-      local_runtime_machine: [] as Array<Record<string, unknown>>,
-      local_runtime_token: [] as Array<Record<string, unknown>>,
-      routing_rule: [] as Array<Record<string, unknown>>,
-      routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
-
-    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        runners: [
-          {
-            kind: "openclaw",
-            endpoint: "http://localhost:7100",
-            apiKey: "sk-openclaw",
-          },
-        ],
-      }),
-    });
-
-    expect(response.status).toBe(201);
-    const body = (await response.json()) as {
-      runners: Array<{
-        kind: string;
-        runnerKind: string;
-        provider: string;
-        model: string;
-        toolCallCapability: string | null;
-      }>;
-      configSnippet: string;
-      setupCommand: string;
-    };
-    expect(body.runners).toHaveLength(1);
-    expect(body.runners[0]).toMatchObject({
-      kind: "openclaw",
-      runnerKind: "local_relay",
-      provider: "openclaw",
-      model: "",
-      toolCallCapability: null,
-    });
-    expect(body.configSnippet).toContain("[runner.openclaw]");
-    expect(body.configSnippet).toContain('endpoint = "http://localhost:7100"');
-    expect(body.configSnippet).toContain('api_key = "sk-openclaw"');
-    expect(body.configSnippet).not.toContain("[runner.openai_compatible]");
-    expect(body.configSnippet).not.toContain("model =");
-    expect(body.setupCommand).toContain("--openclaw-endpoint");
-    expect(body.setupCommand).toContain("--openclaw-api-key");
-
-    expect(db.routing_rule).toEqual([
-      expect.objectContaining({
-        workspace_id: workspaceId,
-        runner_kind: "local_relay",
-        provider: "openclaw",
-        model: null,
-      }),
-    ]);
-    expect(db.local_runtime_machine[0]).toMatchObject({
-      workspace_id: workspaceId,
-      runner_kinds: ["openclaw"],
-    });
-  });
-
-  it("registers a multi-kind runtime with both openai_compatible and openclaw runners on one machine", async () => {
-    const db = {
-      local_runtime_machine: [] as Array<Record<string, unknown>>,
-      local_runtime_token: [] as Array<Record<string, unknown>>,
-      routing_rule: [] as Array<Record<string, unknown>>,
-      routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
-
-    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        runners: [
-          {
-            kind: "openai_compatible",
-            endpoint: "http://127.0.0.1:11434/v1",
-            model: "qwen3-coder:30b",
-            toolCallCapability: "native_tools",
-          },
-          {
-            kind: "openclaw",
-            endpoint: "http://localhost:7100",
-          },
-        ],
-      }),
-    });
-
-    expect(response.status).toBe(201);
-    const body = (await response.json()) as {
-      runners: Array<{ kind: string; runnerKind: string }>;
-      configSnippet: string;
-      setupCommand: string;
-    };
-    expect(body.runners.map((runner) => runner.kind).sort()).toEqual(["openai_compatible", "openclaw"]);
-    expect(body.configSnippet).toContain("[runner.openai_compatible]");
-    expect(body.configSnippet).toContain("[runner.openclaw]");
-    expect(body.setupCommand).toContain("--openai-compatible-endpoint");
-    expect(body.setupCommand).toContain("--openclaw-endpoint");
-
-    expect(db.routing_rule).toHaveLength(2);
-    expect(db.routing_rule).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          runner_kind: "local_runtime",
-          provider: "openai_compatible",
-          model: "qwen3-coder:30b",
-        }),
-        expect.objectContaining({
-          runner_kind: "local_relay",
-          provider: "openclaw",
-          model: null,
-        }),
-      ]),
-    );
-    expect(db.local_runtime_machine).toHaveLength(1);
-    expect(db.local_runtime_machine[0]).toMatchObject({
-      workspace_id: workspaceId,
-      runner_kinds: expect.arrayContaining(["openai_compatible", "local_model_coding", "planner", "openclaw"]),
-    });
-  });
-
-  it("rejects a registration that omits the runners array", async () => {
-    const db = {
-      local_runtime_machine: [] as Array<Record<string, unknown>>,
-      local_runtime_token: [] as Array<Record<string, unknown>>,
-      routing_rule: [] as Array<Record<string, unknown>>,
-      routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
-
-    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        endpoint: "http://localhost:7100",
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    expect(db.routing_rule).toEqual([]);
   });
 });

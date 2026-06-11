@@ -20,10 +20,22 @@ type checkResult struct {
 	Err  error
 }
 
+type doctorJSONResult struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+type doctorJSONOutput struct {
+	Status string             `json:"status"`
+	Checks []doctorJSONResult `json:"checks"`
+}
+
 func cmdDoctor(args []string) {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	configPath := fs.String("config", defaultConfigPath, "path to runtime.toml")
 	timeout := fs.Duration("timeout", 3*time.Second, "timeout for network checks")
+	jsonOutput := fs.Bool("json", false, "emit machine-readable JSON")
 	_ = fs.Parse(args)
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -47,14 +59,37 @@ func cmdDoctor(args []string) {
 	}
 
 	failed := false
-	fmt.Println("local-runtime-helper doctor")
+	jsonResults := make([]doctorJSONResult, 0, len(results))
+	if !*jsonOutput {
+		fmt.Println("local-runtime-helper doctor")
+	}
 	for _, result := range results {
 		if result.Err != nil {
 			failed = true
+			jsonResults = append(jsonResults, doctorJSONResult{Name: result.Name, Status: "fail", Error: result.Err.Error()})
+			if *jsonOutput {
+				continue
+			}
 			fmt.Printf("FAIL %s: %v\n", result.Name, result.Err)
 			continue
 		}
+		jsonResults = append(jsonResults, doctorJSONResult{Name: result.Name, Status: "ok"})
+		if *jsonOutput {
+			continue
+		}
 		fmt.Printf("OK   %s\n", result.Name)
+	}
+	if *jsonOutput {
+		status := "ok"
+		if failed {
+			status = "fail"
+		}
+		data, err := json.MarshalIndent(doctorJSONOutput{Status: status, Checks: jsonResults}, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "doctor: encode json: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(data))
 	}
 	if failed {
 		os.Exit(1)

@@ -5,7 +5,6 @@ import {
   AgentRuntimeProfileUpdateRequestSchema,
   StoredAgentListResponseSchema,
 } from "../../../../contracts/agents.js";
-import { AgentAssignLocalModelRequestSchema } from "../../../../contracts/local-runtime.js";
 import { AgentRouteTemplates, StoredAgentRouteTemplates } from "../../../../contracts/routes.js";
 import {
   StoredAgentCreateRequestSchema,
@@ -28,7 +27,6 @@ import {
   updateStoredAgentFromApi,
 } from "../services/stored-agent-management.js";
 import { getAgentRuntimeProfile, updateAgentRuntimeProfile } from "../services/agent-runtime-profile.js";
-import { assignLocalModelByMachineToAgent } from "../services/local-runtime-helpers.js";
 
 export { ensureStoredAgentDefaultRouting } from "../services/stored-agent-routing.js";
 
@@ -239,44 +237,6 @@ function registerStoredAgentCrudRoutes(app: Express) {
       }),
     );
   }
-
-  app.post(
-    AgentRouteTemplates.assignLocalModel,
-    apiRoute({
-      requireAuth: true,
-      bodySchema: AgentAssignLocalModelRequestSchema,
-      invalidBodyMessage: "Local model assignment request is invalid",
-      handler: async ({ req, res, body, accessToken, userId }) => {
-        if (!userId) {
-          throw new ApiRouteError(401, "unauthorized", "User ID is required");
-        }
-
-        const workspaceId = typeof req.query.workspaceId === "string" ? req.query.workspaceId.trim() : "";
-        if (!workspaceId) {
-          throw new ApiRouteError(400, "invalid_request", "workspaceId is required");
-        }
-
-        const response = await assignLocalModelByMachineToAgent({
-          workspaceId,
-          agentId: requireRouteParam(req, "agentId"),
-          machineId: body.machineId,
-          model: body.model,
-          provider: body.provider,
-          auth: {
-            accessToken: accessToken ?? "",
-            userId,
-          },
-        });
-        return res.status(201).json(response);
-      },
-      onError: (res, error) =>
-        handleApiRouteError(res, error, {
-          status: 502,
-          code: "local_model_assign_failed",
-          message: "Could not assign local model to agent",
-        }),
-    }),
-  );
 }
 
 export function registerStoredAgentRoutes(app: Express, launcherClient: LauncherClient) {

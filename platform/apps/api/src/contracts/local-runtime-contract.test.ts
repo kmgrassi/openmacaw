@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AgentAssignLocalModelRequestSchema,
+  AgentLocalRuntimeAssignRequestSchema,
   LocalModelProbeRequestSchema,
   LocalRuntimeRegistrationRequestSchema,
 } from "../../../../contracts/local-runtime.js";
@@ -134,15 +134,14 @@ describe("local runtime contract", () => {
   });
 
   it("defines the canonical agent local model assignment request", () => {
-    const parsed = AgentAssignLocalModelRequestSchema.parse({
+    const parsed = AgentLocalRuntimeAssignRequestSchema.parse({
       machineId: "machine-1",
-      model: "qwen3-coder:30b",
+      localRuntimeId: "local-rule-1",
     });
 
     expect(parsed).toEqual({
       machineId: "machine-1",
-      model: "qwen3-coder:30b",
-      provider: "openai_compatible",
+      localRuntimeId: "local-rule-1",
     });
     expect(agentAssignLocalModelRoute("agent-1", "workspace-1")).toBe(
       "/api/agents/agent-1/assign-local-model?workspaceId=workspace-1",

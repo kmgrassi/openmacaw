@@ -79,6 +79,8 @@ defmodule SymphonyElixir.LocalRelay.Handlers.HelperManaged do
     {:continue, state}
   end
 
+  def handle_frame(:cancel_ack, _frame, state), do: {:continue, state}
+
   defp normalize_progress(%{"type" => "progress", "event" => event} = frame), do: normalize_backend_event(event, frame)
   defp normalize_progress(%{"event" => event} = frame), do: normalize_backend_event(event, frame)
   defp normalize_progress(%{event: event} = frame), do: normalize_backend_event(to_string(event), stringify_keys(frame))

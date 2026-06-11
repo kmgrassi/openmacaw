@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type ReactNode } from "react";
 
 import { cn } from "../../lib/cn";
+import { FormField } from "./FormField";
 
 type SegmentValue = string;
 type SegmentColumns = 2 | 3 | 4;
@@ -117,10 +118,7 @@ export function SegmentedControl<TValue extends SegmentValue>({
   };
 
   return (
-    <div className={cn("space-y-1.5", fullWidth ? "w-full" : "inline-block")}>
-      {label && (
-        <div className="text-xs font-medium text-slate-400">{label}</div>
-      )}
+    <FormField label={label} className={fullWidth ? "w-full" : "inline-block"}>
       <div
         role="radiogroup"
         aria-label={ariaLabel ?? label}
@@ -163,6 +161,6 @@ export function SegmentedControl<TValue extends SegmentValue>({
           );
         })}
       </div>
-    </div>
+    </FormField>
   );
 }

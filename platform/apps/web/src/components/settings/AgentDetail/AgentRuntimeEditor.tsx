@@ -232,8 +232,7 @@ export function AgentRuntimeEditor({
       await localRuntimeMutations.assignLocalModel.mutateAsync({
         agentId: agent.id,
         machineId: selectedLocalRunner.runtime.id,
-        model: selectedLocalRunner.runner.model,
-        provider: selectedLocalRunner.runner.provider,
+        localRuntimeId: selectedLocalRunner.runner.id,
       });
       await onRuntimeProfileSaveInput({
         provider: "local",

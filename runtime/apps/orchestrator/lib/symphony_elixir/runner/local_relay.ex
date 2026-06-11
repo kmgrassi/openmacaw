@@ -149,7 +149,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   defp ensure_model_available(%{model: model}, _helper) when model in [nil, ""], do: :ok
 
   defp ensure_model_available(%{model: model, target_runner_kind: target_runner_kind}, helper) do
-    case registered_runner(helper, target_runner_kind) do
+    case registered_runner_for_model(helper, target_runner_kind, model) do
       %{model: registered_model} when registered_model in [nil, "", model] -> :ok
       %{"model" => registered_model} when registered_model in [nil, "", model] -> :ok
       _runner -> {:error, :model_not_found}
@@ -158,10 +158,10 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
   defp ensure_capabilities(%{metadata: %{capability_requirements: requirements}}, _helper) when requirements in [%{}, nil], do: :ok
 
-  defp ensure_capabilities(%{metadata: %{capability_requirements: requirements}, target_runner_kind: target_runner_kind}, helper) do
+  defp ensure_capabilities(%{metadata: %{capability_requirements: requirements}, target_runner_kind: target_runner_kind} = session, helper) do
     capabilities =
       helper
-      |> registered_runner(target_runner_kind)
+      |> registered_runner_for_model(target_runner_kind, Map.get(session, :model))
       |> map_value(:capabilities)
       |> normalize_capability_map()
 
@@ -182,6 +182,25 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   end
 
   defp registered_runner(_helper, _target_runner_kind), do: %{}
+
+  defp registered_runners(%{runners: runners}, target_runner_kind) when is_list(runners) do
+    Enum.filter(runners, fn runner -> map_value(runner, :runner_kind) == target_runner_kind end)
+  end
+
+  defp registered_runners(%{"runners" => runners}, target_runner_kind) when is_list(runners) do
+    Enum.filter(runners, fn runner -> map_value(runner, :runner_kind) == target_runner_kind end)
+  end
+
+  defp registered_runners(_helper, _target_runner_kind), do: []
+
+  defp registered_runner_for_model(helper, target_runner_kind, model) do
+    helper
+    |> registered_runners(target_runner_kind)
+    |> Enum.find(registered_runner(helper, target_runner_kind), fn runner ->
+      registered_model = map_value(runner, :model)
+      registered_model in [nil, "", model]
+    end)
+  end
 
   defp capability_satisfies?(_capability, false), do: true
   defp capability_satisfies?(capability, true), do: capability == true
