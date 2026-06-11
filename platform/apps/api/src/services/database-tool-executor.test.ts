@@ -83,6 +83,45 @@ describe("executeDatabaseTool scheduled_task tools", () => {
           is_active: true,
         },
       ],
+      routing_rule: [
+        {
+          id: "routing-rule-1",
+          workspace_id: workspaceId,
+          name: `agent:${agentId}:execution-profile`,
+          priority: 100,
+          runner_kind: "llm_tool_runner",
+          provider: "openai",
+          model: "gpt-4.1",
+          credential_id: null,
+          credential_alias: "openai-default",
+          enabled: true,
+          model_tier_floor: "any",
+          updated_at: "2026-04-25T00:00:00.000Z",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "routing-rule-match-1",
+          workspace_id: workspaceId,
+          rule_id: "routing-rule-1",
+          kind: "agent",
+          key: "id",
+          value: agentId,
+        },
+      ],
+      routing_rule_fallback: [
+        {
+          id: "fallback-1",
+          workspace_id: workspaceId,
+          routing_rule_id: "routing-rule-1",
+          position: 0,
+          provider: "anthropic",
+          model: "claude-3-5-sonnet-latest",
+          credential_id: null,
+          credential_alias: "anthropic-default",
+        },
+      ],
+      routing_rule_change: [],
     };
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(tables) as never);
   });
@@ -253,5 +292,145 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       status: 403,
       code: "learning_disabled",
     });
+  });
+
+  it("lists routing rules with fallback chains", async () => {
+    const result = await executeDatabaseTool(scheduledTaskTool("routing_rule.list"), {}, { workspaceId, agentId });
+
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.output)).toMatchObject({
+      routingRules: [
+        {
+          id: "routing-rule-1",
+          provider: "openai",
+          model: "gpt-4.1",
+          modelTierFloor: "any",
+          fallbacks: [
+            {
+              provider: "anthropic",
+              model: "claude-3-5-sonnet-latest",
+              credentialRef: { type: "alias", value: "anthropic-default" },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("rejects routing floor changes through the agent tool", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("routing_rule.update"),
+        {
+          routingRuleId: "routing-rule-1",
+          modelTierFloor: "frontier",
+          reason: "Raise quality bar.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "model_tier_floor_user_owned",
+    });
+    expect(tables.routing_rule_change).toEqual([]);
+  });
+
+  it("requires a reason for routing rule updates", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("routing_rule.update"),
+        { routingRuleId: "routing-rule-1", provider: "anthropic", model: "claude-3-5-sonnet-latest" },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "missing_reason",
+    });
+  });
+
+  it("rejects unknown provider/model links", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("routing_rule.update"),
+        {
+          routingRuleId: "routing-rule-1",
+          fallbacks: [{ provider: "unknown_provider", model: "mystery-model" }],
+          reason: "Try a newly observed model.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "unknown_model_in_fallback_chain",
+    });
+  });
+
+  it("rejects self-brick routing updates", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("routing_rule.update"),
+        {
+          routingRuleId: "routing-rule-1",
+          enabled: false,
+          reason: "Disable myself.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "self_brick_update",
+    });
+  });
+
+  it("accepts a self-reroute to a valid primary and fallback chain and writes audit rows", async () => {
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("routing_rule.update"),
+      {
+        routingRuleId: "routing-rule-1",
+        provider: "anthropic",
+        model: "claude-3-5-sonnet-latest",
+        credentialRef: { type: "alias", value: "anthropic-default" },
+        fallbacks: [
+          { provider: "openai", model: "gpt-4.1", credentialRef: { type: "alias", value: "openai-default" } },
+        ],
+        reason: "Anthropic has been more reliable for this workspace.",
+      },
+      { workspaceId, agentId },
+    );
+
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.output)).toMatchObject({
+      routingRule: {
+        provider: "anthropic",
+        model: "claude-3-5-sonnet-latest",
+        credentialRef: { type: "alias", value: "anthropic-default" },
+        fallbacks: [{ provider: "openai", model: "gpt-4.1" }],
+      },
+    });
+    expect(tables.routing_rule?.[0]).toMatchObject({
+      provider: "anthropic",
+      model: "claude-3-5-sonnet-latest",
+      credential_alias: "anthropic-default",
+    });
+    expect(tables.routing_rule_fallback).toEqual([
+      expect.objectContaining({
+        position: 0,
+        provider: "openai",
+        model: "gpt-4.1",
+        credential_alias: "openai-default",
+      }),
+    ]);
+    expect(tables.routing_rule_change).toEqual([
+      expect.objectContaining({
+        actor_agent_id: agentId,
+        change_kind: "primary_model",
+        reason: "Anthropic has been more reliable for this workspace.",
+      }),
+      expect.objectContaining({
+        actor_agent_id: agentId,
+        change_kind: "fallback_chain",
+        reason: "Anthropic has been more reliable for this workspace.",
+      }),
+    ]);
   });
 });

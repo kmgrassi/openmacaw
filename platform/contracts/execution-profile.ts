@@ -28,6 +28,7 @@ export const ToolProfileSchema = z.enum([
   "planning",
   "coding",
   "manager",
+  "router",
   "none",
 ]);
 
