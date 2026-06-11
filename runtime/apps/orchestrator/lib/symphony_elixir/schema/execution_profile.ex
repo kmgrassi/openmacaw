@@ -97,6 +97,8 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
     field(:role, :string)
     field(:tool_profile, :string)
     field(:credential_ref, SymphonyElixir.Schema.ExecutionProfile.CredentialRef)
+    field(:fallbacks, {:array, :map}, default: [])
+    field(:model_tier_floor, :string, default: "any")
     field(:adapter_config, :map, default: %{})
     field(:capabilities, :map, default: %{})
     field(:source_metadata, :map, default: %{})
@@ -112,6 +114,8 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
           role: String.t() | nil,
           tool_profile: String.t() | nil,
           credential_ref: String.t() | map() | nil,
+          fallbacks: [map()],
+          model_tier_floor: String.t(),
           adapter_config: map(),
           capabilities: map(),
           source_metadata: map(),
@@ -127,6 +131,7 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
     |> validate_required([:runner_kind, :provider])
     |> validate_inclusion(:runner_kind, @supported_runner_kinds)
     |> validate_inclusion(:provider, @supported_providers)
+    |> validate_inclusion(:model_tier_floor, SymphonyElixir.ModelTiers.supported_floors())
     |> apply_action(:validate)
   end
 
@@ -157,8 +162,10 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
       "provider",
       "model",
       "role",
-      "tool_profile"
+      "tool_profile",
+      "model_tier_floor"
     ])
+    |> normalize_fallbacks()
     |> normalize_map_field("adapter_config")
     |> normalize_map_field("capabilities")
     |> normalize_map_field("source_metadata")
@@ -179,8 +186,22 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   defp canonical_key("credentialRef"), do: "credential_ref"
   defp canonical_key("adapterConfig"), do: "adapter_config"
   defp canonical_key("sourceMetadata"), do: "source_metadata"
+  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("modelProvider"), do: "model_provider"
   defp canonical_key(key), do: key
+
+  defp normalize_fallbacks(attrs) do
+    case Map.get(attrs, "fallbacks") do
+      fallbacks when is_list(fallbacks) ->
+        Map.put(attrs, "fallbacks", Enum.filter(fallbacks, &is_map/1))
+
+      nil ->
+        attrs
+
+      _value ->
+        Map.put(attrs, "fallbacks", [])
+    end
+  end
 
   defp normalize_value(value) when is_map(value), do: normalize_keys(value)
   defp normalize_value(value) when is_list(value), do: Enum.map(value, &normalize_value/1)
