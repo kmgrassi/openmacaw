@@ -40,11 +40,11 @@ flow requires all services:
 # Terminal 1: Ollama
 ollama serve
 
-# Terminal 2: Runtime (in parallel-agent-runtime repo)
-cd ../parallel-agent-runtime && npm run start:local
+# Terminal 2: Runtime (in runtime/)
+cd ../runtime && pnpm run start:local
 
-# Terminal 3: Platform (in parallel-agent-platform repo)
-cd ../parallel-agent-platform && npm run dev
+# Terminal 3: Platform (in platform/)
+cd ../platform && pnpm run dev
 
 # Terminal 4: Helper
 go run ./cmd/local-runtime-helper start --config ./dev-runtime.toml --log-level debug
@@ -100,15 +100,16 @@ model = "qwen3-coder:30b"
 | Service | Port | Repo |
 |---------|------|------|
 | Ollama | 11434 | System |
-| Runtime orchestrator | 4000 | parallel-agent-runtime |
-| Runtime launcher | 4100 | parallel-agent-runtime |
-| Platform API | 3100 | parallel-agent-platform |
-| Platform web UI | 5173 | parallel-agent-platform |
+| Runtime orchestrator | 4000 | runtime/ |
+| Runtime launcher | 4100 | runtime/ |
+| Platform API | 3100 | platform/ |
+| Platform web UI | 5173 | platform/ |
 
 ## Enum/String Conventions
 
 All enum-like values use **snake_case**: `openai_compatible`, `local_runtime`.
-Never use hyphens. Must match DB check constraints in harper-server.
+Never use hyphens. Must match the database check constraints; the canonical
+runner-kind list lives in `platform/contracts/runner-kinds.ts`.
 
 ## Key Architecture Rules
 
@@ -121,8 +122,9 @@ Never use hyphens. Must match DB check constraints in harper-server.
 - **Advertise only initialized runners.** Only register runner kinds
   that were actually built in `cmdStart`, not all config sections.
 
-## Related Repos
+## Related Subsystems
 
-- `parallel-agent-platform` — TypeScript API + React frontend
-- `parallel-agent-runtime` — Elixir orchestrator/launcher
-- `harper-server` — Supabase DB migrations
+- `../platform` — TypeScript API + React frontend
+- `../runtime` — Elixir orchestrator/launcher
+- `harper-server` — private repo owning historical pre-OpenMacaw Supabase
+  migrations

@@ -3,7 +3,7 @@
 # `local-runtime-helper register --workspace=<id> --token=<token>` writes this.
 
 [machine]
-display_name = "kevin-mbp"
+display_name = "my-laptop"
 
 [cloud]
 endpoint = "wss://your-platform.example.com/worker-bridge/relay/ws"

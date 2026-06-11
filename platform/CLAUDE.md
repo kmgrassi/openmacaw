@@ -1,4 +1,4 @@
-# Parallel Agent Platform — Agent Guide
+# OpenMacaw Platform — Agent Guide
 
 ## Project Structure
 
@@ -51,8 +51,8 @@ For any change that affects the UI or user-facing behavior:
 3. **Log in with dev credentials.** If the app shows `/login`, click
    **Use dev credentials**. That button appears when
    `VITE_DEV_LOGIN_EMAIL` and `VITE_DEV_LOGIN_PASSWORD` are set in
-   `apps/web/.env`. If the button is missing, copy those vars from
-   `apps/web/.env.example` and restart `npm run dev`. Do **not** sign up a
+   `.env` at the package root. If the button is missing, copy those vars
+   from `.env.example` and restart `pnpm run dev`. Do **not** sign up a
    new user or hardcode credentials in a test; always use the dev
    credentials button.
 4. Test the feature you changed — verify it works visually
@@ -83,8 +83,9 @@ All enum-like values use **snake_case** (underscores, never hyphens):
   file is the canonical list. Today it contains `codex`, `claude_code`,
   `openclaw`, `local_runtime`, `local_relay`, `local_model_coding`,
   `llm_tool_runner`, `planner`, `openclaw_ws`, `openclaw_http_sse`,
-  `computer_use`. Harper-server's `routing_rule.runner_kind` CHECK
-  constraint must remain a superset; the cross-repo enum drift check
+  `computer_use`. The private `harper-server` repo's
+  `routing_rule.runner_kind` CHECK constraint must remain a superset; the
+  cross-repo enum drift check
   (`scripts/check-cross-repo-enums.mjs`) asserts this.
 - Providers: `openai`, `anthropic`, `openai_compatible`, `openai_codex`
 - Execution kinds: `filesystem`, `shell`, `api`, `database`
@@ -204,7 +205,7 @@ the entire codebase rather than adding a compatibility layer.
 
 ## Database Migrations
 
-- Historical Harper/Parallel Agent schema changes still live in the
+- Historical pre-OpenMacaw schema changes still live in the private
   `harper-server` repo. Do not add those migrations from this repo.
 - OpenMacaw-owned schema changes live under `platform/supabase/migrations/`
   with the matching reference SQL in `docs/supabase/openmacaw-schema.sql`.
@@ -255,18 +256,22 @@ that's how the index lost its meaning before.
 | Ollama               | 11434 | Local model server  |
 
 Start platform: `pnpm run dev` (from repo root)
-Start runtime: `pnpm run start:local` (from parallel-agent-runtime)
+Start runtime: `pnpm run start:local` (from `../runtime`)
 
 ## Environment Variables
 
-Required in `.env` at repo root:
+Required in `.env` at the package root (copy from `.env.example` and see its
+Required section):
 
-| Variable                    | Description             |
-| --------------------------- | ----------------------- |
-| `SUPABASE_PROJECT_ID`       | Supabase project ref    |
-| `SUPABASE_URL`              | Supabase API URL        |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key        |
-| `OPENAI_API_KEY`            | For agents using OpenAI |
+| Variable                     | Description               |
+| ---------------------------- | ------------------------- |
+| `SUPABASE_URL`               | Supabase API URL          |
+| `SUPABASE_SERVICE_ROLE_KEY`  | Service role key          |
+| `VITE_SUPABASE_DEV_URL`      | Browser Supabase URL      |
+| `VITE_SUPABASE_DEV_ANON_KEY` | Browser Supabase anon key |
+
+`SUPABASE_PROJECT_ID` is used by schema-sync tooling; provider keys such as
+`OPENAI_API_KEY` are optional and enable model catalog discovery.
 
 ## Worktree Conventions
 
@@ -290,11 +295,12 @@ implementing a multi-item scope or PR plan, default to bundling
 closely-related items unless they have meaningfully different review
 surfaces.
 
-## Related Repos
+## Related Subsystems
 
-- `parallel-agent-runtime` — Elixir orchestrator/launcher
-- `local-runtime-helper` — Go daemon for local model relay
-- `harper-server` — Supabase DB migrations
+- `../runtime` — Elixir orchestrator/launcher
+- `../local-runtime-helper` — Go daemon for local model relay
+- `harper-server` — private repo owning historical pre-OpenMacaw Supabase
+  migrations
 
 ## Sub-App Guides
 
