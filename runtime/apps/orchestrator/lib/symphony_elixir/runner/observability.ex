@@ -25,6 +25,7 @@ defmodule SymphonyElixir.Runner.Observability do
                               "provider_rate_limited",
                               "provider_timeout",
                               "provider_overloaded",
+                              "provider_content_refused",
                               "provider_stream_interrupted",
                               "provider_unknown"
                             ])
@@ -136,6 +137,33 @@ defmodule SymphonyElixir.Runner.Observability do
   end
 
   @doc """
+  Classifies a successful provider response whose payload indicates a content refusal.
+  """
+  @spec provider_content_refusal_failure(term(), map(), non_neg_integer()) :: map()
+  def provider_content_refusal_failure(body, context, duration_ms) when is_map(context) do
+    %{
+      event: "model_call_failed",
+      provider: Map.get(context, :provider, "openai"),
+      model: Map.get(context, :model),
+      runner_kind: Map.get(context, :runner_kind),
+      credential_scope: Map.get(context, :credential_scope),
+      credential_id_suffix: credential_id_suffix(Map.get(context, :credential_id)),
+      error_code: "provider_content_refused",
+      retryable: true,
+      duration_ms: duration_ms,
+      attempt: Map.get(context, :attempt, 1),
+      retry_count: retry_count(context),
+      trace_id: Map.get(context, :trace_id),
+      workspace_id: Map.get(context, :workspace_id),
+      agent_id: Map.get(context, :agent_id),
+      run_id: Map.get(context, :run_id),
+      turn_id: Map.get(context, :turn_id),
+      reason: provider_error_summary(body)
+    }
+    |> reject_nil_values()
+  end
+
+  @doc """
   Classifies a provider request failure before a usable HTTP response exists.
   """
   @spec provider_request_failure(term(), map(), non_neg_integer()) :: map()
@@ -224,6 +252,9 @@ defmodule SymphonyElixir.Runner.Observability do
 
   defp provider_status_error_code(status, body) do
     cond do
+      provider_content_refusal?(body) or content_policy_status_failure?(status, body) ->
+        "provider_content_refused"
+
       status in [500, 502, 503, 504] ->
         "provider_overloaded"
 
@@ -244,12 +275,21 @@ defmodule SymphonyElixir.Runner.Observability do
     end
   end
 
+  defp provider_request_error_code(reason) when is_map(reason) or is_tuple(reason) do
+    if codex_content_refusal_error?(reason) do
+      "provider_content_refused"
+    else
+      provider_request_error_code(inspect(reason))
+    end
+  end
+
   defp provider_request_error_code(reason) do
     reason
     |> inspect()
     |> String.downcase()
     |> then(fn text ->
       cond do
+        content_refusal_text?(text) -> "provider_content_refused"
         String.contains?(text, "timeout") -> "provider_timeout"
         String.contains?(text, "generation_timeout") -> "provider_timeout"
         String.contains?(text, "endpoint_unreachable") -> "provider_timeout"
@@ -263,6 +303,97 @@ defmodule SymphonyElixir.Runner.Observability do
   end
 
   defp retryable_provider_error?(error_code), do: MapSet.member?(@retryable_provider_codes, error_code)
+
+  @doc """
+  Detects provider payloads that refused generation for content-policy reasons.
+  """
+  @spec provider_content_refusal?(term()) :: boolean()
+  def provider_content_refusal?(%{"content" => content}) when is_list(content),
+    do: Enum.any?(content, &anthropic_refusal_block?/1)
+
+  def provider_content_refusal?(%{"output" => output}) when is_list(output),
+    do: Enum.any?(output, &provider_content_refusal?/1)
+
+  def provider_content_refusal?(%{"choices" => choices}) when is_list(choices),
+    do: Enum.any?(choices, &openai_content_filter_choice?/1)
+
+  def provider_content_refusal?(%{"error" => error}) when is_map(error),
+    do: content_refusal_error?(error)
+
+  def provider_content_refusal?(%{"error" => error}) when is_binary(error),
+    do: content_refusal_text?(error)
+
+  def provider_content_refusal?(%{"message" => message}) when is_binary(message),
+    do: content_refusal_text?(message)
+
+  def provider_content_refusal?(%{"reason" => reason}) when is_binary(reason),
+    do: content_refusal_text?(reason)
+
+  def provider_content_refusal?(%{"refusal" => refusal}) when is_binary(refusal),
+    do: String.trim(refusal) != ""
+
+  def provider_content_refusal?(%{"refusal" => refusal}) when is_list(refusal),
+    do: refusal != []
+
+  def provider_content_refusal?(_body), do: false
+
+  @doc """
+  Detects content-policy HTTP failures from non-LLM runner APIs.
+  """
+  @spec content_policy_status_failure?(non_neg_integer(), term()) :: boolean()
+  def content_policy_status_failure?(status, body) when status in [400, 403, 422] do
+    provider_content_refusal?(body) or content_refusal_text?(inspect(body))
+  end
+
+  def content_policy_status_failure?(_status, _body), do: false
+
+  @doc """
+  Detects Codex AppServer RPC errors that wrap a provider content refusal.
+  """
+  @spec codex_content_refusal_error?(term()) :: boolean()
+  def codex_content_refusal_error?({:response_error, payload}), do: codex_content_refusal_error?(payload)
+  def codex_content_refusal_error?({:turn_failed, payload}), do: codex_content_refusal_error?(payload)
+  def codex_content_refusal_error?(%{"error" => error}), do: codex_content_refusal_error?(error)
+  def codex_content_refusal_error?(%{"data" => data}) when is_map(data), do: codex_content_refusal_error?(data)
+  def codex_content_refusal_error?(%{"code" => code}) when is_binary(code), do: content_refusal_text?(code)
+  def codex_content_refusal_error?(%{"type" => type}) when is_binary(type), do: content_refusal_text?(type)
+  def codex_content_refusal_error?(%{"message" => message}) when is_binary(message), do: content_refusal_text?(message)
+  def codex_content_refusal_error?(payload) when is_binary(payload), do: content_refusal_text?(payload)
+  def codex_content_refusal_error?(_payload), do: false
+
+  defp anthropic_refusal_block?(%{"type" => "refusal"}), do: true
+  defp anthropic_refusal_block?(%{"type" => "text", "text" => text}) when is_binary(text), do: content_refusal_text?(text)
+  defp anthropic_refusal_block?(_block), do: false
+
+  defp openai_content_filter_choice?(%{"finish_reason" => "content_filter"}), do: true
+  defp openai_content_filter_choice?(%{"message" => message}) when is_map(message), do: provider_content_refusal?(message)
+  defp openai_content_filter_choice?(_choice), do: false
+
+  defp content_refusal_error?(%{"code" => code}) when is_binary(code), do: content_refusal_text?(code)
+  defp content_refusal_error?(%{"type" => type}) when is_binary(type), do: content_refusal_text?(type)
+  defp content_refusal_error?(%{"message" => message}) when is_binary(message), do: content_refusal_text?(message)
+  defp content_refusal_error?(_error), do: false
+
+  defp content_refusal_text?(text) when is_binary(text) do
+    text = String.downcase(text)
+
+    Enum.any?(
+      [
+        "content_filter",
+        "content filter",
+        "content_policy",
+        "content policy",
+        "safety policy",
+        "safety_policy",
+        "policy_violation",
+        "refusal",
+        "refused"
+      ],
+      &String.contains?(text, &1)
+    )
+  end
+
+  defp content_refusal_text?(_text), do: false
 
   defp provider_body_error_code(%{"error" => %{"code" => code}}) when is_binary(code), do: code
   defp provider_body_error_code(%{"error" => %{"type" => type}}) when is_binary(type), do: type

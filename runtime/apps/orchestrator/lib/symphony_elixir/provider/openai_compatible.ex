@@ -86,12 +86,23 @@ defmodule SymphonyElixir.Provider.OpenAICompatible do
 
       case Req.post(req, json: request) do
         {:ok, %Req.Response{status: status, body: body} = response} when status in 200..299 ->
-          Observability.log_model_call_completed(context, elapsed_ms(started_at),
-            status_code: status,
-            provider_request_id: Observability.provider_request_id(response)
-          )
+          if Observability.provider_content_refusal?(body) do
+            classification =
+              Observability.provider_content_refusal_failure(body, context, elapsed_ms(started_at))
+              |> Map.put(:status_code, status)
+              |> Map.put(:provider_status, status)
+              |> Map.put(:provider_request_id, Observability.provider_request_id(response))
+              |> Observability.log_provider_failure()
 
-          {:ok, normalize_response(body, model)}
+            {:error, {:retryable, classification}}
+          else
+            Observability.log_model_call_completed(context, elapsed_ms(started_at),
+              status_code: status,
+              provider_request_id: Observability.provider_request_id(response)
+            )
+
+            {:ok, normalize_response(body, model)}
+          end
 
         {:ok, %Req.Response{status: status, body: body} = response} ->
           Observability.provider_status_failure(status, body, response, context, elapsed_ms(started_at))
@@ -505,10 +516,12 @@ defmodule SymphonyElixir.Provider.OpenAICompatible do
   defp atom_key(key) when is_atom(key), do: key
 
   defp classify_status(status, body) do
+    error_code = status_error_code(status, body)
+
     classification = %{
-      error_code: status_error_code(status),
+      error_code: error_code,
       provider_status: status,
-      retryable: retryable_status?(status),
+      retryable: retryable_status?(status, error_code),
       message: provider_error_message(body)
     }
 
@@ -519,12 +532,21 @@ defmodule SymphonyElixir.Provider.OpenAICompatible do
     end
   end
 
+  defp status_error_code(status, body) do
+    if Observability.content_policy_status_failure?(status, body) do
+      :provider_content_refused
+    else
+      status_error_code(status)
+    end
+  end
+
   defp status_error_code(status) when status in [401, 403], do: :provider_auth_failed
   defp status_error_code(429), do: :provider_rate_limited
   defp status_error_code(status) when status in 500..599, do: :provider_unavailable
   defp status_error_code(_status), do: :provider_rejected_request
 
-  defp retryable_status?(status), do: status == 429 or status in 500..599
+  defp retryable_status?(_status, :provider_content_refused), do: true
+  defp retryable_status?(status, _error_code), do: status == 429 or status in 500..599
 
   defp map_value(map, key) when is_map(map) do
     Map.get(map, key) || Map.get(map, to_string(key))
