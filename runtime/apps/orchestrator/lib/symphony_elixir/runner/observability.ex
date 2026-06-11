@@ -291,6 +291,14 @@ defmodule SymphonyElixir.Runner.Observability do
     |> then(fn text ->
       cond do
         content_refusal_text?(text) -> "provider_content_refused"
+        String.contains?(text, "provider_rate_limited") -> "provider_rate_limited"
+        String.contains?(text, "provider_timeout") -> "provider_timeout"
+        String.contains?(text, "provider_overloaded") -> "provider_overloaded"
+        String.contains?(text, "provider_stream_interrupted") -> "provider_stream_interrupted"
+        String.contains?(text, "provider_content_refused") -> "provider_content_refused"
+        String.contains?(text, "provider_invalid_request") -> "provider_invalid_request"
+        String.contains?(text, "provider_auth_failed") -> "provider_auth_failed"
+        String.contains?(text, "provider_unknown") -> "provider_unknown"
         String.contains?(text, "timeout") -> "provider_timeout"
         String.contains?(text, "generation_timeout") -> "provider_timeout"
         String.contains?(text, "endpoint_unreachable") -> "provider_timeout"
