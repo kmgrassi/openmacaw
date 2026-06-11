@@ -74,5 +74,21 @@ create policy local_runtime_event_workspace_member_access
   on public.local_runtime_event
   for all
   to authenticated
-  using (public.is_workspace_member(workspace_id))
-  with check (public.is_workspace_member(workspace_id));
+  using (
+    exists (
+      select 1
+      from public.local_runtime_machine machine
+      where machine.id = local_runtime_event.machine_id
+        and machine.workspace_id = local_runtime_event.workspace_id
+        and public.is_workspace_member(machine.workspace_id)
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.local_runtime_machine machine
+      where machine.id = local_runtime_event.machine_id
+        and machine.workspace_id = local_runtime_event.workspace_id
+        and public.is_workspace_member(machine.workspace_id)
+    )
+  );

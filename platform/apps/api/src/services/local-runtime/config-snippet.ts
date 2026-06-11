@@ -1,4 +1,5 @@
 import type {
+  LocalRuntimeMachineStatus,
   LocalRuntimeRegistrationRunnerKind,
   LocalToolCallCapability,
 } from "../../../../../contracts/local-runtime.js";
@@ -99,7 +100,7 @@ export function buildSetupCommand(input: ConfigSnippetInput) {
     'GOPATH="$(go env GOPATH)"',
     'HELPER_BIN="${GOBIN:-$GOPATH/bin}/local-runtime-helper"',
     "cd local-runtime-helper",
-    'go install ./cmd/local-runtime-helper',
+    "go install ./cmd/local-runtime-helper",
     `"$HELPER_BIN" ${helperArgs}`,
     '"$HELPER_BIN" start',
   ].join(" && ");
@@ -140,10 +141,14 @@ export function buildConfigSnippet(input: ConfigSnippetInput) {
 }
 
 export function buildLocalExecution(input: { machine: LocalRuntimeMachineRow | null; workspaceRoot: string | null }) {
+  const online = helperOnline(input.machine?.last_seen_at);
+  const status: LocalRuntimeMachineStatus = online ? "online" : "offline";
+
   return {
     machineId: input.machine?.id ?? null,
     machineDisplayName: input.machine?.display_name ?? null,
-    helperOnline: helperOnline(input.machine?.last_seen_at),
+    status,
+    helperOnline: online,
     lastSeenAt: input.machine?.last_seen_at ?? null,
     workspaceRoot: input.workspaceRoot,
     registered: Boolean(input.machine && input.workspaceRoot),

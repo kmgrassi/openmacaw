@@ -1212,7 +1212,6 @@ begin
     'gateway_config',
     'gateway_config_state',
     'gateway_config_versions',
-    'local_runtime_event',
     'local_runtime_machine',
     'local_runtime_token',
     'memory_items',
@@ -1326,6 +1325,30 @@ with check (
     select 1
     from public.local_runtime_machine machine
     where machine.id = local_runtime_model.machine_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+);
+
+alter table public.local_runtime_event enable row level security;
+drop policy if exists local_runtime_event_workspace_member_access on public.local_runtime_event;
+create policy local_runtime_event_workspace_member_access
+on public.local_runtime_event
+for all to authenticated
+using (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_event.machine_id
+      and machine.workspace_id = local_runtime_event.workspace_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_event.machine_id
+      and machine.workspace_id = local_runtime_event.workspace_id
       and public.is_workspace_member(machine.workspace_id)
   )
 );
@@ -1633,7 +1656,6 @@ begin
     'gateway_config',
     'gateway_config_state',
     'gateway_config_versions',
-    'local_runtime_event',
     'local_runtime_machine',
     'local_runtime_token',
     'memory_items',
