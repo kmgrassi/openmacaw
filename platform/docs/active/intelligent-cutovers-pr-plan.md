@@ -63,8 +63,8 @@ The plan covers 15 PRs:
 ┌───────────────────────────────┐
 │ PR1  platform                 │            ┌───────────────────────────────┐
 │  Model-tier registry          │            │ PR13 runtime + platform       │
-│  contracts/model-tiers.ts     │            │  Provider-failure events →    │
-└──────────────┬────────────────┘            │  event_log + read API         │
+│  contracts/model-tiers.ts     │            │  provider_failure table +     │
+└──────────────┬────────────────┘            │  event writes + read API      │
                │                             └──────────────┬────────────────┘
                ▼                                            │
 ┌───────────────────────────────┐                           │
@@ -554,21 +554,35 @@ Parallelism:
 Area: `runtime/` + `platform/`
 
 This is the router agent's primary sensor. Today provider failures
-land only in stdout logs and loose `message.metadata` JSON; the
-`event_log` table exists in the schema
+land only in stdout logs and loose `message.metadata` JSON. The
+existing `event_log` table
 (`platform/supabase/migrations/20260604133000_openmacaw_initial_schema.sql:194`)
-but nothing writes to it. This PR is a narrow, self-contained slice of
-the broader end-to-end-logging plan
+is **not** reused here: its `work_item_id` and `source` columns are
+non-null (provider failures can occur outside a work item — chat
+turns, scheduled-task runs), and its data lives in a jsonb `payload`,
+which conflicts with both the read API's need to group by
+`(provider, model, error_code)` and the project rule against jsonb
+for fields the application validates. A dedicated typed table is the
+correct shape. This PR is a narrow, self-contained slice of the
+broader end-to-end-logging plan
 ([`end-to-end-logging-improvement-pr-plan.md`](../../../runtime/docs/end-to-end-logging-improvement-pr-plan.md))
 — coordinate so the two don't diverge on event shape.
 
 Scope:
 
+- **Migration** (`platform/supabase/migrations/`): create
+  `provider_failure` table with typed columns — `id`, `created_at`,
+  `workspace_id` (not null), `agent_id` / `work_item_id` / `run_id`
+  (nullable — not every failure has all three), `runner_kind`,
+  `provider`, `model`, `error_code`, `status_code` (nullable),
+  `attempt`. Workspace-scoped RLS via `public.is_workspace_member`;
+  index on `(workspace_id, created_at DESC)`. `provider` and
+  `error_code` CHECKs mirror the existing enums.
 - **Runtime**: extend `Observability.log_provider_failure/…` to also
-  write an `event_log` row (best-effort persistence pattern) with
-  `event_type: "provider_failure"`, `workspace_id`, `agent_id`,
-  `run_id`, and metadata carrying `error_code`, `provider`, `model`,
-  `status_code`, `attempt`, `runner_kind`.
+  write a `provider_failure` row via the best-effort persistence
+  pattern. Add `provider_failure` to `BRIDGE_TABLES` with the usual
+  startup smoke test (runtime CLAUDE.md "Database Schema Sync —
+  REQUIRED").
 - **Platform**: add
   `apps/api/src/repositories/provider-failures.ts` and routes:
   - `GET /api/workspaces/:workspaceId/provider-failures/recent`
@@ -576,8 +590,9 @@ Scope:
   - `GET /api/workspaces/:workspaceId/provider-failures/summary?since=…`
     (counts grouped by `(provider, model, error_code)`)
 - Zod contracts in `contracts/provider-failures.ts` (camelCase).
-- Tests: a classified failure round-trips into `event_log` and out
-  through both endpoints.
+- Tests: a classified failure round-trips into `provider_failure` and
+  out through both endpoints, including failures with no associated
+  work item.
 
 Acceptance:
 
@@ -783,8 +798,11 @@ Parallelism:
 - **No new uses of jsonb for cutover or routing-change state** — the
   `fallbacks` data lives in the `routing_rule_fallback` table; the
   cutover audit lives in `provider_cutover`; router-agent changes
-  live in `routing_rule_change` with typed columns. Push back on any
-  jsonb-shaped alternative per the project rule.
+  live in `routing_rule_change`; provider-failure events live in
+  `provider_failure` — all with typed columns. This is also why PR13
+  does not reuse `event_log` (jsonb payload, non-null
+  `work_item_id`). Push back on any jsonb-shaped alternative per the
+  project rule.
 - **The adequacy floor is user-owned.** Enforced in two independent
   places: the cutover walker skips below-floor links at run time
   (PR4), and the `routing_rule.update` tool rejects floor mutations
