@@ -20,6 +20,10 @@ export function workspaceManagerAgentId(workspaceId: string) {
   return deterministicUuid(`workspace-manager-agent:${workspaceId}`);
 }
 
+export function workspaceRouterAgentId(workspaceId: string) {
+  return deterministicUuid(`workspace-router-agent:${workspaceId}`);
+}
+
 export function requireCurrentUser(userId: string) {
   userId = userId.trim();
   if (!userId) {

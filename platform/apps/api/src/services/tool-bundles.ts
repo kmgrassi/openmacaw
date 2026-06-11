@@ -25,6 +25,16 @@ export const SCHEDULED_TASK_TOOL_SLUGS = [
 
 export const GIT_COMMAND_TOOL_SLUG = "git.run" as const;
 
+export const ROUTER_TOOL_SLUGS = [
+  "routing_rule.list",
+  "routing_rule.read",
+  "routing_rule.update",
+  "provider_failure.list",
+  "local_model.list",
+  "provider_cutover.list",
+  "scheduled_task.read",
+] as const;
+
 export const DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS = [
   ...DEFAULT_PLANNING_TOOL_SLUGS,
   ...SCHEDULED_TASK_TOOL_SLUGS,
@@ -60,13 +70,18 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
   manager: {
     defaultToolSlugs: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
   },
+  router: {
+    defaultToolSlugs: ROUTER_TOOL_SLUGS,
+  },
   none: {
     defaultToolSlugs: [],
   },
 } as const satisfies Record<ToolProfile, ToolBundleDefinition>;
 
 export function toolProfileForAgentType(agentType: string | null | undefined): ToolProfile {
-  if (agentType === "planning" || agentType === "coding" || agentType === "manager") return agentType;
+  if (agentType === "planning" || agentType === "coding" || agentType === "manager" || agentType === "router") {
+    return agentType;
+  }
   return "none";
 }
 

@@ -1,6 +1,11 @@
 type RunnerWorkspaceWritePolicy = "role_coding" | "always" | "never";
 type RunnerToolCallPolicy = "always" | "except_custom" | "never";
-type RunnerCapabilityRole = "planning" | "coding" | "manager" | "custom";
+type RunnerCapabilityRole =
+  | "planning"
+  | "coding"
+  | "manager"
+  | "router"
+  | "custom";
 type RawRunnerRegistryEntry = {
   runnerFamily: string;
   executionLocation: string;
