@@ -31,7 +31,7 @@ export function NavSection({
           type="button"
           onClick={onToggle}
           className={cn(
-            "flex min-h-8 min-w-0 flex-1 items-center rounded-md px-2 text-xs font-medium uppercase tracking-wide text-slate-500 hover:bg-surface-raised hover:text-slate-300",
+            "flex min-h-8 min-w-0 flex-1 items-center rounded-md px-2 text-[0.8125rem] font-medium uppercase tracking-wide text-slate-400 hover:bg-surface-raised hover:text-slate-200",
             collapsed ? "justify-center" : "justify-between",
           )}
           aria-expanded={open}

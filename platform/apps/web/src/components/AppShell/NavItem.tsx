@@ -25,11 +25,11 @@ export function NavItem({
       title={label}
       className={({ isActive }) =>
         cn(
-          "flex min-h-9 items-center rounded-md px-2.5 py-2 text-sm transition-colors",
+          "flex min-h-9 items-center rounded-md px-2.5 py-2 text-[0.9375rem] transition-colors",
           collapsed ? "justify-center" : "justify-between gap-3",
           isActive
             ? "bg-surface-raised text-slate-100"
-            : "text-slate-400 hover:bg-surface-raised hover:text-slate-200",
+            : "text-slate-300 hover:bg-surface-raised hover:text-slate-100",
         )
       }
     >
