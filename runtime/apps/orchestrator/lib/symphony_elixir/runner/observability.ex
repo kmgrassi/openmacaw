@@ -26,6 +26,7 @@ defmodule SymphonyElixir.Runner.Observability do
                               "provider_timeout",
                               "provider_overloaded",
                               "provider_stream_interrupted",
+                              "provider_content_refused",
                               "provider_unknown"
                             ])
 

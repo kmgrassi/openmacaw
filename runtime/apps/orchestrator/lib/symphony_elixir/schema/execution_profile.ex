@@ -97,6 +97,8 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
     field(:role, :string)
     field(:tool_profile, :string)
     field(:credential_ref, SymphonyElixir.Schema.ExecutionProfile.CredentialRef)
+    field(:fallbacks, {:array, :map}, default: [])
+    field(:model_tier_floor, :string, default: "any")
     field(:adapter_config, :map, default: %{})
     field(:capabilities, :map, default: %{})
     field(:source_metadata, :map, default: %{})
@@ -112,6 +114,8 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
           role: String.t() | nil,
           tool_profile: String.t() | nil,
           credential_ref: String.t() | map() | nil,
+          fallbacks: [map()],
+          model_tier_floor: String.t(),
           adapter_config: map(),
           capabilities: map(),
           source_metadata: map(),
@@ -157,8 +161,10 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
       "provider",
       "model",
       "role",
-      "tool_profile"
+      "tool_profile",
+      "model_tier_floor"
     ])
+    |> normalize_list_field("fallbacks")
     |> normalize_map_field("adapter_config")
     |> normalize_map_field("capabilities")
     |> normalize_map_field("source_metadata")
@@ -177,6 +183,7 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   defp canonical_key("runnerKind"), do: "runner_kind"
   defp canonical_key("toolProfile"), do: "tool_profile"
   defp canonical_key("credentialRef"), do: "credential_ref"
+  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("adapterConfig"), do: "adapter_config"
   defp canonical_key("sourceMetadata"), do: "source_metadata"
   defp canonical_key("modelProvider"), do: "model_provider"
@@ -207,6 +214,14 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   defp normalize_map_field(attrs, field) do
     case Map.get(attrs, field) do
       value when is_map(value) -> Map.put(attrs, field, value)
+      nil -> attrs
+      _value -> Map.delete(attrs, field)
+    end
+  end
+
+  defp normalize_list_field(attrs, field) do
+    case Map.get(attrs, field) do
+      value when is_list(value) -> Map.put(attrs, field, value)
       nil -> attrs
       _value -> Map.delete(attrs, field)
     end

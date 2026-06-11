@@ -5,7 +5,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
 
   @behaviour SymphonyElixir.Runner
 
-  alias SymphonyElixir.{MessageHistory, ToolRegistry, WorkItem}
+  alias SymphonyElixir.{Attention, Cutover, MessageHistory, ToolRegistry, WorkItem}
   alias SymphonyElixir.Manager.Prompt, as: ManagerPrompt
   alias SymphonyElixir.Manager.ModelClient
   alias SymphonyElixir.Planner.ToolNameMapping
@@ -41,6 +41,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
            credential_scope: Map.get(credential, :credential_scope),
            workspace_id: config_value(config, "workspace_id"),
            model: provider_model(config_value(config, "model")) || @default_model,
+           model_tier_floor: model_tier_floor(config),
+           fallbacks: fallback_links(config),
            prompt: runtime_prompt(config),
            state: state,
            tool_specs: tool_specs,
@@ -380,15 +382,101 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     end
   end
 
+  defp model_tier_floor(config) do
+    case config_value(config, "model_tier_floor") || config_value(config, "modelTierFloor") do
+      floor when floor in ["frontier", "mid", "local"] -> floor
+      _ -> "any"
+    end
+  end
+
+  defp fallback_links(config) do
+    config
+    |> config_value("fallbacks")
+    |> List.wrap()
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(&normalize_fallback_link/1)
+  end
+
+  defp normalize_fallback_link(link) do
+    %{
+      "provider" => config_value(link, "provider"),
+      "model" => provider_model(config_value(link, "model")),
+      "credential_id" => config_value(link, "credential_id"),
+      "credential_ref" => config_value(link, "credential_ref"),
+      "api_key" => config_value(link, "api_key"),
+      "base_url" => config_value(link, "base_url"),
+      "model_client" => config_value(link, "model_client")
+    }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
   defp model_client_initial_request(session, due_tasks_payload, work_item) do
     client = session.model_client
     client.initial_request(session, due_tasks_payload, work_item)
   end
 
   defp model_client_create_response(session, request, attempt) do
-    client = session.model_client
-    client.create_response(session, request, attempt)
+    if cutover_enabled?(session) do
+      model_client_create_response_with_cutover(session, request, attempt)
+    else
+      client = session.model_client
+      client.create_response(session, request, attempt)
+    end
   end
+
+  defp model_client_create_response_with_cutover(session, request, attempt) do
+    context = %{
+      workspace_id: Map.get(session, :workspace_id),
+      agent_id: Map.get(session, :agent_id),
+      work_item_id: get_in(request, ["metadata", "work_item_id"]),
+      run_id: Map.get(session, :run_id),
+      trace_id: Map.get(session, :trace_id)
+    }
+
+    case Cutover.walk(session, context, fn link ->
+           link_session = session_for_cutover_link(session, link)
+           client = link_session.model_client
+           client.create_response(link_session, request_for_cutover_link(request, link_session), attempt + link.attempt - 1)
+         end) do
+      {:ok, response, _decision} ->
+        {:ok, response}
+
+      {:error, :floor_exhausted, decision} ->
+        Attention.escalate(:cutover_floor_exhausted, decision, session)
+
+      {:error, :exhausted, decision} ->
+        Attention.escalate(:cutover_exhausted, decision, session)
+
+      {:error, {:fatal, reason}, _decision} ->
+        passthrough_provider_error(reason)
+    end
+  end
+
+  defp cutover_enabled?(session) do
+    Map.get(session, :fallbacks, []) != [] or Map.get(session, :model_tier_floor, "any") != "any"
+  end
+
+  defp passthrough_provider_error({kind, _classification} = error) when kind in [:fatal, :retryable], do: {:error, error}
+  defp passthrough_provider_error(reason), do: {:error, {:fatal, reason}}
+
+  defp session_for_cutover_link(session, %Cutover.Link{} = link) do
+    provider = link.provider || session.provider
+    model_client = link.model_client || model_client(%{"provider" => provider})
+
+    session
+    |> Map.put(:provider, provider)
+    |> Map.put(:model, provider_model(link.model) || session.model)
+    |> Map.put(:credential_id, link.credential_id)
+    |> Map.put(:model_client, model_client)
+    |> maybe_put_session_value(:api_key, link.api_key)
+    |> maybe_put_session_value(:base_url, link.base_url || default_base_url(model_client))
+  end
+
+  defp request_for_cutover_link(request, session) when is_map(request), do: Map.put(request, "model", session.model)
+
+  defp maybe_put_session_value(session, _key, nil), do: session
+  defp maybe_put_session_value(session, key, value), do: Map.put(session, key, value)
 
   defp model_client_follow_up_request(session, response, tool_outputs) do
     client = session.model_client
