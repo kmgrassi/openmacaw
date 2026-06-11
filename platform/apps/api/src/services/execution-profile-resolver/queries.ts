@@ -8,6 +8,7 @@ import type {
   CredentialProfileRow,
   GatewayConfigProfileRow,
   ResolveExecutionProfileInput,
+  RoutingRuleFallbackRow,
   RoutingRuleMatchRow,
   RoutingRuleRow,
 } from "./types.js";
@@ -16,6 +17,24 @@ type CredentialQueryClient = {
   from(table: "credential"): {
     select(columns: string): {
       eq(column: string, value: unknown): PromiseLike<{ data: unknown; error: never }>;
+    };
+  };
+};
+
+type RoutingRuleFallbackQueryClient = {
+  from(table: "routing_rule_fallback"): {
+    select(columns: string): {
+      eq(
+        column: string,
+        value: unknown,
+      ): {
+        in(
+          column: string,
+          values: unknown[],
+        ): {
+          order(column: string, options?: { ascending?: boolean }): PromiseLike<{ data: unknown; error: never }>;
+        };
+      };
     };
   };
 };
@@ -54,31 +73,20 @@ export async function getAgentGatewayConfig(
   return ((data ?? [])[0] as GatewayConfigProfileRow | undefined) ?? null;
 }
 
-async function getRoutingRules(workspaceId: string, accessToken?: string): Promise<RoutingRuleRow[]> {
+export async function getRoutingRules(workspaceId: string, accessToken?: string): Promise<RoutingRuleRow[]> {
   const { data, error } = await clientForAccessToken(accessToken)
     .from("routing_rule")
-    .select("id,workspace_id,priority,runner_kind,provider,model,credential_id,credential_alias,next_fallback_rule_id")
+    .select("id,workspace_id,priority,runner_kind,provider,model,credential_id,credential_alias,model_tier_floor")
     .eq("workspace_id", workspaceId)
     .eq("enabled", true)
     .order("priority", { ascending: false })
     .order("created_at", { ascending: true });
   if (error) throw normalizeSupabaseError("routing_rule query", error);
 
-  return ((data ?? []) as RoutingRuleRow[]).sort((left, right) => right.priority - left.priority);
+  return ((data ?? []) as unknown as RoutingRuleRow[]).sort((left, right) => right.priority - left.priority);
 }
 
-export async function getRoutingRulesWithFallback(
-  workspaceId: string,
-  accessToken?: string,
-): Promise<RoutingRuleRow[]> {
-  try {
-    return await getRoutingRules(workspaceId, accessToken);
-  } catch {
-    return [];
-  }
-}
-
-async function getRuleMatches(
+export async function getRuleMatches(
   workspaceId: string,
   ruleIds: string[],
   accessToken?: string,
@@ -94,16 +102,21 @@ async function getRuleMatches(
   return (data ?? []) as RoutingRuleMatchRow[];
 }
 
-export async function getRuleMatchesWithFallback(
+export async function getRoutingRuleFallbacks(
   workspaceId: string,
   ruleIds: string[],
   accessToken?: string,
-): Promise<RoutingRuleMatchRow[]> {
-  try {
-    return await getRuleMatches(workspaceId, ruleIds, accessToken);
-  } catch {
-    return [];
-  }
+): Promise<RoutingRuleFallbackRow[]> {
+  if (ruleIds.length === 0) return [];
+  const { data, error } = await (clientForAccessToken(accessToken) as unknown as RoutingRuleFallbackQueryClient)
+    .from("routing_rule_fallback")
+    .select("routing_rule_id,position,provider,model,credential_id,credential_alias")
+    .eq("workspace_id", workspaceId)
+    .in("routing_rule_id", ruleIds)
+    .order("position", { ascending: true });
+  if (error) throw normalizeSupabaseError("routing_rule_fallback query", error);
+
+  return data as RoutingRuleFallbackRow[];
 }
 
 export async function resolveCredentialAlias(

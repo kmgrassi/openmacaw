@@ -8,6 +8,13 @@ export type ModelTier = (typeof MODEL_TIERS)[number];
 export type AssignableModelTier = Exclude<ModelTier, "any">;
 export type RegisteredProvider = keyof typeof PROVIDER_REGISTRY;
 
+export const RegisteredProviderSchema = z.enum(
+  Object.keys(PROVIDER_REGISTRY) as [
+    RegisteredProvider,
+    ...RegisteredProvider[],
+  ],
+);
+
 export const MODEL_TIER_REGISTRY: ReadonlyArray<{
   provider: RegisteredProvider;
   model: string;
@@ -130,10 +137,21 @@ export function modelTier(
   provider: RegisteredProvider,
   model: string,
 ): AssignableModelTier | null {
+  const trimmedModel = model.trim();
   const exact = MODEL_TIER_REGISTRY.find(
-    (entry) => entry.provider === provider && entry.model === model,
+    (entry) => entry.provider === provider && entry.model === trimmedModel,
   );
   if (exact) return exact.tier;
+
+  const providerPrefix = `${provider}/`;
+  if (trimmedModel.startsWith(providerPrefix)) {
+    const unqualifiedModel = trimmedModel.slice(providerPrefix.length);
+    const unqualified = MODEL_TIER_REGISTRY.find(
+      (entry) =>
+        entry.provider === provider && entry.model === unqualifiedModel,
+    );
+    if (unqualified) return unqualified.tier;
+  }
 
   const wildcard = MODEL_TIER_REGISTRY.find(
     (entry) => entry.provider === provider && entry.model === "*",

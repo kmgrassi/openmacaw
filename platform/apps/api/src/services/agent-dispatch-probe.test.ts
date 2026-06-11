@@ -35,6 +35,8 @@ function codexProfile(): ExecutionProfileResolution {
       provider: "openai",
       model: "gpt-5",
       credentialRef: { type: "credential_id", value: credentialId },
+      fallbacks: [],
+      modelTierFloor: "any",
       toolProfile: "coding",
       capabilities: {
         streaming: true,

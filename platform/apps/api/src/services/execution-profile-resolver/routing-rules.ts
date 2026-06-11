@@ -1,10 +1,12 @@
 import { deriveProviderFromModel, extractPrimaryModel } from "../../../../../contracts/agent-helpers.js";
 import { ModelSettingsSchema } from "../../../../../contracts/agents.js";
-import type { AgentRole, ExecutionProfileResolution } from "../../../../../contracts/execution-profile.js";
+import type { AgentRole, ExecutionProfileFallback } from "../../../../../contracts/execution-profile.js";
+import { RegisteredProviderSchema, modelTier } from "../../../../../contracts/model-tiers.js";
 import { normalizeRunnerKind } from "../../../../../contracts/runner-kinds.js";
+import { ApiRouteError } from "../../http.js";
 import { buildResolution } from "./build-resolution.js";
 import { resolveCredentialAlias } from "./queries.js";
-import type { AgentProfileRow, RoutingRuleMatchRow, RoutingRuleRow } from "./types.js";
+import type { AgentProfileRow, RoutingRuleFallbackRow, RoutingRuleMatchRow, RoutingRuleRow } from "./types.js";
 
 export function matchValue(
   input: { agent: Pick<AgentProfileRow, "id">; role: AgentRole; intent: string | null; intentKey: string | null },
@@ -74,6 +76,7 @@ async function buildRuleResolution(input: {
   role: AgentRole;
   rule: RoutingRuleRow;
   matches: RoutingRuleMatchRow[];
+  fallbacks: RoutingRuleFallbackRow[];
   accessToken?: string;
 }) {
   const credentialId =
@@ -83,6 +86,11 @@ async function buildRuleResolution(input: {
       : null);
   const model = input.rule.model?.trim() || extractPrimaryModel(ModelSettingsSchema.parse(input.agent.model_settings));
   const metadata = routingMetadata(input.matches);
+  const fallbacks = await buildFallbacks({
+    workspaceId: input.agent.workspace_id,
+    rows: input.fallbacks,
+    accessToken: input.accessToken,
+  });
   return buildResolution({
     agent: input.agent,
     role: input.role,
@@ -95,9 +103,50 @@ async function buildRuleResolution(input: {
     credentialAlias: input.rule.credential_alias,
     fallbackUsed: false,
     legacyGatewayConfigUsed: false,
+    fallbacks,
+    modelTierFloor: input.rule.model_tier_floor ?? "any",
     adapterConfig: metadata.adapterConfig,
     sourceMetadata: metadata.sourceMetadata,
   });
+}
+
+async function buildFallbacks(input: {
+  workspaceId: string;
+  rows: RoutingRuleFallbackRow[];
+  accessToken?: string;
+}): Promise<ExecutionProfileFallback[]> {
+  const fallbacks: ExecutionProfileFallback[] = [];
+
+  for (const row of input.rows) {
+    const providerResult = RegisteredProviderSchema.safeParse(row.provider);
+    const tier = providerResult.success ? modelTier(providerResult.data, row.model) : null;
+    if (!providerResult.success || !tier) {
+      throw new ApiRouteError(
+        422,
+        "unknown_model_in_fallback_chain",
+        "Routing rule fallback references a provider/model pair that is not classified in MODEL_TIER_REGISTRY",
+        {
+          routingRuleId: row.routing_rule_id,
+          position: row.position,
+          provider: row.provider,
+          model: row.model,
+        },
+      );
+    }
+
+    const credentialId =
+      row.credential_id ??
+      (row.credential_alias
+        ? await resolveCredentialAlias(input.workspaceId, row.credential_alias, input.accessToken)
+        : null);
+    fallbacks.push({
+      provider: providerResult.data,
+      model: row.model,
+      ...(credentialId ? { credentialRef: { type: "credential_id" as const, value: credentialId } } : {}),
+    });
+  }
+
+  return fallbacks;
 }
 
 function routingMetadata(matches: RoutingRuleMatchRow[]) {
@@ -124,31 +173,20 @@ function routingMetadata(matches: RoutingRuleMatchRow[]) {
   return { adapterConfig, sourceMetadata };
 }
 
-export async function resolveRoutingRuleChain(input: {
+export async function resolveRoutingRule(input: {
   agent: AgentProfileRow;
   role: AgentRole;
   rule: RoutingRuleRow;
-  rulesById: Map<string, RoutingRuleRow>;
   matches: RoutingRuleMatchRow[];
+  fallbacks: RoutingRuleFallbackRow[];
   accessToken?: string;
 }) {
-  const visited = new Set<string>();
-  let current: RoutingRuleRow | undefined = input.rule;
-  let lastResolution: ExecutionProfileResolution | null = null;
-
-  while (current && !visited.has(current.id)) {
-    const rule = current;
-    visited.add(rule.id);
-    lastResolution = await buildRuleResolution({
-      agent: input.agent,
-      role: input.role,
-      rule,
-      matches: input.matches.filter((match) => match.rule_id === rule.id),
-      accessToken: input.accessToken,
-    });
-    if (lastResolution.missing.length === 0 || !rule.next_fallback_rule_id) return lastResolution;
-    current = input.rulesById.get(rule.next_fallback_rule_id);
-  }
-
-  return lastResolution;
+  return buildRuleResolution({
+    agent: input.agent,
+    role: input.role,
+    rule: input.rule,
+    matches: input.matches.filter((match) => match.rule_id === input.rule.id),
+    fallbacks: input.fallbacks.filter((fallback) => fallback.routing_rule_id === input.rule.id),
+    accessToken: input.accessToken,
+  });
 }
