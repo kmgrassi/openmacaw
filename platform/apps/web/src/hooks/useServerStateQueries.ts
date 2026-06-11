@@ -8,12 +8,14 @@ import {
 import {
   assignLocalModelToAgent,
   getLocalRuntimeConfig,
+  listLocalRuntimeEvents,
   listLocalRuntimes,
   probeLocalModel,
   probeRegisteredLocalRuntimeRunner,
   registerLocalRuntime,
   removeLocalRuntime,
   rotateLocalRuntimeToken,
+  testLocalRuntimeDispatch,
 } from "../api/local-runtime";
 import {
   fallbackModelCatalog,
@@ -52,6 +54,22 @@ export function useLocalRuntimesQuery(workspaceId?: string | null) {
     staleTime: 5_000,
     refetchInterval: (query) =>
       query.state.data?.runtimes.length ? 2_000 : false,
+  });
+}
+
+export function useLocalRuntimeEventsQuery(
+  workspaceId?: string | null,
+  machineId?: string | null,
+) {
+  return useQuery({
+    queryKey: [
+      ...queryKeys.localRuntimes.list(workspaceId ?? "__missing_workspace__"),
+      "events",
+      { machineId: machineId ?? "__missing_machine__" },
+    ] as const,
+    queryFn: () => listLocalRuntimeEvents(workspaceId!, machineId!),
+    enabled: Boolean(workspaceId && machineId),
+    staleTime: 5_000,
   });
 }
 
@@ -94,6 +112,10 @@ export function useLocalRuntimeMutations(workspaceId?: string | null) {
     probeRegistered: useMutation({
       mutationFn: (runnerId: string) =>
         probeRegisteredLocalRuntimeRunner(workspaceId!, runnerId),
+    }),
+    testDispatch: useMutation({
+      mutationFn: (machineId: string) =>
+        testLocalRuntimeDispatch(workspaceId!, machineId),
     }),
     regenerateConfig: useMutation({
       mutationFn: (machineId: string) =>

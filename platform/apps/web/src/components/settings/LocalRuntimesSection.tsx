@@ -3,6 +3,7 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { BindingPanel } from "./LocalRuntimesSection/BindingPanel";
 import { BoundSummary } from "./LocalRuntimesSection/BoundSummary";
+import { DoctorPanel } from "./LocalRuntimesSection/DoctorPanel";
 import { LocalRuntimeRegistrationCard } from "./LocalRuntimesSection/LocalRuntimeRegistrationCard";
 import { LocalRuntimeConfigPanel } from "./LocalRuntimesSection/LocalRuntimeConfigPanel";
 import { RuntimeStatusCard } from "./LocalRuntimesSection/RuntimeStatusCard";
@@ -17,15 +18,20 @@ export function LocalRuntimesSection() {
     configResult,
     currentRuntime,
     error,
+    events,
+    eventsLoading,
     heartbeatIntervalMs,
     loading,
     runnerProbes,
     probingRunnerId,
     registration,
     removingId,
+    testDispatchResults,
+    testingMachineId,
     wizardState,
     handleConfigAction,
     handleProbeRunner,
+    handleTestDispatch,
     handleRemove,
     loadRuntimes,
     setConfigResult,
@@ -108,10 +114,20 @@ export function LocalRuntimesSection() {
       )}
 
       {currentRuntime && wizardState !== "not_registered" && (
-        <RuntimeStatusCard
-          runtime={currentRuntime}
-          heartbeatIntervalMs={heartbeatIntervalMs}
-        />
+        <div className="space-y-4">
+          <RuntimeStatusCard
+            runtime={currentRuntime}
+            heartbeatIntervalMs={heartbeatIntervalMs}
+          />
+          <DoctorPanel
+            runtime={currentRuntime}
+            events={events}
+            eventsLoading={eventsLoading}
+            testResult={testDispatchResults[currentRuntime.id] ?? null}
+            testing={testingMachineId === currentRuntime.id}
+            onRunTest={() => void handleTestDispatch(currentRuntime.id)}
+          />
+        </div>
       )}
 
       {configResult && wizardState !== "waiting" && (

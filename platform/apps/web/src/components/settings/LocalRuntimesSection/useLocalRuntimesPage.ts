@@ -4,11 +4,13 @@ import {
   type LocalRuntimeConfigResponse,
   type LocalRuntimeRunner,
   type LocalModelProbeResponse,
+  type LocalRuntimeTestDispatchResponse,
 } from "../../../api/local-runtime";
 import { useAgentsQuery } from "../../../hooks/useAgents";
 import { useRequiredWorkspaceId } from "../../../hooks/useWorkspaceId";
 import {
   useLocalRuntimeMutations,
+  useLocalRuntimeEventsQuery,
   useLocalRuntimesQuery,
 } from "../../../hooks/useServerStateQueries";
 import { useLocalRuntimeRegistration } from "./useLocalRuntimeRegistration";
@@ -34,6 +36,9 @@ export function useLocalRuntimesPage() {
   const [configActionRuntimeId, setConfigActionRuntimeId] = useState<
     string | null
   >(null);
+  const [testDispatchResults, setTestDispatchResults] = useState<
+    Record<string, LocalRuntimeTestDispatchResponse | null>
+  >({});
 
   const runtimes = localRuntimesQuery.data?.runtimes ?? [];
   const heartbeatIntervalMs =
@@ -52,6 +57,10 @@ export function useLocalRuntimesPage() {
   });
 
   const currentRuntime = runtimes[0] ?? null;
+  const eventsQuery = useLocalRuntimeEventsQuery(
+    workspaceId,
+    currentRuntime?.id,
+  );
   const wizardState = wizardStateFor(
     currentRuntime,
     Boolean(registration.registrationResult),
@@ -96,6 +105,20 @@ export function useLocalRuntimesPage() {
     }
   };
 
+  const handleTestDispatch = async (machineId: string) => {
+    setError(null);
+    try {
+      const result = await mutations.testDispatch.mutateAsync(machineId);
+      setTestDispatchResults((current) => ({
+        ...current,
+        [machineId]: result,
+      }));
+      await eventsQuery.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const handleConfigAction = async (
     machineId: string,
     action: "regenerate" | "rotate",
@@ -122,15 +145,20 @@ export function useLocalRuntimesPage() {
     configResult,
     currentRuntime,
     error: error ?? queryError,
+    events: eventsQuery.data?.events ?? [],
+    eventsLoading: eventsQuery.isLoading,
     heartbeatIntervalMs,
     loading,
     runnerProbes,
+    testDispatchResults,
+    testingMachineId: mutations.testDispatch.variables ?? null,
     probingRunnerId: mutations.probeRegistered.variables ?? null,
     registration,
     removingId: mutations.remove.variables ?? null,
     wizardState,
     handleConfigAction,
     handleProbeRunner,
+    handleTestDispatch,
     handleRemove,
     loadRuntimes: localRuntimesQuery.refetch,
     setConfigResult,

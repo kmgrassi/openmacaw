@@ -1,7 +1,29 @@
 import type { LocalRuntime } from "../../../api/local-runtime";
 import { Badge } from "../../ui/Badge";
 import { Card } from "../../ui/Card";
-import { formatCapability, formatLastSeen, helperStatus } from "./utils";
+import { formatCapability, formatLastSeen } from "./utils";
+
+function runtimeStatus(runtime: LocalRuntime) {
+  if (runtime.status === "online") {
+    return {
+      label: "Online" as const,
+      variant: "success" as const,
+      dotClassName: "bg-green-400",
+    };
+  }
+  if (runtime.status === "degraded") {
+    return {
+      label: "Degraded" as const,
+      variant: "warning" as const,
+      dotClassName: "bg-yellow-400",
+    };
+  }
+  return {
+    label: "Offline" as const,
+    variant: "error" as const,
+    dotClassName: "bg-red-400",
+  };
+}
 
 export function RuntimeStatusCard({
   runtime,
@@ -10,10 +32,7 @@ export function RuntimeStatusCard({
   runtime: LocalRuntime;
   heartbeatIntervalMs: number;
 }) {
-  const status = helperStatus(
-    runtime.localExecution.lastSeenAt,
-    heartbeatIntervalMs,
-  );
+  const status = runtimeStatus(runtime);
   const advertisedKinds = runtime.localExecution.advertisedRunnerKinds.length
     ? runtime.localExecution.advertisedRunnerKinds
     : runtime.runners.map((runner) => runner.kind);
@@ -64,6 +83,12 @@ export function RuntimeStatusCard({
           Heartbeat timeout: {Math.round((heartbeatIntervalMs * 2) / 1000)}s
         </div>
       </div>
+
+      {(runtime.lastError || runtime.localExecution.lastError) && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          {runtime.lastError ?? runtime.localExecution.lastError}
+        </div>
+      )}
 
       <div className="grid gap-3 text-xs md:grid-cols-2">
         <div className="rounded-md border border-white/5 bg-surface px-3 py-2">

@@ -1,7 +1,10 @@
 import { NavLink } from "react-router-dom";
 
+import type { LocalRuntime } from "../../api/local-runtime";
+import { useLocalRuntimesQuery } from "../../hooks/useServerStateQueries";
 import { cn } from "../../lib/cn";
 import type { Agent } from "../../types/agents";
+import { LocalRuntimeStatusChip } from "../local-runtime/LocalRuntimeStatusChip";
 import { statusToneClass } from "../ui/status-tones";
 import {
   agentMissingConfiguration,
@@ -22,6 +25,7 @@ export function AgentNavItem({
   inAgentSettings,
   onNavigate,
 }: AgentNavItemProps) {
+  const { data: localRuntimes } = useLocalRuntimesQuery(agent.workspaceId);
   const metadata = formatAgentMetadata(agent);
   const configurationWarning = formatMissingConfiguration(
     agentMissingConfiguration(agent),
@@ -73,6 +77,7 @@ export function AgentNavItem({
               metadata={metadata}
               configurationWarning={configurationWarning}
               isActive={isActive}
+              runtimes={localRuntimes?.runtimes ?? []}
             />
           )}
         </>
@@ -121,11 +126,13 @@ function ExpandedAgentContent({
   metadata,
   configurationWarning,
   isActive,
+  runtimes,
 }: {
   agent: Agent;
   metadata: string;
   configurationWarning: string | null;
   isActive: boolean;
+  runtimes: LocalRuntime[];
 }) {
   return (
     <>
@@ -163,6 +170,17 @@ function ExpandedAgentContent({
             {metadata}
           </span>
         )}
+        <LocalRuntimeStatusChip
+          agentId={agent.id}
+          runtimes={runtimes}
+          className={cn(
+            "mt-1 max-w-full",
+            isActive
+              ? ""
+              : "opacity-0 transition-opacity group-hover:opacity-100",
+          )}
+          linkToSettings={false}
+        />
       </span>
       {configurationWarning && (
         <span className="relative mt-0.5 shrink-0">
