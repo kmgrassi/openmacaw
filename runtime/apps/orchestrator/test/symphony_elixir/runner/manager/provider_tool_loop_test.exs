@@ -1,6 +1,161 @@
 defmodule SymphonyElixir.Runner.LlmToolRunner.ProviderToolLoopTest do
   use SymphonyElixir.Runner.ManagerTestSupport
 
+  import ExUnit.CaptureLog
+
+  alias SymphonyElixir.Cutover.Cooldown
+  alias SymphonyElixir.AgentInventory.StoredCredential
+
+  defmodule CutoverAgentInventory do
+    @spec list_agents() :: {:ok, []}
+    def list_agents, do: {:ok, []}
+
+    @spec get_agent(String.t()) :: {:error, :not_found}
+    def get_agent(_agent_id), do: {:error, :not_found}
+
+    @spec list_credentials(String.t()) :: {:ok, [StoredCredential.t()]}
+    def list_credentials("agent-cutover") do
+      {:ok,
+       [
+         %StoredCredential{
+           id: "cred-fallback:OPENAI_API_KEY",
+           agent_id: "agent-cutover",
+           workspace_id: "workspace-1",
+           provider: "openai",
+           env_var: "OPENAI_API_KEY",
+           secret_value: "fallback-key",
+           aliases: ["fallback-openai"]
+         }
+       ]}
+    end
+  end
+
+  test "cuts over to a fallback link when the primary model rate-limits" do
+    test_pid = self()
+    Cooldown.clear()
+    Application.put_env(:symphony_elixir, :agent_inventory_adapter, CutoverAgentInventory)
+    on_exit(fn -> Application.delete_env(:symphony_elixir, :agent_inventory_adapter) end)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case {conn.method, conn.request_path} do
+        {"POST", "/v1/responses"} ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          request = Jason.decode!(body)
+          auth = List.keyfind(conn.req_headers, "authorization", 0)
+          send(test_pid, {:cutover_request, request, auth})
+
+          case request["model"] do
+            "gpt-4.1" ->
+              assert auth == {"authorization", "Bearer primary-key"}
+
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(429, Jason.encode!(%{"error" => %{"code" => "rate_limit_exceeded"}}))
+
+            "gpt-4.1-mini" ->
+              assert auth == {"authorization", "Bearer fallback-key"}
+
+              conn
+              |> Plug.Conn.put_resp_content_type("application/json")
+              |> Plug.Conn.send_resp(
+                200,
+                Jason.encode!(%{
+                  "id" => "resp-fallback",
+                  "status" => "completed",
+                  "output" => [
+                    %{
+                      "type" => "message",
+                      "role" => "assistant",
+                      "content" => [%{"type" => "output_text", "text" => "Recovered on fallback."}]
+                    }
+                  ]
+                })
+              )
+          end
+      end
+    end)
+
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "api_key" => "primary-key",
+          "credential_id" => "cred-primary",
+          "agent_id" => "agent-cutover",
+          "model" => "gpt-4.1",
+          "workspace_id" => "workspace-1",
+          "fallbacks" => [
+            %{
+              "provider" => "openai",
+              "model" => "gpt-4.1-mini",
+              "credential_id" => "cred-fallback"
+            }
+          ]
+        },
+        nil
+      )
+
+    assert {:ok, %{"response_id" => "resp-fallback", "output_text" => "Recovered on fallback."}} =
+             Manager.run_turn(session, ~s({"due_tasks":[]}), %WorkItem{id: "work-1", identifier: "MAN-1"})
+
+    assert_received {:cutover_request, %{"model" => "gpt-4.1"}, {"authorization", "Bearer primary-key"}}
+    assert_received {:cutover_request, %{"model" => "gpt-4.1-mini"}, {"authorization", "Bearer fallback-key"}}
+
+    assert :ok = Manager.stop_session(session)
+  end
+
+  test "escalates instead of degrading below the model tier floor" do
+    test_pid = self()
+    Cooldown.clear()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case {conn.method, conn.request_path} do
+        {"POST", "/v1/responses"} ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          request = Jason.decode!(body)
+          send(test_pid, {:floor_request, request})
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(429, Jason.encode!(%{"error" => %{"code" => "rate_limit_exceeded"}}))
+      end
+    end)
+
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "api_key" => "primary-key",
+          "credential_id" => "cred-primary-floor",
+          "model" => "gpt-4.1",
+          "workspace_id" => "workspace-1",
+          "model_tier_floor" => "mid",
+          "fallbacks" => [
+            %{
+              "provider" => "openai_compatible",
+              "model" => "qwen3-coder:30b",
+              "credential_id" => "cred-local",
+              "base_url" => "http://local-model.test/v1"
+            }
+          ]
+        },
+        nil
+      )
+
+    log =
+      capture_log(fn ->
+        assert {:error, {:fatal, {:cutover_exhausted, decision}}} =
+                 Manager.run_turn(session, ~s({"due_tasks":[]}), %WorkItem{id: "work-1", identifier: "MAN-1"})
+
+        assert decision.outcome == "escalated_exhausted"
+      end)
+
+    assert log =~ "attention_required"
+    assert log =~ "cutover_exhausted"
+    assert_received {:floor_request, %{"model" => "gpt-4.1"}}
+    refute_received {:floor_request, %{"model" => "qwen3-coder:30b"}}
+
+    assert :ok = Manager.stop_session(session)
+  end
+
   test "runs an OpenAI-compatible chat-completions manager tool loop" do
     test_pid = self()
 
