@@ -246,8 +246,8 @@ async function startSupabaseServer(db: SetupTestDatabase): Promise<ServerBundle>
     }
 
     if (url.pathname === "/rest/v1/workspaces" && req.method === "GET") {
-      const id = url.searchParams.get("id")?.replace(/^eq\./, "");
-      const ownerUserId = url.searchParams.get("owner_user_id")?.replace(/^eq\./, "");
+      const id = parseEqFilter(url.searchParams.get("id"));
+      const ownerUserId = parseEqFilter(url.searchParams.get("owner_user_id"));
       const ids = parseInFilter(url.searchParams.get("id"));
       let rows = db.workspaces;
       if (id) rows = rows.filter((workspace) => workspace.id === id);
@@ -860,6 +860,11 @@ function parseInFilter(value: string | null) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseEqFilter(value: string | null) {
+  if (!value?.startsWith("eq.")) return null;
+  return value.slice(3);
 }
 
 function sortByCreatedAt<T extends Record<string, unknown>>(rows: T[], url: URL) {
