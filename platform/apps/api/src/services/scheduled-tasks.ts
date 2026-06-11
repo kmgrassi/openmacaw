@@ -175,13 +175,39 @@ function normalizeScheduledTaskSchedule(value: unknown) {
   return ScheduledTaskScheduleSchema.parse(value);
 }
 
+function safeNormalizeScheduledTaskSchedule(value: unknown) {
+  try {
+    return normalizeScheduledTaskSchedule(value);
+  } catch {
+    return null;
+  }
+}
+
+function isEmptyRecord(value: unknown) {
+  const record = jsonRecord(value);
+  return record !== null && Object.keys(record).length === 0;
+}
+
 function scheduledTaskDelivery(row: ScheduledTaskRow) {
+  if (row.delivery === null || row.delivery === undefined || isEmptyRecord(row.delivery)) {
+    return DEFAULT_DELIVERY;
+  }
   return ScheduledTaskDeliverySchema.parse(row.delivery);
 }
 
 function isUserVisibleScheduledTaskRow(row: ScheduledTaskRow) {
-  const parsed = ScheduledTaskDeliverySchema.safeParse(row.delivery);
-  return parsed.success && parsed.data.kind === "scheduled_agent_message";
+  let delivery;
+  try {
+    delivery = scheduledTaskDelivery(row);
+  } catch {
+    return false;
+  }
+  if (delivery.kind !== "scheduled_agent_message") return false;
+
+  const schedule = safeNormalizeScheduledTaskSchedule(row.schedule);
+  if (row.next_run_at === null && schedule?.kind === "at") return false;
+
+  return true;
 }
 
 function fallbackScheduledTaskTitle(row: ScheduledTaskRow) {
