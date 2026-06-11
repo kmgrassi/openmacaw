@@ -9,6 +9,11 @@ Supabase project.
   explains which tables were included and which tables from the predecessor
   internal schema were intentionally excluded.
 
+OpenMacaw now owns its own database model. Current OpenMacaw schema changes
+must be authored as migrations in `platform/supabase/migrations/` and reflected
+in `docs/supabase/openmacaw-schema.sql` when they change the bootstrap schema.
+Do not add new OpenMacaw migrations to the historical `harper-server` repo.
+
 ## Local Development Quick Start
 
 For local development you do not need a hosted Supabase project. Install

@@ -29,6 +29,14 @@ defmodule SymphonyElixir.Schema.ExecutionProfileTest do
                  "runnerKind" => "codex",
                  "provider" => "openai",
                  "credentialRef" => %{"type" => "credential_id", "value" => "cred-1"},
+                 "fallbacks" => [
+                   %{
+                     "provider" => "anthropic",
+                     "model" => "claude-opus-4-7",
+                     "credentialRef" => %{"type" => "credential_id", "value" => "cred-2"}
+                   }
+                 ],
+                 "modelTierFloor" => "frontier",
                  "toolProfile" => "coding"
                })
 
@@ -36,6 +44,15 @@ defmodule SymphonyElixir.Schema.ExecutionProfileTest do
       assert profile.workspace_id == "workspace-1"
       assert profile.tool_profile == "coding"
       assert profile.raw["credential_ref"]["value"] == "cred-1"
+      assert profile.model_tier_floor == "frontier"
+
+      assert profile.fallbacks == [
+               %{
+                 "provider" => "anthropic",
+                 "model" => "claude-opus-4-7",
+                 "credential_ref" => %{"type" => "credential_id", "value" => "cred-2"}
+               }
+             ]
     end
 
     test "accepts string credential refs" do
@@ -64,6 +81,17 @@ defmodule SymphonyElixir.Schema.ExecutionProfileTest do
                })
 
       assert %{runner_kind: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "rejects unknown model tier floors" do
+      assert {:error, changeset} =
+               ExecutionProfile.validate(%{
+                 "runner_kind" => "codex",
+                 "provider" => "openai",
+                 "model_tier_floor" => "tiny"
+               })
+
+      assert %{model_tier_floor: ["is invalid"]} = errors_on(changeset)
     end
 
     test "rejects malformed agent ids" do

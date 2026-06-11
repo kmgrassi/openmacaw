@@ -430,7 +430,10 @@ function requireWorkerBridgeIdentityLaunch(body: unknown) {
   return { parsed, agentId, workspaceId, credentialId };
 }
 
-async function assertWorkerBridgeSessionAccess(req: Request, session: { agent_id?: string | null; workspace_id?: string | null }) {
+async function assertWorkerBridgeSessionAccess(
+  req: Request,
+  session: { agent_id?: string | null; workspace_id?: string | null },
+) {
   const agentId = session.agent_id?.trim() ?? "";
   const workspaceId = session.workspace_id?.trim() ?? "";
   if (!agentId || !workspaceId) {
@@ -467,11 +470,7 @@ async function canAccessWorkerBridgeSession(
   }
 }
 
-function handleWorkerBridgeRouteError(
-  res: Response,
-  error: unknown,
-  fallback: { code: string; message: string },
-) {
+function handleWorkerBridgeRouteError(res: Response, error: unknown, fallback: { code: string; message: string }) {
   if (error instanceof z.ZodError) {
     return res.status(400).json(
       errorPayload("invalid_request", "Invalid worker bridge session payload", {
@@ -556,7 +555,9 @@ export function registerAgentControlRoutes(app: Express, launcherClient: Launche
       const result = await launcherClient.listWorkerBridgeSessions();
       const visibleSessions = (
         await Promise.all(
-          (result.data ?? []).map(async (session) => ((await canAccessWorkerBridgeSession(req, session)) ? session : null)),
+          (result.data ?? []).map(async (session) =>
+            (await canAccessWorkerBridgeSession(req, session)) ? session : null,
+          ),
         )
       ).filter((session): session is NonNullable<typeof session> => Boolean(session));
       return res.status(200).json(mapWorkerBridgeSessionListResponse({ data: visibleSessions }));

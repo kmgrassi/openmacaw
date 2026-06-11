@@ -248,7 +248,7 @@ describe("routing rule repository", () => {
     expect(deleteFallbacksQuery.delete).toHaveBeenCalled();
     expect(insertFallbacksQuery.insert).toHaveBeenCalledWith([
       {
-        rule_id: "rule-1",
+        routing_rule_id: "rule-1",
         workspace_id: "workspace-1",
         position: 0,
         provider: "anthropic",
@@ -257,7 +257,7 @@ describe("routing rule repository", () => {
         credential_id: null,
       },
       {
-        rule_id: "rule-1",
+        routing_rule_id: "rule-1",
         workspace_id: "workspace-1",
         position: 1,
         provider: "openai",

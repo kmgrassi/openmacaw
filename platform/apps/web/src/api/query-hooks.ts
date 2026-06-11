@@ -25,6 +25,10 @@ import {
 } from "./query-invalidation";
 import { queryKeys } from "./query-keys";
 import {
+  listWorkItemCutovers,
+  listWorkspaceRecentCutovers,
+} from "./provider-cutovers";
+import {
   snoozeWorkItem,
   wakeWorkItem,
   type SnoozeWorkItemInput,
@@ -51,6 +55,39 @@ export function useWorkItemsQuery(workspaceId: string | null | undefined) {
       return response.workItems;
     },
     enabled: Boolean(workspaceId),
+  });
+}
+
+export function useWorkItemCutoversQuery(
+  workItemId: string | null | undefined,
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.workItems.cutover(workItemId ?? ""),
+    queryFn: async () => {
+      if (!workItemId) return [];
+      const response = await listWorkItemCutovers(workItemId);
+      return response.cutovers;
+    },
+    enabled: Boolean(workItemId) && (options.enabled ?? true),
+  });
+}
+
+export function useWorkspaceRecentCutoversQuery(
+  workspaceId: string | null | undefined,
+  options: { enabled?: boolean; limit?: number } = {},
+) {
+  const limit = options.limit ?? 250;
+  return useQuery({
+    queryKey: queryKeys.workItems.recentCutovers(workspaceId ?? "", limit),
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const response = await listWorkspaceRecentCutovers(workspaceId, {
+        limit,
+      });
+      return response.items;
+    },
+    enabled: Boolean(workspaceId) && (options.enabled ?? true),
   });
 }
 

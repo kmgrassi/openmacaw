@@ -45,6 +45,8 @@ function profile(overrides: Partial<ExecutionProfile> = {}): ExecutionProfile {
       interrupt: true,
     },
     ...overrides,
+    fallbacks: overrides.fallbacks ?? [],
+    modelTierFloor: overrides.modelTierFloor ?? "any",
   };
 }
 

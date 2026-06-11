@@ -55,6 +55,8 @@ function localProfile(runnerKind: "local_runtime" | "local_model_coding"): Execu
       provider: "openai_compatible",
       model: "qwen2.5-coder:latest",
       credentialRef: null,
+      fallbacks: [],
+      modelTierFloor: "any",
       toolProfile: "coding",
       capabilities: {
         streaming: true,

@@ -87,8 +87,7 @@ const AgentCredentialReferenceRuleSchema = z.object({
 });
 
 const RoutingRuleFallbackSchema = z.object({
-  id: z.string(),
-  rule_id: z.string(),
+  routing_rule_id: z.string(),
   workspace_id: z.string(),
   position: z.number().int(),
   provider: z.string(),
@@ -192,8 +191,8 @@ export async function listRoutingRuleFallbacks(input: {
     async () => {
       const { data, error } = await getServiceRoleSupabase()
         .from("routing_rule_fallback" as never)
-        .select("id,rule_id,workspace_id,position,provider,model,credential_id,credential_alias")
-        .eq("rule_id", input.ruleId)
+        .select("routing_rule_id,workspace_id,position,provider,model,credential_id,credential_alias")
+        .eq("routing_rule_id", input.ruleId)
         .eq("workspace_id", input.workspaceId)
         .order("position", { ascending: true });
       if (error) throw normalizeSupabaseError("routing_rule_fallback query", error);
@@ -342,7 +341,7 @@ async function syncRoutingRuleFallbacks(input: {
   const { error: deleteError } = await supabase
     .from("routing_rule_fallback" as never)
     .delete()
-    .eq("rule_id", input.ruleId)
+    .eq("routing_rule_id", input.ruleId)
     .eq("workspace_id", input.workspaceId);
   if (deleteError) throw normalizeSupabaseError("routing_rule_fallback delete", deleteError);
 
@@ -370,7 +369,7 @@ async function syncRoutingRuleFallbacks(input: {
             };
 
     return {
-      rule_id: input.ruleId,
+      routing_rule_id: input.ruleId,
       workspace_id: input.workspaceId,
       position: index,
       provider: fallback.provider,

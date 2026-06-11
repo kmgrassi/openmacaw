@@ -50,6 +50,8 @@ function resolution(overrides: Partial<ExecutionProfileResolution> = {}): Execut
       provider: "openai",
       model: "openai/gpt-5.2",
       credentialRef: null,
+      fallbacks: [],
+      modelTierFloor: "any",
       toolProfile: "coding",
       capabilities: {
         streaming: true,
