@@ -1,5 +1,4 @@
 import type {
-  LocalRuntimeMachineStatus,
   LocalRuntimeRegistrationRunnerKind,
   LocalToolCallCapability,
 } from "../../../../../contracts/local-runtime.js";
@@ -142,12 +141,11 @@ export function buildConfigSnippet(input: ConfigSnippetInput) {
 
 export function buildLocalExecution(input: { machine: LocalRuntimeMachineRow | null; workspaceRoot: string | null }) {
   const online = helperOnline(input.machine?.last_seen_at);
-  const status: LocalRuntimeMachineStatus = online ? "online" : "offline";
 
   return {
     machineId: input.machine?.id ?? null,
     machineDisplayName: input.machine?.display_name ?? null,
-    status,
+    status: online ? "online" : "offline",
     helperOnline: online,
     lastSeenAt: input.machine?.last_seen_at ?? null,
     workspaceRoot: input.workspaceRoot,
@@ -156,6 +154,8 @@ export function buildLocalExecution(input: { machine: LocalRuntimeMachineRow | n
     advertisedRunnerKinds: input.machine?.advertised_runner_kinds ?? [],
     advertisedModels: [],
     runtimeManagedTools: null,
+    lastError: null,
+    lastErrorAt: null,
   };
 }
 

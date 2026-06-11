@@ -114,15 +114,15 @@ type CompleteFrame struct {
 // correlation_id is present.
 type ErrorFrame struct {
 	CorrelatedFrame
-	Code      string           `json:"code"`
-	Message   string           `json:"message"`
-	Retryable bool             `json:"retryable,omitempty"`
-	Detail    ErrorFrameDetail `json:"detail,omitempty"`
+	Code      string       `json:"code"`
+	Message   string       `json:"message"`
+	Retryable bool         `json:"retryable,omitempty"`
+	Detail    *ErrorDetail `json:"detail,omitempty"`
 }
 
-// ErrorFrameDetail preserves transport/provider root-cause data alongside the
-// stable error code so the cloud can persist actionable troubleshooting detail.
-type ErrorFrameDetail struct {
+// ErrorDetail preserves provider/transport-specific failure context alongside
+// the normalized retry code.
+type ErrorDetail struct {
 	HTTPStatus *int   `json:"http_status,omitempty"`
 	DialError  string `json:"dial_error,omitempty"`
 	Endpoint   string `json:"endpoint,omitempty"`
@@ -143,7 +143,7 @@ type CancelFrame struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// CancelAckFrame confirms whether a helper accepted a cancellation request.
+// CancelAckFrame confirms the helper observed a cancel frame.
 type CancelAckFrame struct {
 	CorrelatedFrame
 	Outcome string `json:"outcome"`
