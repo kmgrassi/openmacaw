@@ -241,7 +241,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   end
 
   defp handle_frame(type, frame, %{registered?: true} = state)
-       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result"] do
+       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel_ack"] do
     correlation_id = Map.get(frame, "correlation_id")
     result = route_relay_frame(type, correlation_id, frame)
 
@@ -255,7 +255,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   end
 
   defp handle_frame(type, frame, state)
-       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel", "dispatch"] do
+       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel_ack", "cancel", "dispatch"] do
     reply =
       error_frame(
         Map.get(frame, "correlation_id"),
@@ -361,6 +361,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   defp route_relay_frame("error", correlation_id, frame), do: Registry.error(correlation_id, frame)
   defp route_relay_frame("tool_call_request", correlation_id, frame), do: Registry.tool_call_request(correlation_id, frame)
   defp route_relay_frame("tool_call_result", correlation_id, frame), do: Registry.tool_call_result(correlation_id, frame)
+  defp route_relay_frame("cancel_ack", correlation_id, frame), do: Registry.cancel_ack(correlation_id, frame)
 
   defp error_frame(correlation_id, code, message) do
     text_frame(%{

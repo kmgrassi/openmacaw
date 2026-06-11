@@ -391,6 +391,31 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert_receive {:local_relay_complete, "corr-1", ^complete}
   end
 
+  test "routes cancel_ack frames without treating them as unknown" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+
+    dispatch = %{
+      "type" => "dispatch",
+      "protocol" => 1,
+      "correlation_id" => "corr-cancel",
+      "prompt" => "cancel"
+    }
+
+    assert {:ok, "corr-cancel", _helper} = Registry.dispatch(@workspace_id, "openai_compatible", dispatch, caller: self())
+    assert_receive {:local_relay_dispatch, ^dispatch}
+
+    cancel_ack = %{
+      "type" => "cancel_ack",
+      "protocol" => 1,
+      "correlation_id" => "corr-cancel",
+      "outcome" => "canceled"
+    }
+
+    assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(cancel_ack), []}, state)
+    assert_receive {:local_relay_cancel_ack, "corr-cancel", ^cancel_ack}
+  end
+
   test "register writes machine presence with helper_version + advertised runner kinds" do
     {:ok, state} = init_socket()
 

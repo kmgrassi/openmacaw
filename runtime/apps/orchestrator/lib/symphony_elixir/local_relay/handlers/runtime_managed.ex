@@ -45,6 +45,8 @@ defmodule SymphonyElixir.LocalRelay.Handlers.RuntimeManaged do
 
   def handle_frame(:tool_call_result, _frame, state), do: {:continue, state}
 
+  def handle_frame(:cancel_ack, _frame, state), do: {:continue, state}
+
   defp tool_call_response(correlation_id, frame) do
     %{
       "id" => correlation_id,

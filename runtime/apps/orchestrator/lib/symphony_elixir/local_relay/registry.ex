@@ -81,6 +81,11 @@ defmodule SymphonyElixir.LocalRelay.Registry do
     GenServer.call(__MODULE__, {:tool_call_result, correlation_id, frame})
   end
 
+  @spec cancel_ack(String.t(), map()) :: :ok
+  def cancel_ack(correlation_id, frame) when is_binary(correlation_id) and is_map(frame) do
+    GenServer.call(__MODULE__, {:cancel_ack, correlation_id, frame})
+  end
+
   @spec send_tool_execution_request(String.t(), map()) :: :ok | {:error, :local_runner_protocol_error}
   def send_tool_execution_request(correlation_id, frame) when is_map(frame) do
     GenServer.call(__MODULE__, {:send_tool_execution_request, correlation_id, frame})
@@ -224,6 +229,17 @@ defmodule SymphonyElixir.LocalRelay.Registry do
 
       :error ->
         {:reply, {:error, :local_runner_protocol_error}, state}
+    end
+  end
+
+  def handle_call({:cancel_ack, correlation_id, frame}, _from, state) do
+    case Map.fetch(state.pending, correlation_id) do
+      {:ok, pending} ->
+        send(pending.caller, {:local_relay_cancel_ack, correlation_id, frame})
+        {:reply, :ok, state}
+
+      :error ->
+        {:reply, :ok, state}
     end
   end
 
