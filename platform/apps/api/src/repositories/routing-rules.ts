@@ -349,6 +349,10 @@ async function syncRoutingRuleFallbacks(input: {
   if (input.fallbacks.length === 0) return;
 
   const rows = input.fallbacks.map((fallback, index) => {
+    if (!ROUTING_RULE_PROVIDER_ALLOWED.has(fallback.provider)) {
+      throw new RoutingRuleConstraintError("provider", fallback.provider);
+    }
+
     const credentialPatch =
       fallback.credentialRef?.type === "alias"
         ? {

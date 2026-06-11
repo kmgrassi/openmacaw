@@ -98,9 +98,12 @@ In-flight work. Each entry should map to one or more open PRs.
   or fails. Companion runtime scope in parallel-agent-runtime. Closes
   vision-gap 3.4.
 - [active/intelligent-cutovers-pr-plan.md](active/intelligent-cutovers-pr-plan.md)
-  — 12-PR decomposition of the intelligent-cutovers scope across platform,
-  runtime, harper-server, and helper repos. Concrete file paths,
-  dependencies, and acceptance criteria per PR.
+  — 15-PR decomposition covering the deterministic cutover engine (fast
+  loop) plus the router agent (slow loop): provider-failure event
+  persistence, agent-callable routing tools with change audit, and
+  per-workspace router-agent bootstrap with a scheduled optimization
+  task. Concrete file paths, dependencies, and acceptance criteria per
+  PR across platform, runtime, and helper.
 - [active/large-file-refactor-checklist.md](active/large-file-refactor-checklist.md)
   — Tracker for files over 500 lines.
 - [active/large-file-refactor-pr-plan.md](active/large-file-refactor-pr-plan.md)

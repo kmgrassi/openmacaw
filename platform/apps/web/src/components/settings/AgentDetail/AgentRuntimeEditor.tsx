@@ -19,6 +19,7 @@ import {
   MODEL_TIER_REGISTRY,
   modelRegistryEntry,
   modelTier,
+  modelTierLabel,
   type ModelTierFloor,
 } from "../../../../../../contracts/model-tiers";
 import { Button } from "../../ui/Button";
@@ -577,7 +578,11 @@ const MODEL_TIER_FLOOR_OPTIONS: Array<{
 ];
 
 const FALLBACK_PROVIDER_OPTIONS = Array.from(
-  new Set(MODEL_TIER_REGISTRY.map((entry) => entry.provider)),
+  new Set(
+    MODEL_TIER_REGISTRY.map((entry) => entry.provider).filter(
+      (provider) => provider !== "bedrock",
+    ),
+  ),
 ).map((provider) => ({
   value: provider,
   label: providerLabel(provider),
@@ -775,7 +780,7 @@ function modelOptionsForProvider(provider: string) {
   return MODEL_TIER_REGISTRY.filter((entry) => entry.provider === provider).map(
     (entry) => ({
       value: entry.model,
-      label: `${entry.label} (${entry.tier})`,
+      label: `${modelTierLabel(entry.model)} (${entry.tier})`,
     }),
   );
 }
