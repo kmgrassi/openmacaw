@@ -59,12 +59,12 @@ type ScheduledTaskRow = {
   agent_id: string;
   source_work_item_id: string | null;
   created_by_user_id: string | null;
-  title: string;
-  instructions: string;
+  title: string | null;
+  instructions: string | null;
   enabled: boolean;
   schedule: unknown;
-  timezone: string;
-  next_run_at: string;
+  timezone: string | null;
+  next_run_at: string | null;
   last_run_at: string | null;
   last_run_status: string | null;
   last_error: string | null;
@@ -131,27 +131,111 @@ function nowIso(now = new Date()) {
 
 export { computeScheduledTaskNextRunAt } from "./scheduled-tasks/schedule-calculator.js";
 
+function jsonRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
+}
+
+function normalizeLegacyTimeOfDay(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const match = value.match(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/);
+  return match ? value.slice(0, 5) : value;
+}
+
+function normalizeLegacyEveryUnit(value: unknown) {
+  if (typeof value !== "string") return null;
+  const unit = value.endsWith("s") ? value.slice(0, -1) : value;
+  return ["minute", "hour", "day", "week", "month"].includes(unit) ? unit : null;
+}
+
+function normalizeScheduledTaskSchedule(value: unknown) {
+  const parsed = ScheduledTaskScheduleSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+
+  const record = jsonRecord(value);
+  if (!record) {
+    return ScheduledTaskScheduleSchema.parse(value);
+  }
+
+  if (typeof record.at === "string" && !("every" in record)) {
+    return ScheduledTaskScheduleSchema.parse({ kind: "at", runAt: record.at });
+  }
+
+  const everyRecord = jsonRecord(record.every);
+  const legacyUnit = everyRecord ? normalizeLegacyEveryUnit(everyRecord.unit) : normalizeLegacyEveryUnit(record.every);
+  const legacyInterval = everyRecord && typeof everyRecord.interval === "number" ? everyRecord.interval : 1;
+  if (legacyUnit) {
+    return ScheduledTaskScheduleSchema.parse({
+      kind: "every",
+      interval: legacyInterval,
+      unit: legacyUnit,
+      at: normalizeLegacyTimeOfDay(record.at),
+    });
+  }
+
+  return ScheduledTaskScheduleSchema.parse(value);
+}
+
+function safeNormalizeScheduledTaskSchedule(value: unknown) {
+  try {
+    return normalizeScheduledTaskSchedule(value);
+  } catch {
+    return null;
+  }
+}
+
+function isEmptyRecord(value: unknown) {
+  const record = jsonRecord(value);
+  return record !== null && Object.keys(record).length === 0;
+}
+
+function scheduledTaskDelivery(row: ScheduledTaskRow) {
+  if (row.delivery === null || row.delivery === undefined || isEmptyRecord(row.delivery)) {
+    return DEFAULT_DELIVERY;
+  }
+  return ScheduledTaskDeliverySchema.parse(row.delivery);
+}
+
+function isUserVisibleScheduledTaskRow(row: ScheduledTaskRow) {
+  let delivery;
+  try {
+    delivery = scheduledTaskDelivery(row);
+  } catch {
+    return false;
+  }
+  if (delivery.kind !== "scheduled_agent_message") return false;
+
+  const schedule = safeNormalizeScheduledTaskSchedule(row.schedule);
+  if (row.next_run_at === null && schedule?.kind === "at") return false;
+
+  return true;
+}
+
+function fallbackScheduledTaskTitle(row: ScheduledTaskRow) {
+  const parsed = ScheduledTaskDeliverySchema.safeParse(row.delivery);
+  if (parsed.success && parsed.data.kind === "learning_reflection") return "Learning reflection";
+  if (parsed.success && parsed.data.kind === "learning_distillation") return "Learning distillation";
+  return "Scheduled task";
+}
+
 function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTaskProjection {
+  const delivery = scheduledTaskDelivery(row);
   return {
     id: row.id,
     workspaceId: row.workspace_id,
     agentId: row.agent_id,
     sourceWorkItemId: row.source_work_item_id,
     createdByUserId: row.created_by_user_id,
-    title: row.title,
-    instructions: row.instructions,
+    title: row.title ?? fallbackScheduledTaskTitle(row),
+    instructions: row.instructions ?? "",
     enabled: row.enabled,
-    schedule: ScheduledTaskScheduleSchema.parse(row.schedule),
-    timezone: row.timezone,
-    nextRunAt: row.next_run_at,
+    schedule: normalizeScheduledTaskSchedule(row.schedule),
+    timezone: row.timezone ?? DEFAULT_TIMEZONE,
+    nextRunAt: row.next_run_at ?? row.created_at,
     lastRunAt: row.last_run_at,
     lastRunStatus: row.last_run_status === null ? null : ScheduledTaskRunStatusSchema.parse(row.last_run_status),
     lastError: row.last_error,
-    delivery: ScheduledTaskDeliverySchema.parse(row.delivery),
-    metadata:
-      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
-        ? (row.metadata as JsonRecord)
-        : {},
+    delivery,
+    metadata: jsonRecord(row.metadata) ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -236,7 +320,9 @@ export async function listScheduledTasksForWorkspace(
       .in("agent_id", managerAgentIds)
       .order("next_run_at", { ascending: true }),
   );
-  return ScheduledTaskListResponseSchema.parse({ scheduledTasks: rows.map(mapScheduledTaskRow) });
+  return ScheduledTaskListResponseSchema.parse({
+    scheduledTasks: rows.filter(isUserVisibleScheduledTaskRow).map(mapScheduledTaskRow),
+  });
 }
 
 export async function createScheduledTaskForWorkspace(params: {
@@ -294,9 +380,12 @@ export async function updateScheduledTaskForWorkspace(params: {
   await assertScheduledTaskSchemaReady();
   const existing = (await findScheduledTask(workspaceId, scheduledTaskId, agentId)) ?? notFound();
   await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
-  const nextSchedule = request.schedule ?? ScheduledTaskScheduleSchema.parse(existing.schedule);
+  const nextSchedule = request.schedule ?? normalizeScheduledTaskSchedule(existing.schedule);
   const nextTimezone =
-    request.timezone ?? (nextSchedule.kind === "cron" ? nextSchedule.timezone : undefined) ?? existing.timezone;
+    request.timezone ??
+    (nextSchedule.kind === "cron" ? nextSchedule.timezone : undefined) ??
+    existing.timezone ??
+    DEFAULT_TIMEZONE;
 
   const body: JsonRecord = {
     updated_at: nowIso(now),

@@ -83,8 +83,8 @@ All enum-like values use **snake_case** (underscores, never hyphens):
   file is the canonical list. Today it contains `codex`, `claude_code`,
   `openclaw`, `local_runtime`, `local_relay`, `local_model_coding`,
   `llm_tool_runner`, `planner`, `openclaw_ws`, `openclaw_http_sse`,
-  `computer_use`. The private `harper-server` repo's
-  `routing_rule.runner_kind` CHECK constraint must remain a superset; the
+  `computer_use`. The OpenMacaw `routing_rule.runner_kind` CHECK constraint
+  lives in `platform/supabase/migrations/` and must remain a superset; the
   cross-repo enum drift check
   (`scripts/check-cross-repo-enums.mjs`) asserts this.
 - Providers: `openai`, `anthropic`, `openai_compatible`, `openai_codex`
@@ -209,8 +209,8 @@ the entire codebase rather than adding a compatibility layer.
 - **Never manually edit generated files.** In particular,
   `packages/supabase-schema/src/database.types.ts` must only change by running
   `pnpm run db:schema:sync` against the intended Supabase project.
-- Historical pre-OpenMacaw schema changes still live in the private
-  `harper-server` repo. Do not add migrations there from this repo.
+- OpenMacaw owns its current database schema. Do not add new OpenMacaw
+  migrations to the historical `harper-server` repo.
 - OpenMacaw-owned schema changes live under `platform/supabase/migrations/`
   with the matching reference SQL in `docs/supabase/openmacaw-schema.sql`.
   Create reviewable migration files here; do not make direct remote Dashboard
@@ -302,8 +302,8 @@ Required section):
 
 - `../runtime` — Elixir orchestrator/launcher
 - `../local-runtime-helper` — Go daemon for local model relay
-- `harper-server` — private repo owning historical pre-OpenMacaw Supabase
-  migrations
+- Historical `harper-server` schemas are provenance only. Current OpenMacaw
+  database changes belong in `platform/supabase/migrations/`.
 
 ## Sub-App Guides
 
