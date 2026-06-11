@@ -68,21 +68,17 @@ defmodule SymphonyElixir.Cutover.AuditTest do
     assert log =~ "\"work_item_id\":\"work-item-1\""
   end
 
-  test "falls back to existing agent control plane config" do
+  test "best-effort write is a no-op when cutover audit is not configured" do
     delete_app_env(:symphony_elixir, :cutover_audit)
+    delete_system_envs(["CUTOVER_AUDIT_ENDPOINT", "CUTOVER_AUDIT_API_KEY"])
 
-    put_app_env(:symphony_elixir, :agent_control_plane,
-      endpoint: "https://platform-control.example",
-      api_key: "control-plane-key"
-    )
+    log =
+      capture_log(fn ->
+        assert {:error, :cutover_audit_disabled} = Audit.write(decision())
+        assert :ok = Audit.write_best_effort(decision())
+      end)
 
-    Req.Test.stub(__MODULE__, fn conn ->
-      assert conn.request_path == "/api/work-items/work-item-1/cutovers"
-      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer control-plane-key"]
-      Plug.Conn.send_resp(conn, 204, "")
-    end)
-
-    assert :ok = Audit.write(decision())
+    refute log =~ "cutover_audit_persistence_failed"
   end
 
   defp decision do

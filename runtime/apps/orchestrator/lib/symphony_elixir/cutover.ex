@@ -11,7 +11,7 @@ defmodule SymphonyElixir.Cutover do
 
   @type walk_result ::
           {:ok, term(), Decision.t()}
-          | {:error, :exhausted | :floor_exhausted | :no_adapter, Decision.t()}
+          | {:error, :exhausted | :floor_exhausted, Decision.t()}
           | {:error, term()}
 
   @spec walk(map() | struct(), map(), (Link.t() -> {:ok, term()} | {:error, term()}), keyword()) ::
@@ -26,15 +26,17 @@ defmodule SymphonyElixir.Cutover do
     |> Enum.reduce_while({:continue, []}, fn link, {:continue, attempts} ->
       cond do
         not adapter_available?(link) ->
+          skipped_attempt = skipped_adapter_attempt(link)
+
           decision =
-            decision(profile, context, primary, link, attempts, %{
+            decision(profile, context, primary, link, attempts ++ [skipped_attempt], %{
               outcome: :skipped_no_adapter,
               error_code: "provider_adapter_missing",
               elapsed_ms: elapsed_ms(started_at)
             })
 
           audit(decision, opts)
-          {:halt, {:error, :no_adapter, decision}}
+          {:cont, {:continue, attempts ++ [skipped_attempt]}}
 
         true ->
           case call_fn.(link) do
@@ -165,6 +167,18 @@ defmodule SymphonyElixir.Cutover do
       status_code: failure_value(failure, ["status_code", :status_code, "status", :status, "provider_status", :provider_status]),
       retryable: retryable?(failure),
       floor_exhausted?: failure_value(failure, ["floor_exhausted?", :floor_exhausted?]) == true
+    }
+  end
+
+  defp skipped_adapter_attempt(%Link{} = link) do
+    %{
+      link: link,
+      error_code: "provider_adapter_missing",
+      status_code: nil,
+      retryable: true,
+      floor_exhausted?: false,
+      skipped?: true,
+      skip_reason: "no_adapter"
     }
   end
 

@@ -60,8 +60,16 @@ defmodule SymphonyElixir.CutoverTest do
                      }}
   end
 
-  test "adapter-missing link writes skipped_no_adapter audit row" do
-    profile = put_in(@profile, ["fallbacks"], [%{"provider" => "computer_use", "model" => "browser", "adapterAvailable" => false}])
+  test "adapter-missing link writes skipped_no_adapter audit row and continues walking" do
+    profile =
+      put_in(@profile, ["fallbacks"], [
+        %{"provider" => "computer_use", "model" => "browser", "adapterAvailable" => false},
+        %{
+          "provider" => "openai",
+          "model" => "gpt-4.1",
+          "credentialRef" => %{"id" => "credential-fallback"}
+        }
+      ])
 
     result =
       Cutover.walk(
@@ -72,12 +80,12 @@ defmodule SymphonyElixir.CutoverTest do
             {:error, %{error_code: "provider_overloaded", retryable: true}}
 
           _link ->
-            flunk("adapter-missing link should not be invoked")
+            {:ok, %{message: "recovered"}}
         end,
         audit_module: AuditStub
       )
 
-    assert {:error, :no_adapter, %Decision{outcome: :skipped_no_adapter}} = result
+    assert {:ok, %{message: "recovered"}, %Decision{outcome: :fallback_succeeded}} = result
 
     assert_received {:audit,
                      %Decision{
@@ -85,6 +93,14 @@ defmodule SymphonyElixir.CutoverTest do
                        to_model: "browser",
                        trigger_error_code: "provider_adapter_missing",
                        outcome: :skipped_no_adapter
+                     }}
+
+    assert_received {:audit,
+                     %Decision{
+                       to_provider: "openai",
+                       to_model: "gpt-4.1",
+                       trigger_error_code: "provider_overloaded",
+                       outcome: :fallback_succeeded
                      }}
   end
 

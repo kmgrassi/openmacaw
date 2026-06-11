@@ -45,6 +45,9 @@ defmodule SymphonyElixir.Cutover.Audit do
       :ok ->
         :ok
 
+      {:error, :cutover_audit_disabled} ->
+        :ok
+
       {:error, reason} ->
         log_failure(decision, reason)
     end
@@ -74,30 +77,21 @@ defmodule SymphonyElixir.Cutover.Audit do
   end
 
   defp config(opts) do
-    audit_config =
+    raw =
       :symphony_elixir
       |> Application.get_env(:cutover_audit, [])
       |> Enum.into(%{})
-
-    control_plane_config =
-      :symphony_elixir
-      |> Application.get_env(:agent_control_plane, [])
-      |> Enum.into(%{})
-
-    raw =
-      control_plane_config
-      |> Map.merge(audit_config)
       |> Map.merge(Map.new(Keyword.get(opts, :cutover_audit_config, [])))
 
     endpoint =
       string_config(raw, :endpoint) ||
         string_config(raw, "endpoint") ||
-        env_config("PLATFORM_API_ENDPOINT")
+        env_config("CUTOVER_AUDIT_ENDPOINT")
 
     api_key =
       string_config(raw, :api_key) ||
         string_config(raw, "api_key") ||
-        env_config("PLATFORM_API_KEY")
+        env_config("CUTOVER_AUDIT_API_KEY")
 
     req_options = Keyword.get(opts, :req_options, req_options())
 
@@ -111,7 +105,7 @@ defmodule SymphonyElixir.Cutover.Audit do
          }}
 
       _ ->
-        {:error, :missing_cutover_audit_endpoint}
+        {:error, :cutover_audit_disabled}
     end
   end
 
