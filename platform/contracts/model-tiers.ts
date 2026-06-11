@@ -3,12 +3,10 @@ import { z } from "zod";
 import { PROVIDER_REGISTRY } from "./provider-registry.js";
 
 export const MODEL_TIERS = ["frontier", "mid", "local", "any"] as const;
-
 export const ModelTierSchema = z.enum(MODEL_TIERS);
-
 export type ModelTier = (typeof MODEL_TIERS)[number];
+export type AssignableModelTier = Exclude<ModelTier, "any">;
 export type RegisteredProvider = keyof typeof PROVIDER_REGISTRY;
-export type ClassifiedModelTier = Exclude<ModelTier, "any">;
 
 export const RegisteredProviderSchema = z.enum(
   Object.keys(PROVIDER_REGISTRY) as [
@@ -20,7 +18,7 @@ export const RegisteredProviderSchema = z.enum(
 export const MODEL_TIER_REGISTRY: ReadonlyArray<{
   provider: RegisteredProvider;
   model: string;
-  tier: ClassifiedModelTier;
+  tier: AssignableModelTier;
 }> = [
   { provider: "anthropic", model: "claude-opus-4-7", tier: "frontier" },
   { provider: "anthropic", model: "claude-sonnet-4-6", tier: "frontier" },
@@ -73,7 +71,11 @@ export const MODEL_TIER_REGISTRY: ReadonlyArray<{
     tier: "frontier",
   },
   { provider: "openrouter", model: "openai/gpt-4o", tier: "frontier" },
-  { provider: "openrouter", model: "google/gemini-2.5-pro", tier: "frontier" },
+  {
+    provider: "openrouter",
+    model: "google/gemini-2.5-pro",
+    tier: "frontier",
+  },
   {
     provider: "openrouter",
     model: "meta-llama/llama-3.1-405b",
@@ -129,12 +131,12 @@ export const MODEL_TIER_REGISTRY: ReadonlyArray<{
     tier: "frontier",
   },
   { provider: "bedrock", model: "amazon.nova-pro-v1:0", tier: "mid" },
-];
+] as const;
 
 export function modelTier(
   provider: RegisteredProvider,
   model: string,
-): ClassifiedModelTier | null {
+): AssignableModelTier | null {
   const trimmedModel = model.trim();
   const exact = MODEL_TIER_REGISTRY.find(
     (entry) => entry.provider === provider && entry.model === trimmedModel,
