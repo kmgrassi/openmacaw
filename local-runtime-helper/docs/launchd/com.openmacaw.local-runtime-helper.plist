@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.harper.local-runtime-helper</string>
+  <string>com.openmacaw.local-runtime-helper</string>
 
   <key>ProgramArguments</key>
   <array>

@@ -1,4 +1,4 @@
-# Parallel Agent Runtime — Agent Guide
+# OpenMacaw Runtime — Agent Guide
 
 ## Project Structure
 
@@ -37,8 +37,8 @@ local stack:
 # Terminal 1: Start runtime (launcher + orchestrator)
 pnpm run start:local
 
-# Terminal 2: Start platform (in parallel-agent-platform repo)
-cd ../parallel-agent-platform && pnpm run dev
+# Terminal 2: Start platform (in platform/)
+cd ../platform && pnpm run dev
 ```
 
 **Verify both are healthy:**
@@ -79,7 +79,7 @@ handling, or work item persistence.
    pnpm run start:local
 
    # Platform repo
-   cd ../parallel-agent-platform && pnpm run dev
+   cd ../platform && pnpm run dev
    ```
 2. Open `http://127.0.0.1:5173` in the browser and sign in with the
    local Supabase test account/session configured for the platform. If
@@ -127,8 +127,8 @@ the entire codebase rather than adding a compatibility layer.
 |---------|------|------|
 | Runtime orchestrator | 4000 | This repo |
 | Runtime launcher | 4100 | This repo |
-| Platform API | 3100 | parallel-agent-platform |
-| Platform web UI | 5173 | parallel-agent-platform |
+| Platform API | 3100 | platform/ |
+| Platform web UI | 5173 | platform/ |
 | Ollama | 11434 | System |
 
 ## Enum/String Conventions
@@ -198,16 +198,17 @@ connection. New modules that query Supabase mirror
 
 ## Database Schema Sync — REQUIRED After DB Migrations
 
-All database migrations live in the `harper-server` repository. Do not add
-Supabase migration files to this repository, and do not run forced database
-migrations from the runtime or platform repos.
+Historical pre-OpenMacaw migrations live in the private `harper-server`
+repository; OpenMacaw-owned migrations live under
+`platform/supabase/migrations/`. Do not add Supabase migration files to the
+runtime subsystem, and do not run forced database migrations from here.
 
-To make a database change, create the migration file in `harper-server`, send
-it through normal code review, and merge it there. The migration is applied by
-the `harper-server` CI/deploy pipeline as it is promoted to production.
+To make a database change, create the migration under
+`platform/supabase/migrations/` and apply it through the documented Supabase
+migration workflow (`docs/supabase/README.md` at the repo root).
 
-After database migrations are added to `harper-server`, the generated schema
-files in this repo must be updated:
+After database migrations are applied, the generated schema files in this
+subsystem must be updated:
 
 ```bash
 pnpm run supabase:schema:sync
@@ -251,8 +252,9 @@ implementing a multi-item scope or PR plan, default to bundling
 closely-related items unless they have meaningfully different review
 surfaces.
 
-## Related Repos
+## Related Subsystems
 
-- `parallel-agent-platform` — TypeScript API + React frontend
-- `local-runtime-helper` — Go daemon for local model relay
-- `harper-server` — Supabase DB migrations
+- `../platform` — TypeScript API + React frontend
+- `../local-runtime-helper` — Go daemon for local model relay
+- `harper-server` — private repo owning historical pre-OpenMacaw Supabase
+  migrations

@@ -6,8 +6,36 @@ Supabase project.
 - [`openmacaw-schema.sql`](openmacaw-schema.sql) is the source SQL for the
   initial OpenMacaw schema.
 - [`openmacaw-data-model-inventory.md`](openmacaw-data-model-inventory.md)
-  explains which tables were included and which Harper-derived tables were
-  intentionally excluded.
+  explains which tables were included and which tables from the predecessor
+  internal schema were intentionally excluded.
+
+## Local Development Quick Start
+
+For local development you do not need a hosted Supabase project. Install
+[Docker](https://docs.docker.com/get-docker/) and the
+[Supabase CLI](https://supabase.com/docs/guides/local-development), then from
+`platform/`:
+
+```sh
+supabase start      # starts local Postgres, auth, and Studio
+supabase db reset   # applies everything in supabase/migrations/
+supabase status     # prints the local URL and keys
+```
+
+Copy the values from `supabase status` into the **Required** section of
+`platform/.env` (created from `platform/.env.example`):
+
+- API URL → `SUPABASE_URL` and `VITE_SUPABASE_DEV_URL`
+  (typically `http://127.0.0.1:54321`)
+- `service_role` key → `SUPABASE_SERVICE_ROLE_KEY`
+- `anon` key → `VITE_SUPABASE_DEV_ANON_KEY`
+
+Create a login user in Supabase Studio (`http://127.0.0.1:54323`) under
+**Authentication → Users → Add user**. You can now start the stack with
+`./openmacaw run` from the repository root.
+
+The rest of this document covers creating and maintaining a **hosted**
+Supabase project and the reviewed migration workflow.
 
 ## Create A New Supabase Project
 
@@ -161,8 +189,8 @@ pnpm -C runtime run supabase:schema:sync
 ```
 
 Review the generated diffs before committing. The generated platform and
-runtime schema files should match the OpenMacaw project, not the reused Harper
-project.
+runtime schema files should match the OpenMacaw project you just linked, not
+any previously linked project.
 
 ## References
 

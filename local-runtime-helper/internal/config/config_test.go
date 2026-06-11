@@ -159,7 +159,7 @@ func TestResolvePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolvePath() error = %v", err)
 	}
-	if resolved != "/tmp/xdg/harper/runtime.toml" {
+	if resolved != "/tmp/xdg/openmacaw/runtime.toml" {
 		t.Fatalf("ResolvePath() = %q", resolved)
 	}
 
@@ -194,7 +194,7 @@ func TestLoadSetsResolvedPath(t *testing.T) {
 }
 
 func TestWriteCreatesOwnerOnlyConfigAndCreatedDir(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "harper", "runtime.toml")
+	path := filepath.Join(t.TempDir(), "openmacaw", "runtime.toml")
 	writtenPath, err := Write(validRegistrationConfig(), WriteOptions{Path: path})
 	if err != nil {
 		t.Fatalf("Write() error = %v", err)
