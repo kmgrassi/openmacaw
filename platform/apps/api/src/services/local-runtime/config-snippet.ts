@@ -10,7 +10,7 @@ const HELPER_ONLINE_WINDOW_MS = LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS * 2;
 export type LocalRuntimeMachineRow = Pick<
   Tables<"local_runtime_machine">,
   "id" | "display_name" | "last_seen_at" | "revoked_at" | "runner_kinds" | "advertised_runner_kinds"
->;
+> & { status?: "online" | "offline" | "degraded" };
 
 export function helperOnline(lastSeenAt: string | null | undefined) {
   if (!lastSeenAt) return false;
@@ -140,13 +140,18 @@ export function buildConfigSnippet(input: ConfigSnippetInput) {
 }
 
 export function buildLocalExecution(input: { machine: LocalRuntimeMachineRow | null; workspaceRoot: string | null }) {
-  const online = helperOnline(input.machine?.last_seen_at);
-
+  const helperOnlineNow = helperOnline(input.machine?.last_seen_at);
+  const persistedStatus = input.machine?.status ?? "offline";
+  const status: "online" | "offline" | "degraded" = helperOnlineNow
+    ? persistedStatus === "offline"
+      ? "online"
+      : persistedStatus
+    : "offline";
   return {
     machineId: input.machine?.id ?? null,
     machineDisplayName: input.machine?.display_name ?? null,
-    status: online ? "online" : "offline",
-    helperOnline: online,
+    status,
+    helperOnline: helperOnlineNow,
     lastSeenAt: input.machine?.last_seen_at ?? null,
     workspaceRoot: input.workspaceRoot,
     registered: Boolean(input.machine && input.workspaceRoot),

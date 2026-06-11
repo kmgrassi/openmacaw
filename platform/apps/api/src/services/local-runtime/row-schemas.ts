@@ -16,6 +16,7 @@ export const LocalRuntimeMachineRowSchema = z.object({
   revoked_at: z.string().nullable(),
   runner_kinds: z.array(z.string()),
   advertised_runner_kinds: z.array(z.string()).nullable().default(null),
+  status: z.enum(["online", "offline", "degraded"]).catch("offline"),
 });
 
 export const LocalRuntimeRoutingRuleRowSchema = z.object({
@@ -23,6 +24,9 @@ export const LocalRuntimeRoutingRuleRowSchema = z.object({
   model: z.string().nullable(),
   provider: z.string().nullable(),
   runner_kind: z.string(),
+  machine_id: z.string().nullable().default(null),
+  last_error: z.string().nullable().default(null),
+  last_error_at: z.string().nullable().default(null),
 });
 
 export const LocalRuntimeRoutingRuleListRowSchema = LocalRuntimeRoutingRuleRowSchema.extend({
@@ -40,8 +44,29 @@ export const RoutingRuleMatchRowSchema = z.object({
   value: z.string(),
 });
 
+export const LocalRuntimeModelRowSchema = z.object({
+  id: z.string(),
+  machine_id: z.string(),
+  runner_kind: z.string(),
+  model: z.string(),
+  provider: z.string().nullable(),
+  capabilities: z.record(z.string(), z.unknown()).catch({}),
+  last_advertised_at: z.string(),
+});
+
+export const LocalRuntimeEventRowSchema = z.object({
+  id: z.string(),
+  machine_id: z.string(),
+  workspace_id: z.string(),
+  kind: z.string(),
+  detail: z.record(z.string(), z.unknown()).catch({}),
+  created_at: z.string(),
+});
+
 export type LocalRuntimeAgentRow = z.infer<typeof LocalRuntimeAgentRowSchema>;
 export type LocalRuntimeMachineRowRecord = z.infer<typeof LocalRuntimeMachineRowSchema>;
+export type LocalRuntimeModelRowRecord = z.infer<typeof LocalRuntimeModelRowSchema>;
+export type LocalRuntimeEventRowRecord = z.infer<typeof LocalRuntimeEventRowSchema>;
 export type LocalRuntimeRoutingRuleListRow = z.infer<typeof LocalRuntimeRoutingRuleListRowSchema>;
 export type LocalRuntimeRoutingRuleRow = z.infer<typeof LocalRuntimeRoutingRuleRowSchema>;
 export type RoutingRuleIdRow = z.infer<typeof RoutingRuleIdRowSchema>;

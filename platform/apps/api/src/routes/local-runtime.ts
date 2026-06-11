@@ -1,7 +1,8 @@
 import type { Express, Request } from "express";
 
-import { LocalRuntimeRouteTemplates } from "../../../../contracts/routes.js";
+import { AgentRouteTemplates, LocalRuntimeRouteTemplates } from "../../../../contracts/routes.js";
 import {
+  AgentLocalRuntimeAssignRequestSchema,
   LocalModelProbeRequestSchema,
   LocalRuntimeRegistrationRequestSchema,
 } from "../../../../contracts/local-runtime.js";
@@ -10,11 +11,13 @@ import { assignLocalModelToAgent, unassignLocalModelFromAgent } from "../service
 import {
   deleteLocalRuntimeForWorkspace,
   getLocalRuntimeConfigForWorkspace,
+  listLocalRuntimeEventsForWorkspace,
   listLocalRuntimesForWorkspace,
   probeLocalModel,
   probeRegisteredLocalRuntimeForWorkspace,
   registerLocalRuntimeForWorkspace,
   rotateLocalRuntimeTokenForWorkspace,
+  testLocalRuntimeDispatchForWorkspace,
 } from "../services/local-runtime-machines.js";
 
 function requireWorkspaceId(req: Request) {
@@ -26,6 +29,40 @@ function requireWorkspaceId(req: Request) {
 }
 
 export function registerLocalRuntimeRoutes(app: Express) {
+  app.post(
+    AgentRouteTemplates.assignLocalModel,
+    apiRoute({
+      requireAuth: true,
+      bodySchema: AgentLocalRuntimeAssignRequestSchema,
+      invalidBodyMessage: "Agent local model assignment request is invalid",
+      async handler({ req, res, body, accessToken, userId }) {
+        if (!userId) {
+          throw new ApiRouteError(401, "unauthorized", "User ID is required");
+        }
+
+        const agentId = requireRouteParam(req, "agentId");
+        if (body.agentId && body.agentId !== agentId) {
+          throw new ApiRouteError(400, "invalid_request", "Body agentId must match route agentId");
+        }
+
+        const response = await assignLocalModelToAgent({
+          workspaceId: requireWorkspaceId(req),
+          machineId: body.machineId,
+          localRuntimeId: body.localRuntimeId,
+          agentId,
+          auth: { accessToken, userId },
+        });
+        return res.status(201).json(response);
+      },
+      onError: (res, error) =>
+        handleApiRouteError(res, error, {
+          status: 502,
+          code: "local_runtime_assign_failed",
+          message: "Could not assign local model to agent",
+        }),
+    }),
+  );
+
   app.post(
     LocalRuntimeRouteTemplates.collection,
     apiRoute({
@@ -105,6 +142,51 @@ export function registerLocalRuntimeRoutes(app: Express) {
     }),
   );
 
+  app.get(
+    LocalRuntimeRouteTemplates.events,
+    apiRoute({
+      requireAuth: true,
+      async handler({ req, res }) {
+        const rawLimit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 50;
+        return res
+          .status(200)
+          .json(
+            await listLocalRuntimeEventsForWorkspace(
+              requireWorkspaceId(req),
+              requireRouteParam(req, "machineId"),
+              Number.isFinite(rawLimit) ? rawLimit : 50,
+            ),
+          );
+      },
+      onError: (res, error) =>
+        handleApiRouteError(res, error, {
+          status: 502,
+          code: "local_runtime_events_failed",
+          message: "Could not list local runtime events",
+        }),
+    }),
+  );
+
+  app.post(
+    LocalRuntimeRouteTemplates.testDispatch,
+    apiRoute({
+      requireAuth: true,
+      async handler({ req, res }) {
+        return res
+          .status(200)
+          .json(
+            await testLocalRuntimeDispatchForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "machineId")),
+          );
+      },
+      onError: (res, error) =>
+        handleApiRouteError(res, error, {
+          status: 502,
+          code: "local_runtime_test_dispatch_failed",
+          message: "Could not test local runtime dispatch",
+        }),
+    }),
+  );
+
   app.post(
     LocalRuntimeRouteTemplates.rotateToken,
     apiRoute({
@@ -180,7 +262,7 @@ export function registerLocalRuntimeRoutes(app: Express) {
 
         const response = await assignLocalModelToAgent({
           workspaceId: requireWorkspaceId(req),
-          ruleId: requireRouteParam(req, "runnerId"),
+          localRuntimeId: requireRouteParam(req, "runnerId"),
           agentId,
           auth: { accessToken, userId },
         });
