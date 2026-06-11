@@ -32,6 +32,38 @@ export const MODEL_TIER_REGISTRY: ReadonlyArray<{
   ]);
 });
 
+test("extracts valid entries when fields are reordered", () => {
+  const entries = extractModelTierRegistry(`
+export const MODEL_TIER_REGISTRY: ReadonlyArray<{
+  provider: RegisteredProvider;
+  model: string;
+  tier: AssignableModelTier;
+}> = [
+  { provider: "openai", tier: "mid", model: "gpt-4.1-mini" },
+] as const;
+`);
+
+  assert.deepEqual(entries, [
+    { provider: "openai", model: "gpt-4.1-mini", tier: "mid" },
+  ]);
+});
+
+test("rejects malformed registry entries instead of omitting them", () => {
+  assert.throws(
+    () =>
+      extractModelTierRegistry(`
+export const MODEL_TIER_REGISTRY: ReadonlyArray<{
+  provider: RegisteredProvider;
+  model: string;
+  tier: AssignableModelTier;
+}> = [
+  { provider: "openai", model: "gpt-4.1-mini" },
+] as const;
+`),
+    /Malformed MODEL_TIER_REGISTRY entry/,
+  );
+});
+
 test("renders an Elixir mirror with exact and wildcard lookup", () => {
   const output = renderElixirModelTiers([
     {

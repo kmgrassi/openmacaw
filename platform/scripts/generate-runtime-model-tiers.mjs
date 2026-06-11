@@ -31,15 +31,28 @@ export function extractModelTierRegistry(source) {
     );
   }
 
-  const entries = [
-    ...registryMatch[1].matchAll(
-      /\{\s*provider:\s*"([^"]+)",\s*model:\s*"([^"]+)",\s*tier:\s*"([^"]+)",?\s*\}/g,
-    ),
-  ].map((match) => ({
-    provider: match[1],
-    model: match[2],
-    tier: match[3],
-  }));
+  const objectBlocks = [...registryMatch[1].matchAll(/\{[^{}]*\}/g)].map(
+    (match) => match[0],
+  );
+  const entries = objectBlocks.map((block) => {
+    const fields = Object.fromEntries(
+      [...block.matchAll(/([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*"([^"]*)"/g)].map(
+        (match) => [match[1], match[2]],
+      ),
+    );
+
+    if (!fields.provider || !fields.model || !fields.tier) {
+      throw new Error(
+        `Malformed MODEL_TIER_REGISTRY entry; expected provider, model, and tier string fields: ${block}`,
+      );
+    }
+
+    return {
+      provider: fields.provider,
+      model: fields.model,
+      tier: fields.tier,
+    };
+  });
 
   if (entries.length === 0) {
     throw new Error(
