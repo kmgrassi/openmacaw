@@ -70,13 +70,16 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     setRuntimeProvider,
     runtimeModel,
     setRuntimeModel,
+    runtimeFallbacks,
+    setRuntimeFallbacks,
+    runtimeModelTierFloor,
+    setRuntimeModelTierFloor,
     runtimeProfileLoading,
     runtimeProfileSaving,
     runtimeProfileDirty,
     runtimeProviderIsLocal,
     runtimeCredentialMissing,
     loadRuntimeProfile,
-    handleRuntimeProfileSave,
     saveRuntimeProfile,
   } = useAgentRuntimeProfile({
     agent,
@@ -219,12 +222,15 @@ export function AgentDetail({ agent }: { agent: Agent }) {
             setRuntimeProvider={setRuntimeProvider}
             runtimeModel={runtimeModel}
             setRuntimeModel={setRuntimeModel}
+            runtimeFallbacks={runtimeFallbacks}
+            setRuntimeFallbacks={setRuntimeFallbacks}
+            runtimeModelTierFloor={runtimeModelTierFloor}
+            setRuntimeModelTierFloor={setRuntimeModelTierFloor}
             runtimeProfileLoading={runtimeProfileLoading}
             runtimeProfileSaving={runtimeProfileSaving}
             runtimeProfileDirty={runtimeProfileDirty}
             runtimeProviderIsLocal={runtimeProviderIsLocal}
             runtimeCredentialMissing={runtimeCredentialMissing}
-            onRuntimeProfileSave={handleRuntimeProfileSave}
             onRuntimeProfileSaveInput={saveRuntimeProfile}
             onAgentReload={reloadAgents}
             onError={handleError}

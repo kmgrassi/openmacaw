@@ -4,7 +4,10 @@ import { PROVIDER_REGISTRY } from "./provider-registry.js";
 
 export const MODEL_TIERS = ["frontier", "mid", "local", "any"] as const;
 export const ModelTierSchema = z.enum(MODEL_TIERS);
+export const ModelTierFloorSchema = z.enum(["any", "local", "mid", "frontier"]);
+
 export type ModelTier = (typeof MODEL_TIERS)[number];
+export type ModelTierFloor = z.infer<typeof ModelTierFloorSchema>;
 export type AssignableModelTier = Exclude<ModelTier, "any">;
 export type RegisteredProvider = keyof typeof PROVIDER_REGISTRY;
 
@@ -133,10 +136,18 @@ export const MODEL_TIER_REGISTRY: ReadonlyArray<{
   { provider: "bedrock", model: "amazon.nova-pro-v1:0", tier: "mid" },
 ] as const;
 
+export type ModelTierRegistryEntry = (typeof MODEL_TIER_REGISTRY)[number];
+
+export type RegisteredModelTier = ModelTierRegistryEntry & {
+  label: string;
+  executable: boolean;
+};
+
 export function modelTier(
-  provider: RegisteredProvider,
-  model: string,
+  provider: string | null | undefined,
+  model: string | null | undefined,
 ): AssignableModelTier | null {
+  if (!provider || !model) return null;
   const trimmedModel = model.trim();
   const exact = MODEL_TIER_REGISTRY.find(
     (entry) => entry.provider === provider && entry.model === trimmedModel,
@@ -157,4 +168,50 @@ export function modelTier(
     (entry) => entry.provider === provider && entry.model === "*",
   );
   return wildcard?.tier ?? null;
+}
+
+export function modelRegistryEntry(
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): RegisteredModelTier | null {
+  if (!provider || !model) return null;
+  const trimmedModel = model.trim();
+  const entry =
+    MODEL_TIER_REGISTRY.find(
+      (candidate) =>
+        candidate.provider === provider && candidate.model === trimmedModel,
+    ) ??
+    (trimmedModel.startsWith(`${provider}/`)
+      ? MODEL_TIER_REGISTRY.find(
+          (candidate) =>
+            candidate.provider === provider &&
+            candidate.model === trimmedModel.slice(`${provider}/`.length),
+        )
+      : undefined) ??
+    MODEL_TIER_REGISTRY.find(
+      (candidate) => candidate.provider === provider && candidate.model === "*",
+    );
+
+  return entry
+    ? {
+        ...entry,
+        label: modelTierLabel(entry.model),
+        executable: modelTierEntryExecutable(entry.provider),
+      }
+    : null;
+}
+
+export function modelTierLabel(model: string): string {
+  if (model === "*") return "Any model";
+  return model
+    .split(/[/:._-]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export function modelTierEntryExecutable(provider: string): boolean {
+  return ["anthropic", "openai", "openai_codex", "openai_compatible"].includes(
+    provider,
+  );
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CredentialReference } from "../../../../contracts/credentials.js";
+import type { ModelTierFloor } from "../../../../contracts/model-tiers.js";
 import { RunnerKindSchema } from "../../../../contracts/execution-profile.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
 import { normalizeCredentialAlias } from "./credentials.js";
@@ -81,7 +82,18 @@ const AgentCredentialReferenceRuleSchema = z.object({
   model: z.string().nullable(),
   credential_id: z.string().nullable(),
   credential_alias: z.string().nullable(),
+  model_tier_floor: z.enum(["any", "local", "mid", "frontier"]).nullable().optional(),
   updated_at: z.string(),
+});
+
+const RoutingRuleFallbackSchema = z.object({
+  routing_rule_id: z.string(),
+  workspace_id: z.string(),
+  position: z.number().int(),
+  provider: z.string(),
+  model: z.string(),
+  credential_id: z.string().nullable(),
+  credential_alias: z.string().nullable(),
 });
 
 const RoutingRuleMatchIdSchema = z.object({
@@ -89,9 +101,16 @@ const RoutingRuleMatchIdSchema = z.object({
 });
 
 export type AgentCredentialReferenceRule = z.infer<typeof AgentCredentialReferenceRuleSchema>;
+export type RoutingRuleFallback = z.infer<typeof RoutingRuleFallbackSchema>;
+
+export type RoutingRuleFallbackInput = {
+  provider: string;
+  model: string;
+  credentialRef: CredentialReference | null;
+};
 
 const AGENT_CREDENTIAL_RULE_SELECT =
-  "id,workspace_id,name,runner_kind,provider,model,credential_id,credential_alias,updated_at" as const;
+  "id,workspace_id,name,runner_kind,provider,model,credential_id,credential_alias,model_tier_floor,updated_at" as const;
 
 function agentCredentialRuleName(agentId: string): string {
   return `agent:${agentId}:execution-profile`;
@@ -113,6 +132,16 @@ export function credentialRefFromRoutingRule(rule: AgentCredentialReferenceRule 
   }
   if (rule?.credential_id) {
     return { type: "credential_id", value: rule.credential_id };
+  }
+  return null;
+}
+
+export function credentialRefFromRoutingRuleFallback(fallback: RoutingRuleFallback): CredentialReference | null {
+  if (fallback.credential_alias) {
+    return { type: "alias", value: fallback.credential_alias };
+  }
+  if (fallback.credential_id) {
+    return { type: "credential_id", value: fallback.credential_id };
   }
   return null;
 }
@@ -145,6 +174,33 @@ export async function getAgentCredentialReferenceRule(input: {
   );
 }
 
+export async function listRoutingRuleFallbacks(input: {
+  ruleId: string;
+  workspaceId: string;
+}): Promise<RoutingRuleFallback[]> {
+  return withRepositoryLogging(
+    {
+      repository: "routing_rules",
+      method: "listRoutingRuleFallbacks",
+      table: "routing_rule_fallback",
+      operation: "select",
+      expectedCardinality: "zero_or_more",
+      access: "service_role",
+      workspaceId: input.workspaceId,
+    },
+    async () => {
+      const { data, error } = await getServiceRoleSupabase()
+        .from("routing_rule_fallback" as never)
+        .select("routing_rule_id,workspace_id,position,provider,model,credential_id,credential_alias")
+        .eq("routing_rule_id", input.ruleId)
+        .eq("workspace_id", input.workspaceId)
+        .order("position", { ascending: true });
+      if (error) throw normalizeSupabaseError("routing_rule_fallback query", error);
+      return parseSupabaseRows("routing_rule_fallback query", RoutingRuleFallbackSchema, data);
+    },
+  );
+}
+
 export async function upsertAgentCredentialReferenceRule(input: {
   agentId: string;
   workspaceId: string;
@@ -152,6 +208,8 @@ export async function upsertAgentCredentialReferenceRule(input: {
   provider: string | null;
   model: string | null;
   credentialRef: CredentialReference | null;
+  fallbacks?: RoutingRuleFallbackInput[];
+  modelTierFloor?: ModelTierFloor;
   localEndpointUrl?: string | null;
 }): Promise<AgentCredentialReferenceRule> {
   // Fail fast with a clear message before the DB rejects the row. The
@@ -195,13 +253,14 @@ export async function upsertAgentCredentialReferenceRule(input: {
       model: input.model,
       enabled: true,
       updated_at: now,
+      ...(input.modelTierFloor ? { model_tier_floor: input.modelTierFloor } : {}),
       ...credentialPatch,
     };
 
     async function updateExistingRule(rule: AgentCredentialReferenceRule): Promise<AgentCredentialReferenceRule> {
       const { data, error } = await getServiceRoleSupabase()
         .from("routing_rule")
-        .update(body)
+        .update(body as never)
         .eq("id", rule.id)
         .eq("workspace_id", input.workspaceId)
         .select(AGENT_CREDENTIAL_RULE_SELECT)
@@ -219,6 +278,13 @@ export async function upsertAgentCredentialReferenceRule(input: {
         workspaceId: input.workspaceId,
         endpointUrl: input.localEndpointUrl,
       });
+      if (input.fallbacks) {
+        await syncRoutingRuleFallbacks({
+          ruleId: updated.id,
+          workspaceId: input.workspaceId,
+          fallbacks: input.fallbacks,
+        });
+      }
       return updated;
     }
 
@@ -232,8 +298,9 @@ export async function upsertAgentCredentialReferenceRule(input: {
         workspace_id: input.workspaceId,
         name: agentCredentialRuleName(input.agentId),
         priority: 100,
+        model_tier_floor: input.modelTierFloor ?? "any",
         ...body,
-      })
+      } as never)
       .select(AGENT_CREDENTIAL_RULE_SELECT)
       .single();
     if (error) {
@@ -254,8 +321,65 @@ export async function upsertAgentCredentialReferenceRule(input: {
       workspaceId: input.workspaceId,
       endpointUrl: input.localEndpointUrl,
     });
+    if (input.fallbacks) {
+      await syncRoutingRuleFallbacks({
+        ruleId: inserted.id,
+        workspaceId: input.workspaceId,
+        fallbacks: input.fallbacks,
+      });
+    }
     return inserted;
   });
+}
+
+async function syncRoutingRuleFallbacks(input: {
+  ruleId: string;
+  workspaceId: string;
+  fallbacks: RoutingRuleFallbackInput[];
+}) {
+  const supabase = getServiceRoleSupabase();
+  const { error: deleteError } = await supabase
+    .from("routing_rule_fallback" as never)
+    .delete()
+    .eq("routing_rule_id", input.ruleId)
+    .eq("workspace_id", input.workspaceId);
+  if (deleteError) throw normalizeSupabaseError("routing_rule_fallback delete", deleteError);
+
+  if (input.fallbacks.length === 0) return;
+
+  const rows = input.fallbacks.map((fallback, index) => {
+    if (!ROUTING_RULE_PROVIDER_ALLOWED.has(fallback.provider)) {
+      throw new RoutingRuleConstraintError("provider", fallback.provider);
+    }
+
+    const credentialPatch =
+      fallback.credentialRef?.type === "alias"
+        ? {
+            credential_alias: normalizeCredentialAlias(fallback.credentialRef.value),
+            credential_id: null,
+          }
+        : fallback.credentialRef?.type === "credential_id"
+          ? {
+              credential_alias: null,
+              credential_id: fallback.credentialRef.value,
+            }
+          : {
+              credential_alias: null,
+              credential_id: null,
+            };
+
+    return {
+      routing_rule_id: input.ruleId,
+      workspace_id: input.workspaceId,
+      position: index,
+      provider: fallback.provider,
+      model: fallback.model,
+      ...credentialPatch,
+    };
+  });
+
+  const { error: insertError } = await supabase.from("routing_rule_fallback" as never).insert(rows as never);
+  if (insertError) throw normalizeSupabaseError("routing_rule_fallback insert", insertError);
 }
 
 export async function getRoutingRuleLocalEndpointUrl(input: {

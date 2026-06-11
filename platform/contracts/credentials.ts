@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ExecutionProfileResolutionSchema } from "./execution-profile.js";
+import { ModelTierFloorSchema } from "./model-tiers.js";
 import {
   CREDENTIAL_PROVIDERS,
   CREDENTIAL_PROVIDER_REGISTRY,
@@ -76,6 +77,16 @@ export const AgentCredentialReferenceSchema = z.object({
   provider: z.string().nullable(),
   model: z.string().nullable(),
   credentialRef: CredentialReferenceSchema.nullable(),
+  fallbacks: z
+    .array(
+      z.object({
+        provider: z.string().trim().min(1),
+        model: z.string().trim().min(1),
+        credentialRef: CredentialReferenceSchema.nullable(),
+      }),
+    )
+    .default([]),
+  modelTierFloor: ModelTierFloorSchema.default("any"),
   localEndpointUrl: z.string().trim().min(1).nullable(),
   credential: SavedCredentialSchema.nullable().default(null),
   updatedAt: z.string().nullable(),
@@ -95,6 +106,17 @@ export const UpsertAgentCredentialReferenceRequestSchema = z.object({
   localModelId: z.string().trim().min(1).nullable().optional(),
   localEndpointUrl: z.string().trim().min(1).nullable().optional(),
   credentialRef: CredentialReferenceSchema.nullable(),
+  fallbacks: z
+    .array(
+      z.object({
+        provider: z.string().trim().min(1),
+        model: z.string().trim().min(1),
+        credentialRef: CredentialReferenceSchema.nullable(),
+      }),
+    )
+    .optional()
+    .default([]),
+  modelTierFloor: ModelTierFloorSchema.optional().default("any"),
 });
 
 export const ApiKeyCredentialProviderSchema = CredentialProviderSchema.exclude([
