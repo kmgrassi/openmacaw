@@ -1,6 +1,11 @@
 import { ToolPolicySchema, type ToolPolicy } from "../../../../../../contracts/agents.js";
 import type { DefaultAgentRole, SetupRequest, SetupUpdateRequest } from "../../../../../../contracts/setup.js";
-import { DEFAULT_PLANNING_TOOL_SLUGS, GIT_COMMAND_TOOL_SLUG, SCHEDULED_TASK_TOOL_SLUGS } from "../../tool-bundles.js";
+import {
+  DEFAULT_PLANNING_TOOL_SLUGS,
+  GIT_COMMAND_TOOL_SLUG,
+  ROUTER_TOOL_SLUGS,
+  SCHEDULED_TASK_TOOL_SLUGS,
+} from "../../tool-bundles.js";
 import { agentType } from "./agent-defaults.js";
 
 export function plannerToolPolicyDefaults(): ToolPolicy {
@@ -17,6 +22,14 @@ export function managerToolPolicyDefaults(): ToolPolicy {
     manager: {
       cadence_ms: 60_000,
       tools: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
+    },
+  });
+}
+
+export function routerToolPolicyDefaults(): ToolPolicy {
+  return ToolPolicySchema.parse({
+    router: {
+      tools: ROUTER_TOOL_SLUGS,
     },
   });
 }
@@ -76,8 +89,10 @@ export function buildToolPolicy(input: SetupRequest | SetupUpdateRequest, type =
       ? plannerToolPolicyDefaults()
       : type === "manager"
         ? managerToolPolicyDefaults()
-        : type === "custom"
-          ? customToolPolicyDefaults()
-          : {};
+        : type === "router"
+          ? routerToolPolicyDefaults()
+          : type === "custom"
+            ? customToolPolicyDefaults()
+            : {};
   return ToolPolicySchema.parse(mergeRecords(defaults, input.toolPolicy));
 }

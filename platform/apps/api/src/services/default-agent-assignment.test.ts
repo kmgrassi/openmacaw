@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { updateDefaultAgentAssignment } from "./setup.js";
 import { createSetupAgent, findSetupAgentById, listSetupAgentRows } from "../repositories/agents.js";
-import { getUserScopedSupabase } from "../supabase-client.js";
+import { getServiceRoleSupabase, getUserScopedSupabase } from "../supabase-client.js";
 import type * as SupabaseClient from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 
@@ -19,6 +19,7 @@ vi.mock("../repositories/credentials.js", () => ({
 
 vi.mock("../supabase-client.js", async (importOriginal) => ({
   ...(await importOriginal<typeof SupabaseClient>()),
+  getServiceRoleSupabase: vi.fn(),
   getUserScopedSupabase: vi.fn(),
 }));
 
@@ -62,27 +63,28 @@ describe("default agent assignment updates", () => {
     vi.mocked(createSetupAgent).mockReset();
     vi.mocked(findSetupAgentById).mockReset();
     vi.mocked(listSetupAgentRows).mockReset();
-    vi.mocked(getUserScopedSupabase).mockReturnValue(
-      createMockSupabaseClient({
-        workspaces: [
-          {
-            id: WORKSPACE_ID,
-            name: "Workspace",
-            owner_user_id: USER_ONE_ID,
-            created_at: "2026-04-25T00:00:00.000Z",
-          },
-        ],
-        workspace_members: [
-          { workspace_id: WORKSPACE_ID, user_id: USER_ONE_ID, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
-          { workspace_id: WORKSPACE_ID, user_id: USER_TWO_ID, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
-        ],
-        agent_default_assignment: [],
-        agent: Array.from(agentsById.values()),
-        gateway_config: [],
-        gateway_config_state: [],
-        engine_instance: [],
-      }) as never,
-    );
+    const supabase = createMockSupabaseClient({
+      workspaces: [
+        {
+          id: WORKSPACE_ID,
+          name: "Workspace",
+          owner_user_id: USER_ONE_ID,
+          created_at: "2026-04-25T00:00:00.000Z",
+        },
+      ],
+      workspace_members: [
+        { workspace_id: WORKSPACE_ID, user_id: USER_ONE_ID, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
+        { workspace_id: WORKSPACE_ID, user_id: USER_TWO_ID, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
+      ],
+      agent_default_assignment: [],
+      agent: Array.from(agentsById.values()),
+      gateway_config: [],
+      gateway_config_state: [],
+      engine_instance: [],
+      scheduled_task: [],
+    });
+    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase as never);
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase as never);
 
     vi.mocked(createSetupAgent).mockImplementation(async (input) =>
       agent(input.type === "planning" ? PLANNING_AGENT_ID : CODING_AGENT_ID, input.type as Role),

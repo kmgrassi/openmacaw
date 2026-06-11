@@ -25,13 +25,6 @@ export const SCHEDULED_TASK_TOOL_SLUGS = [
 
 export const GIT_COMMAND_TOOL_SLUG = "git.run" as const;
 
-export const DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS = [
-  ...DEFAULT_PLANNING_TOOL_SLUGS,
-  ...SCHEDULED_TASK_TOOL_SLUGS,
-] as const;
-
-export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS] as const;
-
 export const ROUTER_TOOL_SLUGS = [
   "routing_rule.list",
   "routing_rule.read",
@@ -41,6 +34,13 @@ export const ROUTER_TOOL_SLUGS = [
   "provider_cutover.list",
   "scheduled_task.read",
 ] as const;
+
+export const DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS = [
+  ...DEFAULT_PLANNING_TOOL_SLUGS,
+  ...SCHEDULED_TASK_TOOL_SLUGS,
+] as const;
+
+export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS] as const;
 
 export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "repo.read_file",

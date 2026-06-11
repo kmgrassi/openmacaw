@@ -281,7 +281,7 @@ describe("scheduled task routes", () => {
     expect(tables.scheduled_task[0]?.enabled).toBe(false);
   });
 
-  it("rejects schedules for agents outside the manager-agent first pass", async () => {
+  it("rejects schedules for agents outside the scheduled-task agent set", async () => {
     const response = await requestJson("POST", `/api/workspaces/${workspaceId}/scheduled-tasks`, {
       agentId: codingAgentId,
       title: "Coding schedule",
@@ -291,7 +291,7 @@ describe("scheduled task routes", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
-      error: { code: "manager_agent_not_found" },
+      error: { code: "scheduled_task_agent_not_found" },
     });
   });
 

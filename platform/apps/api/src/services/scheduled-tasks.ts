@@ -241,27 +241,31 @@ function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTaskProjection {
   };
 }
 
-async function assertManagerAgentBelongsToWorkspace(workspaceId: string, agentId: string) {
+function isScheduledTaskAgentType(type: string | null) {
+  return type === "manager" || type === "router";
+}
+
+async function assertScheduledTaskAgentBelongsToWorkspace(workspaceId: string, agentId: string) {
   const rows = await executeSupabaseRows<AgentRow>(
     "scheduled_task agent validation",
     scheduledTaskSupabase().from<AgentRow>("agent").select("id, workspace_id, type").eq("id", agentId).limit(1),
   );
   const agent = rows[0];
-  if (!agent || agent.workspace_id !== workspaceId || agent.type !== "manager") {
-    throw new ApiRouteError(404, "manager_agent_not_found", "Manager agent was not found in this workspace");
+  if (!agent || agent.workspace_id !== workspaceId || !isScheduledTaskAgentType(agent.type)) {
+    throw new ApiRouteError(
+      404,
+      "scheduled_task_agent_not_found",
+      "Scheduled-task agent was not found in this workspace",
+    );
   }
 }
 
-async function listManagerAgentIdsForWorkspace(workspaceId: string) {
+async function listScheduledTaskAgentIdsForWorkspace(workspaceId: string) {
   const rows = await executeSupabaseRows<AgentRow>(
-    "scheduled_task manager agents list",
-    scheduledTaskSupabase()
-      .from<AgentRow>("agent")
-      .select("id, workspace_id, type")
-      .eq("workspace_id", workspaceId)
-      .eq("type", "manager"),
+    "scheduled_task agents list",
+    scheduledTaskSupabase().from<AgentRow>("agent").select("id, workspace_id, type").eq("workspace_id", workspaceId),
   );
-  return rows.map((row) => row.id);
+  return rows.filter((row) => isScheduledTaskAgentType(row.type)).map((row) => row.id);
 }
 
 async function assertSourceWorkItemBelongsToWorkspace(
@@ -304,10 +308,10 @@ export async function listScheduledTasksForWorkspace(
 ): Promise<ScheduledTaskListResponse> {
   await assertScheduledTaskSchemaReady();
   if (agentId) {
-    await assertManagerAgentBelongsToWorkspace(workspaceId, agentId);
+    await assertScheduledTaskAgentBelongsToWorkspace(workspaceId, agentId);
   }
-  const managerAgentIds = agentId ? [agentId] : await listManagerAgentIdsForWorkspace(workspaceId);
-  if (managerAgentIds.length === 0) {
+  const scheduledTaskAgentIds = agentId ? [agentId] : await listScheduledTaskAgentIdsForWorkspace(workspaceId);
+  if (scheduledTaskAgentIds.length === 0) {
     return ScheduledTaskListResponseSchema.parse({ scheduledTasks: [] });
   }
 
@@ -317,7 +321,7 @@ export async function listScheduledTasksForWorkspace(
       .from<ScheduledTaskRow>("scheduled_task")
       .select("*")
       .eq("workspace_id", workspaceId)
-      .in("agent_id", managerAgentIds)
+      .in("agent_id", scheduledTaskAgentIds)
       .order("next_run_at", { ascending: true }),
   );
   return ScheduledTaskListResponseSchema.parse({
@@ -333,7 +337,7 @@ export async function createScheduledTaskForWorkspace(params: {
 }): Promise<ScheduledTaskResponse> {
   const { workspaceId, userId, request, now = new Date() } = params;
   await assertScheduledTaskSchemaReady();
-  await assertManagerAgentBelongsToWorkspace(workspaceId, request.agentId);
+  await assertScheduledTaskAgentBelongsToWorkspace(workspaceId, request.agentId);
   await assertSourceWorkItemBelongsToWorkspace(workspaceId, request.sourceWorkItemId);
 
   const timezone =
@@ -379,7 +383,7 @@ export async function updateScheduledTaskForWorkspace(params: {
   const { workspaceId, scheduledTaskId, agentId, request, now = new Date() } = params;
   await assertScheduledTaskSchemaReady();
   const existing = (await findScheduledTask(workspaceId, scheduledTaskId, agentId)) ?? notFound();
-  await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
+  await assertScheduledTaskAgentBelongsToWorkspace(workspaceId, existing.agent_id);
   const nextSchedule = request.schedule ?? normalizeScheduledTaskSchedule(existing.schedule);
   const nextTimezone =
     request.timezone ??
@@ -425,7 +429,7 @@ export async function cancelScheduledTaskForWorkspace(params: {
   if (!existing) {
     notFound();
   }
-  await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
+  await assertScheduledTaskAgentBelongsToWorkspace(workspaceId, existing.agent_id);
   const rows = await executeScheduledTaskRows<ScheduledTaskRow>(
     "scheduled_task cancel",
     scheduledTaskSupabase()
@@ -458,7 +462,7 @@ export async function runScheduledTaskNowForWorkspace(params: {
   if (!existing) {
     notFound();
   }
-  await assertManagerAgentBelongsToWorkspace(workspaceId, existing.agent_id);
+  await assertScheduledTaskAgentBelongsToWorkspace(workspaceId, existing.agent_id);
   if (!existing.enabled) {
     throw new ApiRouteError(409, "scheduled_task_disabled", "Canceled or disabled scheduled tasks cannot be run now");
   }

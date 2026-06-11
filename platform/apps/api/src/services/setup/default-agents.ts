@@ -28,6 +28,7 @@ import { requireCurrentUser, workspaceManagerAgentId } from "./identity.js";
 import {
   ensureDefaultAgent,
   ensureWorkspaceManagerAgent,
+  ensureWorkspaceRouterAgent,
   ensureDefaultWorkspace,
   getDefaultAssignment,
   getWorkspaceById,
@@ -83,6 +84,7 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
     coding: await ensureDefaultAgent(accessToken, workspace.id, userId, "coding"),
   };
   const managerAgent = await ensureWorkspaceManagerAgent(accessToken, workspace.id, userId);
+  const routerAgent = await ensureWorkspaceRouterAgent(accessToken, workspace.id, userId);
 
   const agentRows = await listSetupAgentRows(accessToken);
   const normalizedAgentRows = agentRows.map((agent) => ({
@@ -108,6 +110,14 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
     normalizedAgentRows.push(normalized);
     agentById.set(normalized.id, normalized);
   }
+  if (!agentById.has(routerAgent.id)) {
+    const normalized = {
+      ...routerAgent,
+      type: normalizeAgentType(routerAgent.type),
+    };
+    normalizedAgentRows.push(normalized);
+    agentById.set(normalized.id, normalized);
+  }
 
   const defaultAgentState = {
     planning: await buildDefaultAgentStatus(accessToken, userId, defaultAgents.planning),
@@ -116,7 +126,7 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
   const managerAgentState = await buildDefaultAgentStatus(accessToken, userId, managerAgent);
   const defaultAgentIds = new Set(Object.values(defaultAgents).map((agent) => agent.id));
   const defaultSelectableAgents = normalizedAgentRows.filter(
-    (agent) => agent.status === "active" && normalizeAgentType(agent.type) !== "manager",
+    (agent) => agent.status === "active" && !["manager", "router"].includes(normalizeAgentType(agent.type)),
   );
   const configuredExistingAgents = (
     await Promise.all(

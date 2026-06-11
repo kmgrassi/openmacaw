@@ -21,6 +21,7 @@ export function runnerKindForAgent(agent: Agent) {
   if (agent.runnerKind) return agent.runnerKind;
   if (agent.agentType === "planning") return "llm_tool_runner";
   if (agent.agentType === "manager") return "llm_tool_runner";
+  if (agent.agentType === "router") return "llm_tool_runner";
   if (agent.agentType === "custom")
     return agent.customTarget?.backendType ?? "openclaw_ws";
   return "codex";

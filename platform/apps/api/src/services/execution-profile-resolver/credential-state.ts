@@ -3,7 +3,9 @@ import type { RunnerKind } from "../../../../../contracts/runner-kinds.js";
 
 export function normalizeRole(value: string | null | undefined): AgentRole {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "planning" || normalized === "manager" || normalized === "custom") return normalized;
+  if (normalized === "planning" || normalized === "manager" || normalized === "router" || normalized === "custom") {
+    return normalized;
+  }
   return "coding";
 }
 
