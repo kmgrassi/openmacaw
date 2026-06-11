@@ -23,7 +23,9 @@ defmodule SymphonyElixir.Runner.Codex do
 
   @behaviour SymphonyElixir.Runner
 
+  alias SymphonyElixir.Cutover
   alias SymphonyElixir.Codex.AppServer
+  alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.Runner.WorkerBridgeRouting
 
   @impl true
@@ -39,7 +41,13 @@ defmodule SymphonyElixir.Runner.Codex do
 
       true ->
         opts = session_opts(config)
-        AppServer.start_session(workspace, opts)
+
+        with {:ok, session} <- AppServer.start_session(workspace, opts) do
+          {:ok,
+           session
+           |> Map.put(:runner_config, config)
+           |> Map.put(:fallbacks, Map.get(config, "fallbacks") || Map.get(config, :fallbacks) || [])}
+        end
     end
   end
 
@@ -48,8 +56,9 @@ defmodule SymphonyElixir.Runner.Codex do
     if Map.get(session, :worker_bridge) do
       WorkerBridgeRouting.run_turn(session, "codex")
     else
-      opts = turn_opts(session)
-      AppServer.run_turn(session, prompt, work_item, opts)
+      Cutover.walk_session(session, :codex, fn link_session, attempt ->
+        run_turn_link(link_session, prompt, work_item, attempt)
+      end)
     end
   end
 
@@ -72,6 +81,62 @@ defmodule SymphonyElixir.Runner.Codex do
   @impl true
   def requires_workspace?, do: true
 
+  @spec classify_error(term()) :: map()
+  def classify_error({:rpc_error, %{"code" => code} = payload}) when is_integer(code) do
+    classify_error(Map.put(payload, "status", code))
+  end
+
+  def classify_error(%{"status" => status} = payload) when is_integer(status) do
+    error_code =
+      cond do
+        status == 429 -> "provider_rate_limited"
+        status in [500, 502, 503, 504] -> "provider_overloaded"
+        true -> "provider_unknown"
+      end
+
+    %{
+      error_code: error_code,
+      retryable: error_code in ["provider_rate_limited", "provider_overloaded"],
+      status_code: status,
+      reason: Map.get(payload, "message") || Map.get(payload, "error") || inspect(payload)
+    }
+  end
+
+  def classify_error(reason) do
+    text = reason |> inspect() |> String.downcase()
+
+    cond do
+      String.contains?(text, "429") or String.contains?(text, "rate") ->
+        %{error_code: "provider_rate_limited", retryable: true, reason: inspect(reason)}
+
+      String.contains?(text, "500") or String.contains?(text, "502") or String.contains?(text, "503") or
+          String.contains?(text, "504") ->
+        %{error_code: "provider_overloaded", retryable: true, reason: inspect(reason)}
+
+      true ->
+        %{error_code: "provider_unknown", retryable: true, reason: inspect(reason)}
+    end
+  end
+
+  defp run_turn_link(session, prompt, work_item, attempt) do
+    opts = turn_opts(session)
+
+    case app_server_module(session).run_turn(session, prompt, work_item, opts) do
+      {:ok, _result} = success ->
+        success
+
+      {:error, reason} ->
+        failure =
+          reason
+          |> classify_error()
+          |> Map.merge(provider_context(session, work_item, attempt))
+          |> Map.put(:event, "model_call_failed")
+
+        Observability.log_provider_failure(failure)
+        Cutover.classified_failure(failure, reason)
+    end
+  end
+
   defp session_opts(config) do
     opts = []
     opts = if config[:worker_host], do: Keyword.put(opts, :worker_host, config[:worker_host]), else: opts
@@ -83,7 +148,24 @@ defmodule SymphonyElixir.Runner.Codex do
     opts = []
     opts = if session[:on_message], do: Keyword.put(opts, :on_message, session[:on_message]), else: opts
     opts = if session[:trace_id], do: Keyword.put(opts, :trace_id, session[:trace_id]), else: opts
+    opts = if session[:runner_config], do: Keyword.put(opts, :runner_config, session[:runner_config]), else: opts
     opts
+  end
+
+  defp app_server_module(session), do: Map.get(session, :app_server_module, AppServer)
+
+  defp provider_context(session, work_item, attempt) do
+    %{
+      provider: Map.get(session, :model_provider) || Map.get(session, :provider) || "openai_codex",
+      model: Map.get(session, :model),
+      runner_kind: "codex",
+      workspace_id: Map.get(session, :workspace_id),
+      agent_id: Map.get(session, :agent_id),
+      trace_id: Map.get(session, :trace_id),
+      run_id: Map.get(work_item, :id),
+      turn_id: Map.get(session, :turn_id),
+      attempt: attempt
+    }
   end
 
   defp probe_only?(config) when is_map(config), do: config[:probe_only] == true or config["probe_only"] == true

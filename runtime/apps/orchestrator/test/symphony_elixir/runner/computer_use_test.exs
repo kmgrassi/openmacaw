@@ -136,6 +136,46 @@ defmodule SymphonyElixir.Runner.ComputerUseTest do
 
       stop_test_server(server_ref)
     end
+
+    test "walks fallback chain after provider failure" do
+      primary_session_id = "sess-primary-#{System.unique_integer([:positive])}"
+      fallback_session_id = "sess-fallback-#{System.unique_integer([:positive])}"
+
+      {primary_port, primary_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/sessions"} ->
+            {200, %{session_id: primary_session_id}}
+
+          %{method: "POST", path: "/sessions/" <> _rest} ->
+            {429, %{error: %{code: "rate_limit_exceeded", message: "try later"}}}
+        end)
+
+      {fallback_port, fallback_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/sessions"} ->
+            {200, %{session_id: fallback_session_id}}
+
+          %{method: "POST", path: "/sessions/" <> _rest} ->
+            {200, %{status: "completed", result: "fallback done"}}
+        end)
+
+      config = %{
+        "endpoint" => "http://localhost:#{primary_port}",
+        "timeout_ms" => 5_000,
+        "poll_interval_ms" => 50,
+        "fallbacks" => [
+          %{"adapter_config" => %{"endpoint" => "http://localhost:#{fallback_port}", "session_id" => fallback_session_id}}
+        ]
+      }
+
+      {:ok, session} = ComputerUse.start_session(config, nil)
+
+      assert {:ok, %{"status" => "completed", "result" => "fallback done"}} =
+               ComputerUse.run_turn(session, "Click the button", build_work_item())
+
+      stop_test_server(primary_ref)
+      stop_test_server(fallback_ref)
+    end
   end
 
   describe "stop_session/1" do
