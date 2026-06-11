@@ -4,14 +4,14 @@ type Row = Record<string, unknown>;
 type TableMap = Record<string, Row[]>;
 type Filter = {
   column: string;
-  operator: "contains" | "eq" | "in" | "is" | "not" | "like" | "gte" | "lt" | "lte";
+  operator: "contains" | "eq" | "in" | "is" | "not" | "like" | "gte" | "lt" | "lte" | "or";
   negatedOperator?: "is";
   value: unknown;
 };
 
 class MockSupabaseQueryBuilder {
   private filters: Filter[] = [];
-  private orderBy: { column: string; ascending: boolean } | null = null;
+  private orderBy: Array<{ column: string; ascending: boolean }> = [];
   private limitCount: number | null = null;
   private rangeStart: number | null = null;
   private rangeEnd: number | null = null;
@@ -53,7 +53,10 @@ class MockSupabaseQueryBuilder {
     this.filters.push({ column, operator: "like", value: pattern });
     return this;
   });
-  or = vi.fn((_expression: string) => this);
+  or = vi.fn((expression: string) => {
+    this.filters.push({ column: "__or", operator: "or", value: expression });
+    return this;
+  });
   is = vi.fn((column: string, value: unknown) => {
     this.filters.push({ column, operator: "is", value });
     return this;
@@ -63,7 +66,7 @@ class MockSupabaseQueryBuilder {
     return this;
   });
   order = vi.fn((column: string, options?: { ascending?: boolean }) => {
-    this.orderBy = { column, ascending: options?.ascending ?? true };
+    this.orderBy.push({ column, ascending: options?.ascending ?? true });
     return this;
   });
   limit = vi.fn((count: number) => {
@@ -131,11 +134,13 @@ class MockSupabaseQueryBuilder {
 
   private selectRows(): Row[] {
     const rows = this.tableRows().filter((row) => this.matches(row));
-    if (this.orderBy) {
-      const { column, ascending } = this.orderBy;
+    if (this.orderBy.length > 0) {
       rows.sort((left, right) => {
-        const comparison = String(left[column] ?? "").localeCompare(String(right[column] ?? ""));
-        return ascending ? comparison : -comparison;
+        for (const { column, ascending } of this.orderBy) {
+          const comparison = String(left[column] ?? "").localeCompare(String(right[column] ?? ""));
+          if (comparison !== 0) return ascending ? comparison : -comparison;
+        }
+        return 0;
       });
     }
     if (this.rangeStart !== null && this.rangeEnd !== null) {
@@ -224,6 +229,7 @@ class MockSupabaseQueryBuilder {
       if (filter.operator === "gte") return this.compare(row[filter.column], filter.value) >= 0;
       if (filter.operator === "lt") return this.compare(row[filter.column], filter.value) < 0;
       if (filter.operator === "lte") return this.compare(row[filter.column], filter.value) <= 0;
+      if (filter.operator === "or") return this.matchesOr(row, String(filter.value));
       if (filter.operator === "not" && filter.negatedOperator === "is") return row[filter.column] !== filter.value;
       if (filter.operator === "like") {
         const pattern = String(filter.value);
@@ -241,6 +247,18 @@ class MockSupabaseQueryBuilder {
       return left - right;
     }
     return String(left ?? "").localeCompare(String(right ?? ""));
+  }
+
+  private matchesOr(row: Row, expression: string): boolean {
+    const recentCursorMatch = expression.match(/^triggered_at\.lt\.(.+),and\(triggered_at\.eq\.(.+),id\.lt\.(.+)\)$/);
+    if (recentCursorMatch) {
+      const [, beforeTriggeredAt, equalTriggeredAt, beforeId] = recentCursorMatch;
+      return (
+        this.compare(row.triggered_at, beforeTriggeredAt) < 0 ||
+        (this.compare(row.triggered_at, equalTriggeredAt) === 0 && this.compare(row.id, beforeId) < 0)
+      );
+    }
+    return true;
   }
 }
 

@@ -93,6 +93,7 @@ describe("provider cutover routes", () => {
 
   beforeEach(async () => {
     resetTables();
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-token";
 
     const app = express();
     app.use(express.json());
@@ -111,11 +112,13 @@ describe("provider cutover routes", () => {
 
   afterEach(async () => {
     await closeServer(server);
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   });
 
   it("persists a runtime audit payload under the work item's workspace", async () => {
     const response = await request(`/api/work-items/${workItemId}/cutovers`, {
       method: "POST",
+      headers: { authorization: "Bearer service-role-token" },
       body: JSON.stringify({
         agentId,
         triggeredAt: "2026-06-10T12:00:00.000Z",
@@ -197,7 +200,7 @@ describe("provider cutover routes", () => {
     const firstPageBody = await firstPage.json();
     expect(firstPageBody).toMatchObject({
       items: [{ id: "66666666-6666-4666-8666-000000000003" }, { id: "66666666-6666-4666-8666-000000000002" }],
-      nextCursor: "2026-06-10T13:00:00.000Z",
+      nextCursor: "2026-06-10T13:00:00.000Z|66666666-6666-4666-8666-000000000002",
     });
 
     const secondPage = await request(
@@ -208,6 +211,66 @@ describe("provider cutover routes", () => {
     await expect(secondPage.json()).resolves.toMatchObject({
       items: [{ id: "66666666-6666-4666-8666-000000000001" }],
       nextCursor: null,
+    });
+  });
+
+  it("does not skip rows when recent cutovers share a timestamp", async () => {
+    tables.provider_cutover = [
+      cutoverRow({ id: "66666666-6666-4666-8666-000000000001", triggered_at: "2026-06-10T12:00:00.000Z" }),
+      cutoverRow({ id: "66666666-6666-4666-8666-000000000002", triggered_at: "2026-06-10T12:00:00.000Z" }),
+      cutoverRow({ id: "66666666-6666-4666-8666-000000000003", triggered_at: "2026-06-10T12:00:00.000Z" }),
+    ];
+
+    const firstPage = await request(`/api/workspaces/${workspaceId}/cutovers/recent?limit=2`);
+
+    expect(firstPage.status).toBe(200);
+    const firstPageBody = await firstPage.json();
+    expect(firstPageBody).toMatchObject({
+      items: [{ id: "66666666-6666-4666-8666-000000000003" }, { id: "66666666-6666-4666-8666-000000000002" }],
+      nextCursor: "2026-06-10T12:00:00.000Z|66666666-6666-4666-8666-000000000002",
+    });
+
+    const secondPage = await request(
+      `/api/workspaces/${workspaceId}/cutovers/recent?limit=2&cursor=${encodeURIComponent(firstPageBody.nextCursor)}`,
+    );
+
+    expect(secondPage.status).toBe(200);
+    await expect(secondPage.json()).resolves.toMatchObject({
+      items: [{ id: "66666666-6666-4666-8666-000000000001" }],
+      nextCursor: null,
+    });
+  });
+
+  it("rejects runtime audit writes without the service-role token", async () => {
+    const response = await request(`/api/work-items/${workItemId}/cutovers`, {
+      method: "POST",
+      body: JSON.stringify({
+        agentId,
+        fromProvider: "openai",
+        fromModel: "gpt-5",
+        fromCredentialId: null,
+        toProvider: "anthropic",
+        toModel: "claude-opus-4-7",
+        toCredentialId: null,
+        triggerErrorCode: "provider_rate_limited",
+        triggerStatusCode: 429,
+        elapsedMs: 1250,
+        outcome: "fallback_succeeded",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "service_role_forbidden" },
+    });
+  });
+
+  it("rejects malformed recent cutover cursors", async () => {
+    const response = await request(`/api/workspaces/${workspaceId}/cutovers/recent?cursor=not-a-cursor`);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "invalid_request" },
     });
   });
 

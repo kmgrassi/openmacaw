@@ -48,7 +48,7 @@ export const ProviderCutoverListResponseSchema = z.object({
 
 export const ProviderCutoverRecentResponseSchema = z.object({
   items: z.array(ProviderCutoverSchema),
-  nextCursor: z.string().datetime().nullable(),
+  nextCursor: z.string().min(1).nullable(),
 });
 
 export type ProviderCutoverOutcome = z.infer<

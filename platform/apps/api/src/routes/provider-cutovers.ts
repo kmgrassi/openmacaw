@@ -15,10 +15,14 @@ import {
   listRecentForWorkspace,
 } from "../repositories/provider-cutovers.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { requireServiceRoleBearer } from "../services/service-role-auth.js";
 
 const RecentCutoversQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
-  cursor: z.string().datetime().optional(),
+  cursor: z
+    .string()
+    .regex(/^.+\|.+$/)
+    .optional(),
 });
 
 async function requireWorkspaceAccess(userId: string, workspaceId: string) {
@@ -50,16 +54,20 @@ export function registerProviderCutoverRoutes(app: Express) {
   app.post(
     "/api/work-items/:id/cutovers",
     apiRoute({
-      requireAuth: true,
       bodySchema: CreateProviderCutoverRequestSchema,
       invalidBodyMessage: "Invalid provider cutover audit payload",
-      async handler({ req, res, userId, body }) {
+      async handler({ req, res, body }) {
+        requireServiceRoleBearer(req);
         const workItemId = req.params.id?.trim() ?? "";
         if (!workItemId) {
           throw new ApiRouteError(400, "invalid_request", "work item id is required");
         }
 
-        const workspaceId = await requireWorkItemWorkspaceAccess(userId, workItemId);
+        const workspaceId = await getWorkspaceIdForWorkItem(workItemId);
+        if (!workspaceId) {
+          throw new ApiRouteError(404, "work_item_not_found", "Work item was not found");
+        }
+
         const cutover = await create({ workItemId, workspaceId, cutover: body });
         return res.status(201).json(ProviderCutoverSchema.parse(cutover));
       },

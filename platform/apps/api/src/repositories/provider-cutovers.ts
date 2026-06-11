@@ -47,6 +47,7 @@ type UntypedSupabaseQuery = UntypedSupabaseResponse & {
   select: (columns?: string) => UntypedSupabaseQuery;
   eq: (column: string, value: unknown) => UntypedSupabaseQuery;
   lt: (column: string, value: unknown) => UntypedSupabaseQuery;
+  or: (filters: string) => UntypedSupabaseQuery;
   order: (column: string, options?: Record<string, unknown>) => UntypedSupabaseQuery;
   limit: (count: number) => UntypedSupabaseResponse;
   single: () => UntypedSupabaseResponse;
@@ -83,6 +84,21 @@ function mapProviderCutover(row: ProviderCutoverRow): ProviderCutover {
     triggerStatusCode: row.trigger_status_code,
     elapsedMs: row.elapsed_ms,
     outcome: row.outcome,
+  };
+}
+
+function encodeRecentCursor(row: ProviderCutoverRow): string {
+  return `${row.triggered_at}|${row.id}`;
+}
+
+function parseRecentCursor(cursor: string): { triggeredAt: string; id: string } {
+  const separatorIndex = cursor.lastIndexOf("|");
+  if (separatorIndex <= 0 || separatorIndex === cursor.length - 1) {
+    throw new Error("Invalid provider cutover cursor");
+  }
+  return {
+    triggeredAt: cursor.slice(0, separatorIndex),
+    id: cursor.slice(separatorIndex + 1),
   };
 }
 
@@ -148,10 +164,14 @@ export async function listRecentForWorkspace(
       let query = providerCutoverTable()
         .select(PROVIDER_CUTOVER_SELECT)
         .eq("workspace_id", workspaceId)
-        .order("triggered_at", { ascending: false });
+        .order("triggered_at", { ascending: false })
+        .order("id", { ascending: false });
 
       if (cursor) {
-        query = query.lt("triggered_at", cursor);
+        const parsedCursor = parseRecentCursor(cursor);
+        query = query.or(
+          `triggered_at.lt.${parsedCursor.triggeredAt},and(triggered_at.eq.${parsedCursor.triggeredAt},id.lt.${parsedCursor.id})`,
+        );
       }
 
       const { data, error } = await query.limit(limit + 1);
@@ -163,9 +183,10 @@ export async function listRecentForWorkspace(
         data as unknown[] | null,
       );
       const pageRows = rows.slice(0, limit);
+      const lastRow = pageRows.at(-1);
       return {
         items: pageRows.map(mapProviderCutover),
-        nextCursor: rows.length > limit ? (pageRows.at(-1)?.triggered_at ?? null) : null,
+        nextCursor: rows.length > limit && lastRow ? encodeRecentCursor(lastRow) : null,
       };
     },
   );
