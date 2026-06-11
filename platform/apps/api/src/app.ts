@@ -29,6 +29,7 @@ import { registerPlanReviewRoutes } from "./routes/plan-reviews.js";
 import { registerPlanRoutes } from "./routes/plans.js";
 import { registerPlannerLocalModelSmokeRoutes } from "./routes/planner-local-model-smoke.js";
 import { registerProxyRoutes } from "./routes/proxy.js";
+import { registerProviderCutoverRoutes } from "./routes/provider-cutovers.js";
 import { registerResourceCredentialRoutes } from "./routes/resource-credentials.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerScheduledTaskRoutes } from "./routes/scheduled-tasks.js";
@@ -116,6 +117,7 @@ export function createApp(config: ApiConfig) {
   registerMemoryItemRoutes(app);
   registerAgentObservationRoutes(app, launcherClient);
   registerProxyRoutes(app, launcherClient, launcherRequest, config.orchestratorRequestTimeoutMs);
+  registerProviderCutoverRoutes(app);
   registerWorkItemRoutes(app, config);
   registerScheduledTaskRoutes(app);
   registerWorkspaceSettingsRoutes(app);

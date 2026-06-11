@@ -4,7 +4,7 @@ type Row = Record<string, unknown>;
 type TableMap = Record<string, Row[]>;
 type Filter = {
   column: string;
-  operator: "contains" | "eq" | "in" | "is" | "not" | "like" | "gte" | "lte";
+  operator: "contains" | "eq" | "in" | "is" | "not" | "like" | "gte" | "lt" | "lte";
   negatedOperator?: "is";
   value: unknown;
 };
@@ -43,6 +43,10 @@ class MockSupabaseQueryBuilder {
   });
   lte = vi.fn((column: string, value: unknown) => {
     this.filters.push({ column, operator: "lte", value });
+    return this;
+  });
+  lt = vi.fn((column: string, value: unknown) => {
+    this.filters.push({ column, operator: "lt", value });
     return this;
   });
   like = vi.fn((column: string, pattern: string) => {
@@ -199,6 +203,9 @@ class MockSupabaseQueryBuilder {
     if (this.table === "memory_items") {
       return `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
     }
+    if (this.table === "provider_cutover") {
+      return `66666666-6666-4666-8666-${String(index).padStart(12, "0")}`;
+    }
     return `${this.table}-${index}`;
   }
 
@@ -215,6 +222,7 @@ class MockSupabaseQueryBuilder {
       }
       if (filter.operator === "in") return Array.isArray(filter.value) && filter.value.includes(row[filter.column]);
       if (filter.operator === "gte") return this.compare(row[filter.column], filter.value) >= 0;
+      if (filter.operator === "lt") return this.compare(row[filter.column], filter.value) < 0;
       if (filter.operator === "lte") return this.compare(row[filter.column], filter.value) <= 0;
       if (filter.operator === "not" && filter.negatedOperator === "is") return row[filter.column] !== filter.value;
       if (filter.operator === "like") {
