@@ -175,10 +175,10 @@ Do not invent aliases such as `local_runtime`, `openai-compatible`, or
 
 ## Database Schema Sync — REQUIRED After DB Migrations
 
-Historical pre-OpenMacaw migrations live in the private `harper-server`
-repository; OpenMacaw-owned migrations live under
-`platform/supabase/migrations/`. Do not add Supabase migration files to the
-runtime subsystem, and do not run forced database migrations from here.
+OpenMacaw owns its current database schema. Current schema changes live under
+`platform/supabase/migrations/`; historical `harper-server` schemas are
+provenance only. Do not add Supabase migration files to the runtime subsystem,
+and do not run forced database migrations from here.
 
 To make a database change, create the migration under
 `platform/supabase/migrations/` and apply it through the documented Supabase
@@ -217,5 +217,5 @@ cause `function_clause` errors at startup.
 
 - `../platform` — TypeScript API + React frontend
 - `../local-runtime-helper` — Go daemon for local model relay
-- `harper-server` — private repo owning historical pre-OpenMacaw Supabase
-  migrations
+- Historical `harper-server` schemas are provenance only. Current OpenMacaw
+  database changes belong in `platform/supabase/migrations/`.
