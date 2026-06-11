@@ -73,7 +73,7 @@ export async function getAgentGatewayConfig(
   return ((data ?? [])[0] as GatewayConfigProfileRow | undefined) ?? null;
 }
 
-async function getRoutingRules(workspaceId: string, accessToken?: string): Promise<RoutingRuleRow[]> {
+export async function getRoutingRules(workspaceId: string, accessToken?: string): Promise<RoutingRuleRow[]> {
   const { data, error } = await clientForAccessToken(accessToken)
     .from("routing_rule")
     .select("id,workspace_id,priority,runner_kind,provider,model,credential_id,credential_alias,model_tier_floor")
@@ -86,18 +86,7 @@ async function getRoutingRules(workspaceId: string, accessToken?: string): Promi
   return ((data ?? []) as unknown as RoutingRuleRow[]).sort((left, right) => right.priority - left.priority);
 }
 
-export async function getRoutingRulesWithFallback(
-  workspaceId: string,
-  accessToken?: string,
-): Promise<RoutingRuleRow[]> {
-  try {
-    return await getRoutingRules(workspaceId, accessToken);
-  } catch {
-    return [];
-  }
-}
-
-async function getRuleMatches(
+export async function getRuleMatches(
   workspaceId: string,
   ruleIds: string[],
   accessToken?: string,
@@ -111,18 +100,6 @@ async function getRuleMatches(
   if (error) throw normalizeSupabaseError("routing_rule_match query", error);
 
   return (data ?? []) as RoutingRuleMatchRow[];
-}
-
-export async function getRuleMatchesWithFallback(
-  workspaceId: string,
-  ruleIds: string[],
-  accessToken?: string,
-): Promise<RoutingRuleMatchRow[]> {
-  try {
-    return await getRuleMatches(workspaceId, ruleIds, accessToken);
-  } catch {
-    return [];
-  }
 }
 
 export async function getRoutingRuleFallbacks(

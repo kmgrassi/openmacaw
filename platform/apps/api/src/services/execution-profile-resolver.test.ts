@@ -405,7 +405,7 @@ describe("resolveExecutionProfile", () => {
     expect(resolution.missing).toContain("credential");
   });
 
-  it("falls back to legacy gateway config when routing tables are unavailable", async () => {
+  it("fails visibly when routing table reads are unavailable", async () => {
     setupMockDatabase();
     selectRowsForTable = (table: string, params: URLSearchParams) => {
       if (table === "routing_rule" || table === "routing_rule_match") {
@@ -447,19 +447,7 @@ describe("resolveExecutionProfile", () => {
       return (limit ? rows.slice(0, limit) : rows) as never;
     };
 
-    const resolution = await resolveExecutionProfile({ agentId: codingAgentId });
-
-    expect(resolution.profile).toMatchObject({
-      runnerKind: "codex",
-      provider: "openai_codex",
-      model: "gpt-5.1-codex",
-      credentialRef: { type: "credential_id", value: codexCredentialId },
-    });
-    expect(resolution.source).toMatchObject({
-      routingRuleId: null,
-      fallbackUsed: true,
-      legacyGatewayConfigUsed: true,
-    });
+    await expect(resolveExecutionProfile({ agentId: codingAgentId })).rejects.toThrow("routing_rule is not readable");
   });
 
   it("emits explicit fallback rows in position order on the resolved profile", async () => {
