@@ -1,11 +1,13 @@
 import {
   localRuntimeAssignRunnerRoute,
   localRuntimeConfigRoute,
+  localRuntimeEventsRoute,
   localRuntimeProbeRoute,
   localRuntimesRoute,
   localRuntimeRotateTokenRoute,
   localRuntimeRoute,
   localRuntimeRunnerProbeRoute,
+  localRuntimeTestDispatchRoute,
   localRuntimeUnassignRunnerRoute,
 } from "../../../../contracts/routes";
 import { workspaceScopedFetch } from "./workspace-scoped-fetch";
@@ -30,6 +32,9 @@ export type LocalExecutionTarget = {
   machineId: string | null;
   machineDisplayName: string | null;
   helperOnline: boolean;
+  status: "online" | "offline" | "degraded";
+  lastError: string | null;
+  lastErrorAt: string | null;
   lastSeenAt: string | null;
   workspaceRoot: string | null;
   registered: boolean;
@@ -37,6 +42,16 @@ export type LocalExecutionTarget = {
   advertisedRunnerKinds: string[];
   advertisedModels: string[];
   runtimeManagedTools: boolean | null;
+};
+
+export type LocalRuntimeModel = {
+  id: string;
+  machineId: string;
+  runnerKind: string;
+  model: string;
+  provider: string | null;
+  capabilities: Record<string, unknown>;
+  lastAdvertisedAt: string;
 };
 
 /** One advertised runner attached to a registered helper machine. */
@@ -49,6 +64,9 @@ export type LocalRuntimeRunner = {
   model: string;
   provider: string;
   toolCallCapability: LocalToolCallCapability | null;
+  models: LocalRuntimeModel[];
+  lastError: string | null;
+  lastErrorAt: string | null;
   agents: LocalRuntimeAgent[];
 };
 
@@ -56,6 +74,9 @@ export type LocalRuntime = {
   /** Machine id — identifies the helper registration. */
   id: string;
   machineDisplayName: string;
+  status: "online" | "offline" | "degraded";
+  lastError: string | null;
+  models: LocalRuntimeModel[];
   localExecution: LocalExecutionTarget;
   runners: LocalRuntimeRunner[];
 };
@@ -123,6 +144,38 @@ export type LocalModelProbeResponse = {
   error: string | null;
 };
 
+export type LocalRuntimeEvent = {
+  id: string;
+  machineId: string;
+  workspaceId: string;
+  kind: string;
+  detail: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type LocalRuntimeEventsResponse = {
+  events: LocalRuntimeEvent[];
+};
+
+export type LocalRuntimeTestDispatchError = {
+  code: string;
+  message: string;
+  detail: {
+    httpStatus?: number;
+    dialError?: string;
+    endpoint?: string;
+    rawMessage?: string;
+  } | null;
+};
+
+export type LocalRuntimeTestDispatchResponse = {
+  machineId: string;
+  helperConnected: boolean;
+  modelAdvertised: boolean;
+  dispatchSucceeded: boolean;
+  error: LocalRuntimeTestDispatchError | null;
+};
+
 export type AssignLocalRuntimeInput = {
   agentId: string;
 };
@@ -141,6 +194,8 @@ export const LOCAL_RUNTIME_ROUTES = {
   probe: localRuntimeProbeRoute(),
   runnerProbe: localRuntimeRunnerProbeRoute,
   config: localRuntimeConfigRoute,
+  events: localRuntimeEventsRoute,
+  testDispatch: localRuntimeTestDispatchRoute,
   rotateToken: localRuntimeRotateTokenRoute,
   assignRunner: localRuntimeAssignRunnerRoute,
   unassignRunner: localRuntimeUnassignRunnerRoute,
@@ -260,6 +315,42 @@ export async function getLocalRuntimeConfig(
     );
   }
   return (await response.json()) as LocalRuntimeConfigResponse;
+}
+
+export async function listLocalRuntimeEvents(
+  workspaceId: string,
+  machineId: string,
+  limit = 50,
+): Promise<LocalRuntimeEventsResponse> {
+  const response = await workspaceScopedFetch(
+    workspaceId,
+    `${LOCAL_RUNTIME_ROUTES.events(machineId)}?limit=${encodeURIComponent(String(limit))}`,
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to list local runtime events (${response.status})${body ? `: ${body}` : ""}`,
+    );
+  }
+  return (await response.json()) as LocalRuntimeEventsResponse;
+}
+
+export async function testLocalRuntimeDispatch(
+  workspaceId: string,
+  machineId: string,
+): Promise<LocalRuntimeTestDispatchResponse> {
+  const response = await workspaceScopedFetch(
+    workspaceId,
+    LOCAL_RUNTIME_ROUTES.testDispatch(machineId),
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to test local runtime dispatch (${response.status})${body ? `: ${body}` : ""}`,
+    );
+  }
+  return (await response.json()) as LocalRuntimeTestDispatchResponse;
 }
 
 export async function rotateLocalRuntimeToken(

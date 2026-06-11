@@ -277,8 +277,8 @@ export type LocalModelProbeResponse = z.infer<
 export const LocalRuntimeListItemSchema = z.object({
   id: z.string(),
   machineDisplayName: z.string(),
+  status: LocalRuntimeMachineStatusSchema.default("offline"),
   localExecution: LocalExecutionTargetSchema,
-  status: z.enum(["online", "offline", "degraded"]).default("offline"),
   models: z.array(LocalRuntimeModelSchema).default([]),
   lastError: z.string().nullable().default(null),
   runners: z.array(LocalRuntimeRunnerSchema),
