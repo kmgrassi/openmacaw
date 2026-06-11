@@ -362,17 +362,25 @@ describe("local runtime routes", () => {
       agent: [
         {
           id: "planning-agent-1",
+          name: "Planning",
           workspace_id: workspaceId,
           type: "planning",
+          model_settings: {},
+          tool_policy: {},
         },
         {
           id: "coding-agent-1",
+          name: "Coding",
           workspace_id: workspaceId,
           type: "coding",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    const supabase = createMockSupabaseClient(db) as never;
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
+    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign?workspaceId=${workspaceId}`,
@@ -450,12 +458,17 @@ describe("local runtime routes", () => {
       agent: [
         {
           id: "planning-agent-1",
+          name: "Planning",
           workspace_id: workspaceId,
           type: "planning",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    const supabase = createMockSupabaseClient(db) as never;
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
+    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign?workspaceId=${workspaceId}`,
@@ -540,12 +553,17 @@ describe("local runtime routes", () => {
       agent: [
         {
           id: "planning-agent-1",
+          name: "Planning",
           workspace_id: workspaceId,
           type: "planning",
+          model_settings: {},
+          tool_policy: {},
         },
       ],
     };
-    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    const supabase = createMockSupabaseClient(db) as never;
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
+    vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
 
     const response = await fetch(
       `${baseUrl}/api/local-runtime/runtimes/runners/${registrationRuleId}/assign?workspaceId=${workspaceId}`,
