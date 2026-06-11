@@ -29,6 +29,7 @@ import { registerPlanReviewRoutes } from "./routes/plan-reviews.js";
 import { registerPlanRoutes } from "./routes/plans.js";
 import { registerPlannerLocalModelSmokeRoutes } from "./routes/planner-local-model-smoke.js";
 import { registerProxyRoutes } from "./routes/proxy.js";
+import { registerProviderCutoverRoutes } from "./routes/provider-cutovers.js";
 import { registerResourceCredentialRoutes } from "./routes/resource-credentials.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerScheduledTaskRoutes } from "./routes/scheduled-tasks.js";
@@ -49,6 +50,7 @@ import { handleApiRouteError } from "./http.js";
 
 export function shouldRequireJwtAuth(req: express.Request) {
   if (req.method === "POST" && req.path === "/memory/items") return false;
+  if (req.method === "POST" && /^\/work-items\/[^/]+\/cutovers$/.test(req.path)) return false;
   if (req.method === "POST" && /^\/learning\/jobs\/[^/]+\/reflection$/.test(req.path)) return false;
   return !req.path.startsWith("/webhooks/") && !req.path.startsWith("/internal/scheduled-tasks/");
 }
@@ -115,6 +117,7 @@ export function createApp(config: ApiConfig) {
   registerMemoryItemRoutes(app);
   registerAgentObservationRoutes(app, launcherClient);
   registerProxyRoutes(app, launcherClient, launcherRequest, config.orchestratorRequestTimeoutMs);
+  registerProviderCutoverRoutes(app);
   registerWorkItemRoutes(app, config);
   registerWorkspaceSettingsRoutes(app);
   startCredentialRevalidationCron();
