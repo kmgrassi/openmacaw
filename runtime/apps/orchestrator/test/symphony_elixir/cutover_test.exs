@@ -4,6 +4,13 @@ defmodule SymphonyElixir.CutoverTest do
   alias SymphonyElixir.Cutover
   alias SymphonyElixir.Cutover.Cooldown
 
+  defmodule AuditStub do
+    def write_best_effort(%Cutover.CutoverDecision{} = decision, _opts) do
+      send(self(), {:audit, decision})
+      :ok
+    end
+  end
+
   setup do
     if is_nil(Process.whereis(Cooldown)) do
       start_supervised!(Cooldown)
@@ -73,6 +80,49 @@ defmodule SymphonyElixir.CutoverTest do
 
     assert [%{reason: "credential_in_cooldown", credential_id: "fallback-1"}] = decision.skipped
     assert decision.to_credential_id == "fallback-2"
+  end
+
+  test "walk audits unavailable adapter links and continues to later fallbacks" do
+    profile =
+      profile(%{
+        "fallbacks" => [
+          %{
+            "provider" => "computer_use",
+            "model" => "browser",
+            "credential_ref" => credential("computer-use"),
+            "adapter_available" => false
+          },
+          %{"provider" => "anthropic", "model" => "claude-opus-4-7", "credential_ref" => credential("fallback-2")}
+        ]
+      })
+
+    assert {:ok, :second_fallback_result, decision} =
+             Cutover.walk(
+               profile,
+               context(),
+               fn
+                 %{source: :primary} -> retryable_failure("provider_overloaded")
+                 %{credential_id: "fallback-2"} -> {:ok, :second_fallback_result}
+               end,
+               audit_module: AuditStub
+             )
+
+    assert decision.outcome == "fallback_succeeded"
+    assert [%{reason: "no_adapter", provider: "computer_use"}] = decision.skipped
+
+    assert_received {:audit,
+                     %Cutover.CutoverDecision{
+                       outcome: "skipped_no_adapter",
+                       to_provider: "computer_use",
+                       trigger_error_code: "provider_overloaded"
+                     }}
+
+    assert_received {:audit,
+                     %Cutover.CutoverDecision{
+                       outcome: "fallback_succeeded",
+                       to_provider: "anthropic",
+                       trigger_error_code: "provider_overloaded"
+                     }}
   end
 
   test "rate-limit failures place attempted credential in cooldown" do

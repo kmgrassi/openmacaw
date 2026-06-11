@@ -7,7 +7,7 @@ defmodule SymphonyElixir.Cutover do
   decision object returned to callers.
   """
 
-  alias SymphonyElixir.Cutover.Cooldown
+  alias SymphonyElixir.Cutover.{Audit, Cooldown}
   alias SymphonyElixir.ModelTiers
 
   defmodule CutoverLink do
@@ -21,6 +21,7 @@ defmodule SymphonyElixir.Cutover do
       :model,
       :credential_ref,
       :credential_id,
+      :adapter_available?,
       :position,
       source: :fallback
     ]
@@ -32,6 +33,7 @@ defmodule SymphonyElixir.Cutover do
             model: String.t() | nil,
             credential_ref: term(),
             credential_id: String.t() | nil,
+            adapter_available?: boolean(),
             position: non_neg_integer() | nil,
             source: :primary | :fallback
           }
@@ -79,10 +81,10 @@ defmodule SymphonyElixir.Cutover do
 
   @type profile :: %{optional(String.t() | atom()) => term()}
 
-  @spec walk(profile(), map(), (CutoverLink.t() -> {:ok, term()} | {:error, term()})) ::
+  @spec walk(profile(), map(), (CutoverLink.t() -> {:ok, term()} | {:error, term()}), keyword()) ::
           {:ok, term(), CutoverDecision.t()}
           | {:error, :exhausted | :floor_exhausted | {:non_retryable, term()}, CutoverDecision.t()}
-  def walk(profile, context, call_fn) when is_map(profile) and is_map(context) and is_function(call_fn, 1) do
+  def walk(profile, context, call_fn, opts \\ []) when is_map(profile) and is_map(context) and is_function(call_fn, 1) do
     started_at = monotonic_ms()
     profile = normalize_keys(profile)
     context = normalize_keys(context)
@@ -99,36 +101,46 @@ defmodule SymphonyElixir.Cutover do
 
     profile
     |> chain()
-    |> walk_chain(floor, call_fn, state)
+    |> walk_chain(floor, call_fn, state, opts)
   end
 
-  defp walk_chain([], _floor, _call_fn, state) do
+  defp walk_chain([], _floor, _call_fn, state, opts) do
     floor_only_exhaustion? = state.floor_skipped? and state.attempts == []
     outcome = if floor_only_exhaustion?, do: "escalated_floor", else: "escalated_exhausted"
     reason = if floor_only_exhaustion?, do: :floor_exhausted, else: :exhausted
-    {:error, reason, decision(state, nil, outcome)}
+    decision = decision(state, nil, outcome)
+    audit(decision, opts)
+    {:error, reason, decision}
   end
 
-  defp walk_chain([link | rest], floor, call_fn, state) do
+  defp walk_chain([link | rest], floor, call_fn, state, opts) do
     cond do
+      not adapter_available?(link) ->
+        skip = skip_record(link, "no_adapter")
+        state = %{state | skipped: state.skipped ++ [skip]}
+        audit(decision(state, link, "skipped_no_adapter"), opts)
+        walk_chain(rest, floor, call_fn, state, opts)
+
       below_floor?(link, floor) ->
         skip = skip_record(link, "below_model_tier_floor", model_tier: ModelTiers.tier_of(link.provider, link.model), floor: floor)
-        walk_chain(rest, floor, call_fn, %{state | skipped: state.skipped ++ [skip], floor_skipped?: true})
+        walk_chain(rest, floor, call_fn, %{state | skipped: state.skipped ++ [skip], floor_skipped?: true}, opts)
 
       cooldown_active?(link) ->
         skip = skip_record(link, "credential_in_cooldown")
-        walk_chain(rest, floor, call_fn, %{state | skipped: state.skipped ++ [skip]})
+        walk_chain(rest, floor, call_fn, %{state | skipped: state.skipped ++ [skip]}, opts)
 
       true ->
-        attempt_link(link, rest, floor, call_fn, state)
+        attempt_link(link, rest, floor, call_fn, state, opts)
     end
   end
 
-  defp attempt_link(link, rest, floor, call_fn, state) do
+  defp attempt_link(link, rest, floor, call_fn, state, opts) do
     case call_fn.(link) do
       {:ok, result} ->
         attempt = attempt_record(link, "succeeded", nil)
-        {:ok, result, decision(%{state | attempts: state.attempts ++ [attempt]}, link, "fallback_succeeded")}
+        decision = decision(%{state | attempts: state.attempts ++ [attempt]}, link, "fallback_succeeded")
+        audit(decision, opts)
+        {:ok, result, decision}
 
       {:error, failure} ->
         attempt = attempt_record(link, "failed", failure)
@@ -136,11 +148,19 @@ defmodule SymphonyElixir.Cutover do
         maybe_put_cooldown(link, failure)
 
         if retryable_failure?(failure) do
-          walk_chain(rest, floor, call_fn, state)
+          walk_chain(rest, floor, call_fn, state, opts)
         else
-          {:error, {:non_retryable, failure}, decision(state, nil, "fallback_failed")}
+          decision = decision(state, nil, "fallback_failed")
+          audit(decision, opts)
+          {:error, {:non_retryable, failure}, decision}
         end
     end
+  end
+
+  defp audit(%CutoverDecision{} = decision, opts) do
+    opts
+    |> Keyword.get(:audit_module, Audit)
+    |> apply(:write_best_effort, [decision, opts])
   end
 
   defp chain(profile) do
@@ -188,6 +208,7 @@ defmodule SymphonyElixir.Cutover do
         model: normalize_string(Map.get(attrs, "model")),
         credential_ref: credential_ref,
         credential_id: credential_id(credential_ref),
+        adapter_available?: adapter_available?(attrs),
         position: position,
         source: source
       }
@@ -207,6 +228,12 @@ defmodule SymphonyElixir.Cutover do
   end
 
   defp cooldown_active?(_link), do: false
+
+  defp adapter_available?(%CutoverLink{adapter_available?: value}), do: value != false
+  defp adapter_available?(%{"adapter_available" => false}), do: false
+  defp adapter_available?(%{"adapterAvailable" => false}), do: false
+  defp adapter_available?(%{adapter_available?: false}), do: false
+  defp adapter_available?(_attrs), do: true
 
   defp maybe_put_cooldown(link, failure) do
     if rate_limited_failure?(failure) and is_binary(link.workspace_id) and is_binary(link.credential_id) do
