@@ -67,7 +67,6 @@ export function createApp(config: ApiConfig) {
     timeoutMs: config.launcherRequestTimeoutMs,
   });
   const launcherRequest = createUpstreamRequester(config.launcherBaseUrl, config.launcherRequestTimeoutMs);
-  const orchestratorRequest = createUpstreamRequester(config.orchestratorBaseUrl, config.orchestratorRequestTimeoutMs);
 
   app.use(createRequestContextMiddleware());
   app.use(
@@ -81,7 +80,7 @@ export function createApp(config: ApiConfig) {
 
   registerHealthRoutes(app, config, launcherClient, launcherRequest);
   app.use("/api", requireApiAuth);
-  registerAgentDiagnosticRoutes(app, orchestratorRequest);
+  registerAgentDiagnosticRoutes(app, launcherRequest);
   registerMemoryRoutes(app);
   registerAwsResourceAccessSmokeRoutes(app);
   registerClaudeCodeSmokeRoutes(app);
@@ -117,7 +116,6 @@ export function createApp(config: ApiConfig) {
   registerAgentObservationRoutes(app, launcherClient);
   registerProxyRoutes(app, launcherClient, launcherRequest, config.orchestratorRequestTimeoutMs);
   registerWorkItemRoutes(app, config);
-  registerScheduledTaskRoutes(app);
   registerWorkspaceSettingsRoutes(app);
   startCredentialRevalidationCron();
 
