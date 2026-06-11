@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="${LOCAL_RUNTIME_HELPER_REPO:-kmgrassi/local-runtime-helper}"
+REPO="${LOCAL_RUNTIME_HELPER_REPO:-kmgrassi/openmacaw}"
 VERSION="${LOCAL_RUNTIME_HELPER_VERSION:-latest}"
 INSTALL_DIR="${LOCAL_RUNTIME_HELPER_INSTALL_DIR:-$HOME/.local/bin}"
 BASE_URL="${LOCAL_RUNTIME_HELPER_BASE_URL:-}"
@@ -137,8 +137,8 @@ esac
 cat <<EOF
 
 Next steps:
-  1. Register this machine with the command from Harper's Local computer setup page.
-  2. Configure a local OpenAI-compatible runner in ~/.config/harper/runtime.toml.
+  1. Register this machine with the command from OpenMacaw's Local computer setup page.
+  2. Configure a local OpenAI-compatible runner in ~/.config/openmacaw/runtime.toml.
   3. Start the helper:
        local-runtime-helper start
 EOF

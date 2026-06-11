@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultConfigSubpath = "harper/runtime.toml"
+	defaultConfigSubpath = "openmacaw/runtime.toml"
 
 	// EnvConfigPath overrides the default runtime.toml location.
 	EnvConfigPath = "LOCAL_RUNTIME_CONFIG"
@@ -321,7 +321,7 @@ func ensureConfigDir(dir string) error {
 
 func renderRegistrationTOML(cfg Config) []byte {
 	var b bytes.Buffer
-	b.WriteString("# Harper local runtime helper config.\n")
+	b.WriteString("# OpenMacaw local runtime helper config.\n")
 	b.WriteString("# Written by `local-runtime-helper register`.\n\n")
 
 	registration := struct {

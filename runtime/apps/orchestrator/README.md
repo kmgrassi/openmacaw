@@ -1,15 +1,16 @@
-# Symphony Elixir
+# OpenMacaw Orchestrator (Symphony Elixir)
 
-This directory contains the current Elixir/OTP implementation of Symphony, based on
-[`SPEC.md`](../SPEC.md) at the repository root.
+This directory contains the Elixir/OTP orchestrator that powers the OpenMacaw
+runtime. The codebase is derived from OpenAI's
+[Symphony](https://github.com/openai/symphony) prototype, and the module
+namespace (`SymphonyElixir`) still reflects that origin.
 
-> [!WARNING]
-> Symphony Elixir is prototype software intended for evaluation only and is presented as-is.
-> We recommend implementing your own hardened version based on `SPEC.md`.
-
-## Screenshot
-
-![Symphony Elixir screenshot](../.github/media/elixir-screenshot.png)
+> [!NOTE]
+> For local development, the orchestrator is normally started as part of the
+> full stack with `./openmacaw run` from the repository root, or with
+> `pnpm run start:local` from `runtime/`. The instructions below cover
+> running the orchestrator on its own in its original standalone
+> (Linear + Codex) mode.
 
 ## How it works
 
@@ -60,9 +61,9 @@ mise exec -- elixir --version
 
 ## Run
 
+From this directory (`runtime/apps/orchestrator/`):
+
 ```bash
-git clone https://github.com/openai/symphony
-cd symphony/elixir
 mise trust
 mise install
 mise exec -- mix setup

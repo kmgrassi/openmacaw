@@ -31,6 +31,7 @@ The default run command starts:
 Environment overrides:
   API_PORT, WEB_PORT, LAUNCHER_PORT, LAUNCHER_START_PORT, ORCHESTRATOR_PORT
   OPENMACAW_SKIP_BOOTSTRAP=1     Do not install missing dependencies
+  OPENMACAW_SKIP_ENV_CHECK=1     Do not validate platform/.env
   OPENMACAW_HEALTH_TIMEOUT=60    Startup health wait in seconds
 EOF
 }
@@ -42,6 +43,58 @@ die() {
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+env_value() {
+  sed -n "s/^$1=//p" "$2" | tail -1
+}
+
+check_env_config() {
+  local env_file="$ROOT_DIR/platform/.env"
+  local required_vars="SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY VITE_SUPABASE_DEV_URL VITE_SUPABASE_DEV_ANON_KEY"
+  local missing=""
+  local var value
+
+  if [ "${OPENMACAW_SKIP_ENV_CHECK:-0}" = "1" ]; then
+    echo "[openmacaw] skipping env check"
+    return 0
+  fi
+
+  if [ ! -f "$env_file" ]; then
+    die "platform/.env not found.
+
+Create it from the example and fill in the Required section at the top:
+
+  cp platform/.env.example platform/.env
+
+Local Supabase values come from 'supabase status' (run in platform/ after
+'supabase start'); hosted values come from your project dashboard. See the
+Quick start in README.md. Set OPENMACAW_SKIP_ENV_CHECK=1 to bypass."
+  fi
+
+  for var in $required_vars; do
+    value="$(env_value "$var" "$env_file")"
+    case "$value" in
+      ""|*your-project-ref*|*your-service-role-key*|*your-dev-anon-key*)
+        missing="$missing $var"
+        ;;
+    esac
+  done
+
+  if [ -n "$missing" ]; then
+    die "platform/.env is missing required values:$missing
+
+Fill in the Required section at the top of platform/.env. Local Supabase
+values come from 'supabase status' (run in platform/ after 'supabase start');
+hosted values come from your project dashboard. See the Quick start in
+README.md. Set OPENMACAW_SKIP_ENV_CHECK=1 to bypass."
+  fi
+
+  echo "[openmacaw] platform/.env configured"
+
+  if [ ! -f "$ROOT_DIR/runtime/.env" ] && [ ! -f "$ROOT_DIR/runtime/apps/orchestrator/.env" ]; then
+    echo "[openmacaw] warning: runtime/.env not found — the stack will start, but agent runs that need the database will fail. Create it with: cp runtime/.env.example runtime/.env" >&2
+  fi
 }
 
 derive_ports() {
@@ -188,6 +241,7 @@ doctor() {
   require_cmd shasum
 
   echo "[openmacaw] prerequisites available"
+  check_env_config
   echo "[openmacaw] ports: web=${WEB_PORT} api=${API_PORT} runtime=${ORCHESTRATOR_PORT} launcher=${LAUNCHER_PORT} launcher-start=${LAUNCHER_START_PORT}"
 }
 

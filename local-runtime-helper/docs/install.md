@@ -1,47 +1,37 @@
 # Installing local-runtime-helper
 
 `local-runtime-helper` is a small daemon that connects this machine to the
-Harper cloud relay over outbound WSS. It lets Harper dispatch work to local
-tools such as OpenAI-compatible model servers and OpenClaw without opening
-inbound ports on the user's network.
+OpenMacaw runtime relay over outbound WSS. It lets OpenMacaw dispatch work to
+local tools such as OpenAI-compatible model servers and OpenClaw without
+opening inbound ports on the user's network.
 
-## Install From Release
+## Build From Source
 
-Use the release installer to download the matching binary for macOS or Linux
-into `~/.local/bin`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/kmgrassi/local-runtime-helper/main/install.sh | sh
-```
-
-The installer detects macOS/Linux and arm64/amd64, downloads the matching
-release archive, verifies it against the release's `checksums.txt`, and writes
-the binary to `~/.local/bin/local-runtime-helper`.
-
-For a tagged release, pin both the script and downloaded archive to the same
-tag:
+Requires Go 1.23+. From the `local-runtime-helper/` directory of the
+OpenMacaw repository:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kmgrassi/local-runtime-helper/v0.1.0/install.sh | LOCAL_RUNTIME_HELPER_VERSION=v0.1.0 sh
-```
-
-If `~/.local/bin` is not on your `PATH`, either add it to your shell profile or
-run the installed binary by absolute path.
-
-## Manual Install
-
-Download the archive for your platform plus `checksums.txt` from the GitHub
-release, verify the archive, then install the binary somewhere on your `PATH`:
-
-```sh
-grep '  local-runtime-helper_darwin_arm64.tar.gz$' checksums.txt | shasum -a 256 -c -
-tar -xzf local-runtime-helper_darwin_arm64.tar.gz
-install -m 0755 local-runtime-helper ~/.local/bin/local-runtime-helper
+go build -o ~/.local/bin/local-runtime-helper ./cmd/local-runtime-helper
 local-runtime-helper version
 ```
 
-Linux and Intel macOS builds follow the same pattern with the matching release
-archive.
+If `~/.local/bin` is not on your `PATH`, either add it to your shell profile
+or run the installed binary by absolute path.
+
+## Install From Release
+
+Once OpenMacaw publishes helper release binaries, `install.sh` downloads the
+matching archive for macOS or Linux (arm64/amd64), verifies it against the
+release's `checksums.txt`, and writes the binary to
+`~/.local/bin/local-runtime-helper`:
+
+```sh
+./install.sh
+```
+
+To pin a release, set `LOCAL_RUNTIME_HELPER_VERSION=v<version>`. Until
+releases are published from this repository, build from source as shown
+above.
 
 ## Configure
 
@@ -52,17 +42,17 @@ local-runtime-helper register --workspace=<workspace-id> --token=<one-time-token
 ```
 
 Until that command is wired to the cloud registration API, create
-`~/.config/harper/runtime.toml` from `docs/runtime.toml.example` and keep it
-readable only by your user:
+`~/.config/openmacaw/runtime.toml` from `docs/runtime.toml.example` and keep
+it readable only by your user:
 
 ```sh
-mkdir -p ~/.config/harper
-cp docs/runtime.toml.example ~/.config/harper/runtime.toml
-chmod 0600 ~/.config/harper/runtime.toml
+mkdir -p ~/.config/openmacaw
+cp docs/runtime.toml.example ~/.config/openmacaw/runtime.toml
+chmod 0600 ~/.config/openmacaw/runtime.toml
 ```
 
-Set `[cloud].endpoint` to the Harper relay WSS endpoint and `[cloud].token` to
-the local runtime token issued from the dashboard. Do not commit this file.
+Set `[cloud].endpoint` to the OpenMacaw relay WSS endpoint and `[cloud].token`
+to the local runtime token issued from the dashboard. Do not commit this file.
 
 For Ollama, LM Studio, vLLM, or another OpenAI-compatible local server, configure
 the runner table like this:
@@ -98,9 +88,13 @@ OpenAI-compatible runner responds to `/v1/models` when configured.
 local-runtime-helper start
 ```
 
-The relay loop is still scaffolded, so current builds report that `start` is not
-yet implemented. The install and diagnostics commands are available now so a
-fresh machine can be prepared before the relay implementation lands.
+The daemon connects to the configured relay endpoint, registers its runners,
+and stays connected until stopped. For local development against a stack
+started with `./openmacaw run`, use the checked-in dev config instead:
+
+```sh
+go run ./cmd/local-runtime-helper start --config ./dev-runtime.toml --log-level debug
+```
 
 ## Run With launchd On macOS
 
@@ -108,24 +102,24 @@ Copy the launchd template and replace `__USER__` plus the binary path if needed:
 
 ```sh
 mkdir -p ~/Library/LaunchAgents
-sed "s/__USER__/$USER/g" docs/launchd/com.harper.local-runtime-helper.plist \
-  > ~/Library/LaunchAgents/com.harper.local-runtime-helper.plist
-launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.harper.local-runtime-helper.plist
-launchctl enable "gui/$(id -u)/com.harper.local-runtime-helper"
-launchctl kickstart -k "gui/$(id -u)/com.harper.local-runtime-helper"
+sed "s/__USER__/$USER/g" docs/launchd/com.openmacaw.local-runtime-helper.plist \
+  > ~/Library/LaunchAgents/com.openmacaw.local-runtime-helper.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.openmacaw.local-runtime-helper.plist
+launchctl enable "gui/$(id -u)/com.openmacaw.local-runtime-helper"
+launchctl kickstart -k "gui/$(id -u)/com.openmacaw.local-runtime-helper"
 ```
 
 Inspect service state with:
 
 ```sh
-launchctl print "gui/$(id -u)/com.harper.local-runtime-helper"
+launchctl print "gui/$(id -u)/com.openmacaw.local-runtime-helper"
 ```
 
 Stop and remove it with:
 
 ```sh
-launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.harper.local-runtime-helper.plist
-rm ~/Library/LaunchAgents/com.harper.local-runtime-helper.plist
+launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.openmacaw.local-runtime-helper.plist
+rm ~/Library/LaunchAgents/com.openmacaw.local-runtime-helper.plist
 ```
 
 ## Logout And Token Revocation
@@ -135,6 +129,7 @@ local-runtime-helper logout
 ```
 
 This prints the local config path and the revoke steps. Revoke the machine's
-local runtime token from the Harper dashboard, then remove or replace the token
-in `~/.config/harper/runtime.toml`. Local file cleanup is not enough by itself;
-cloud-side revocation is what prevents future relay connections with that token.
+local runtime token from the OpenMacaw dashboard, then remove or replace the
+token in `~/.config/openmacaw/runtime.toml`. Local file cleanup is not enough
+by itself; cloud-side revocation is what prevents future relay connections
+with that token.
