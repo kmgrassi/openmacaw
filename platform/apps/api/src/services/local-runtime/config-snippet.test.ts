@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { LocalExecutionTargetSchema } from "../../../../../contracts/local-runtime.js";
 import { buildLocalExecution } from "./config-snippet.js";
 
 describe("buildLocalExecution", () => {
@@ -17,6 +18,22 @@ describe("buildLocalExecution", () => {
           advertised_runner_kinds: ["openai_compatible"],
         },
         workspaceRoot: "/workspace",
+      }),
+    ).toMatchObject({
+      status: "online",
+      helperOnline: true,
+    });
+  });
+
+  it("derives schema status from helperOnline when older mappers omit it", () => {
+    expect(
+      LocalExecutionTargetSchema.parse({
+        machineId: "machine-1",
+        machineDisplayName: "coder box",
+        helperOnline: true,
+        lastSeenAt: new Date().toISOString(),
+        workspaceRoot: "/workspace",
+        registered: true,
       }),
     ).toMatchObject({
       status: "online",
