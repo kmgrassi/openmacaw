@@ -203,6 +203,68 @@ create table if not exists public.event_log (
   primary key (id)
 );
 
+create table if not exists public.provider_failure (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  agent_id uuid references public.agent(id) on delete set null,
+  work_item_id uuid references public.work_items(id) on delete set null,
+  run_id text,
+  runner_kind text not null check (
+    runner_kind in (
+      'codex',
+      'claude_code',
+      'openclaw',
+      'local_runtime',
+      'local_model_coding',
+      'llm_tool_runner',
+      'planner',
+      'openclaw_ws',
+      'openclaw_http_sse',
+      'computer_use',
+      'local_relay',
+      'manager'
+    )
+  ),
+  provider text not null check (
+    provider in (
+      'openai',
+      'anthropic',
+      'openai_compatible',
+      'openai_codex',
+      'xai',
+      'google',
+      'mistral',
+      'groq',
+      'openrouter',
+      'together',
+      'perplexity',
+      'azure',
+      'codex',
+      'openclaw',
+      'computer_use',
+      'local'
+    )
+  ),
+  model text not null,
+  error_code text not null check (
+    error_code in (
+      'provider_auth_failed',
+      'provider_content_refused',
+      'provider_invalid_request',
+      'provider_overloaded',
+      'provider_rate_limited',
+      'provider_stream_interrupted',
+      'provider_timeout',
+      'provider_unknown'
+    )
+  ),
+  status_code integer check (status_code is null or (status_code >= 100 and status_code <= 599)),
+  attempt integer not null default 1 check (attempt >= 1)
+);
+comment on table public.provider_failure is
+  'Typed provider failure events for router-agent routing decisions.';
+
 create table if not exists public.gateway_config (
   config_hash text not null,
   config_json jsonb default '{}'::jsonb,
@@ -1153,6 +1215,8 @@ create index if not exists memory_items_workspace_idx on public.memory_items (wo
 create index if not exists message_thread_created_idx on public.message (thread_id, created_at);
 create index if not exists plan_workspace_idx on public.plan (workspace_id);
 create unique index if not exists planning_profile_active_scope_key on public.planning_profile (scope_type, scope_id) where deleted_at is null and is_active = true;
+create index if not exists provider_failure_workspace_created_idx on public.provider_failure (workspace_id, created_at desc);
+create index if not exists provider_failure_workspace_summary_idx on public.provider_failure (workspace_id, provider, model, error_code, created_at desc);
 create index if not exists routing_rule_machine_idx on public.routing_rule (machine_id);
 create index if not exists routing_rule_workspace_priority_idx on public.routing_rule (workspace_id, priority);
 create index if not exists routing_rule_match_rule_idx on public.routing_rule_match (rule_id);
@@ -1225,6 +1289,7 @@ begin
     'plan',
     'planning_profile',
     'planning_profile_versions',
+    'provider_failure',
     'routing_rule',
     'routing_rule_match',
     'scheduled_task',
@@ -1670,6 +1735,7 @@ begin
     'plan',
     'planning_profile',
     'planning_profile_versions',
+    'provider_failure',
     'routing_rule',
     'routing_rule_match',
     'scheduled_task',
