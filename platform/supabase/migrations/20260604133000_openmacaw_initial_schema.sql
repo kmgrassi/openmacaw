@@ -265,7 +265,7 @@ create table if not exists public.local_runtime_model (
   capabilities jsonb not null default '{}'::jsonb,
   id uuid default gen_random_uuid(),
   last_advertised_at timestamptz not null default now(),
-  machine_id uuid not null,
+  machine_id uuid not null references public.local_runtime_machine(id) on delete cascade,
   model text not null,
   provider text,
   runner_kind text not null,
@@ -279,7 +279,7 @@ create table if not exists public.local_runtime_event (
   detail jsonb not null default '{}'::jsonb,
   id uuid default gen_random_uuid(),
   kind text not null,
-  machine_id uuid not null,
+  machine_id uuid not null references public.local_runtime_machine(id) on delete cascade,
   workspace_id uuid not null,
   primary key (id)
 );
@@ -421,7 +421,7 @@ create table if not exists public.routing_rule (
   last_hit_at timestamptz,
   last_error text,
   last_error_at timestamptz,
-  machine_id uuid,
+  machine_id uuid references public.local_runtime_machine(id) on delete set null,
   model text,
   name text not null,
   next_fallback_rule_id uuid,
