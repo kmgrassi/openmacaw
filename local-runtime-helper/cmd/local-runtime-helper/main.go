@@ -249,6 +249,7 @@ func cmdStart(args []string) {
 	}
 
 	clientCfg := relay.NewClientFromConfig(cfg, activeRunnerKinds, version, dispatcher, logger)
+	clientCfg.RefreshRunners = relay.NewRunnerRegistrationRefresher(runners, clientCfg.Runners)
 	client, err = relay.NewClient(clientCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "start: initialize relay client: %v\n", err)

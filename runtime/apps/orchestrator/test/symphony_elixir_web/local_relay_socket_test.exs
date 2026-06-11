@@ -67,8 +67,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
         else: Application.delete_env(:symphony_elixir, :local_relay_token_hashes)
 
       if original_validator,
-        do:
-          Application.put_env(:symphony_elixir, :local_relay_token_validator, original_validator),
+        do: Application.put_env(:symphony_elixir, :local_relay_token_validator, original_validator),
         else: Application.delete_env(:symphony_elixir, :local_relay_token_validator)
 
       if original_recorder,
@@ -241,8 +240,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     {:ok, state} = init_socket()
     frame = register_frame(%{auth: %{token: "wrong-token"}})
 
-    assert {:stop, {:shutdown, :invalid_token}, {1008, _close_reason}, [{:text, reply_json}],
-            ^state} =
+    assert {:stop, {:shutdown, :invalid_token}, {1008, _close_reason}, [{:text, reply_json}], ^state} =
              LocalRelaySocket.handle_in({encode(frame), []}, state)
 
     reply = Jason.decode!(reply_json)
@@ -274,8 +272,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
         auth: %{token: "revoked-token"}
       })
 
-    assert {:stop, {:shutdown, :local_runtime_token_revoked}, {1008, _close_reason},
-            [{:text, reply_json}], ^state} =
+    assert {:stop, {:shutdown, :local_runtime_token_revoked}, {1008, _close_reason}, [{:text, reply_json}], ^state} =
              LocalRelaySocket.handle_in({encode(frame), []}, state)
 
     reply = Jason.decode!(reply_json)
@@ -496,6 +493,31 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
 
     assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(complete), []}, state)
     assert_receive {:local_relay_complete, "corr-1", ^complete}
+  end
+
+  test "routes cancel_ack frames without treating them as unknown" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+
+    dispatch = %{
+      "type" => "dispatch",
+      "protocol" => 1,
+      "correlation_id" => "corr-cancel",
+      "prompt" => "cancel"
+    }
+
+    assert {:ok, "corr-cancel", _helper} = Registry.dispatch(@workspace_id, "openai_compatible", dispatch, caller: self())
+    assert_receive {:local_relay_dispatch, ^dispatch}
+
+    cancel_ack = %{
+      "type" => "cancel_ack",
+      "protocol" => 1,
+      "correlation_id" => "corr-cancel",
+      "outcome" => "canceled"
+    }
+
+    assert {:ok, ^state} = LocalRelaySocket.handle_in({encode(cancel_ack), []}, state)
+    assert_receive {:local_relay_cancel_ack, "corr-cancel", ^cancel_ack}
   end
 
   test "register writes machine presence with helper_version + advertised runner kinds" do

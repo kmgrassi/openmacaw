@@ -69,6 +69,7 @@ defmodule SymphonyElixir.LocalRelay.Session do
       {:local_relay_error, ^correlation_id, frame} -> {:ok, :error, frame}
       {:local_relay_tool_call_request, ^correlation_id, frame} -> {:ok, :tool_call_request, frame}
       {:local_relay_tool_call_result, ^correlation_id, frame} -> {:ok, :tool_call_result, frame}
+      {:local_relay_cancel_ack, ^correlation_id, frame} -> {:ok, :cancel_ack, frame}
     after
       timeout_ms ->
         Registry.cancel(correlation_id)
