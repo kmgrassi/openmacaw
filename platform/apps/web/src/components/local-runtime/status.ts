@@ -26,7 +26,7 @@ export function localRuntimeBindingStatusForAgent(
 
       const modelLabel = runner.model || runner.kind;
       const machineLabel = runtime.machineDisplayName;
-      const liveModels = runner.liveModels.map((model) => model.model);
+      const liveModels = runner.models.map((model) => model.model);
       const lastError = runtime.lastError ?? runtime.localExecution.lastError;
       const modelMissing =
         (runner.model.length > 0 &&

@@ -1,9 +1,5 @@
-import { cn } from "../../lib/cn";
-import {
-  statusToneClass,
-  statusToneForValue,
-  type StatusTone,
-} from "./status-tones";
+import { Badge } from "./Badge";
+import type { StatusTone } from "./status-tones";
 
 type StatusBadgeProps = {
   value?: string | null;
@@ -18,17 +14,9 @@ export function StatusBadge({
   className,
   children,
 }: StatusBadgeProps) {
-  const resolvedTone = tone ?? statusToneForValue(value);
-
   return (
-    <span
-      className={cn(
-        "inline-flex rounded border px-2 py-0.5 text-xs",
-        statusToneClass(resolvedTone, "pill"),
-        className,
-      )}
-    >
-      {children ?? value ?? "unknown"}
-    </span>
+    <Badge value={value} tone={tone} className={className}>
+      {children}
+    </Badge>
   );
 }

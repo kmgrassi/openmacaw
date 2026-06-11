@@ -1,6 +1,6 @@
 import { forwardRef, type InputHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
-import { FieldMessage } from "./FieldMessage";
+import { FormField } from "./FormField";
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
   label?: string;
@@ -11,15 +11,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(
   ({ className, label, error, id, ...rest }, ref) => {
     const inputId = id || label?.toLowerCase().replace(/\s+/g, "-");
     return (
-      <div className="space-y-1.5">
-        {label && (
-          <label
-            htmlFor={inputId}
-            className="block text-xs font-medium text-slate-400"
-          >
-            {label}
-          </label>
-        )}
+      <FormField label={label} htmlFor={inputId} error={error}>
         <input
           ref={ref}
           id={inputId}
@@ -30,8 +22,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(
           )}
           {...rest}
         />
-        {error && <FieldMessage tone="error">{error}</FieldMessage>}
-      </div>
+      </FormField>
     );
   },
 );

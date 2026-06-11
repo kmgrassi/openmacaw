@@ -24,11 +24,13 @@ import {
 } from "./routing-metadata.js";
 
 type LiveModel = {
+  id: string;
+  machineId: string;
   runnerKind: string;
   model: string;
   provider: string | null;
   capabilities: Record<string, unknown>;
-  lastAdvertisedAt: string | null;
+  lastAdvertisedAt: string;
 };
 
 type OptionalModelTableClient = {
@@ -130,7 +132,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     const optionalTables = supabase as unknown as OptionalModelTableClient;
     const { data: modelRows, error: modelError } = await optionalTables
       .from("local_runtime_model")
-      .select("machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
+      .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
       .in("machine_id", machineIds);
 
     if (modelError && !isMissingOptionalLocalRuntimeTable(modelError)) {
@@ -146,11 +148,13 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
       for (const row of parsedModelRows) {
         const list = liveModelsByMachine.get(row.machine_id) ?? [];
         list.push({
+          id: row.id,
+          machineId: row.machine_id,
           runnerKind: row.runner_kind,
           model: row.model,
           provider: row.provider,
           capabilities: row.capabilities ?? {},
-          lastAdvertisedAt: row.last_advertised_at,
+          lastAdvertisedAt: row.last_advertised_at ?? new Date(0).toISOString(),
         });
         liveModelsByMachine.set(row.machine_id, list);
       }
@@ -200,7 +204,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
         registrationKind === "openclaw"
           ? null
           : normalizeToolCallCapability(matchValue(ruleMatchesForRule, "local_model_capability", "tool_call")),
-      liveModels: (liveModelsByMachine.get(machineId) ?? []).filter(
+      models: (liveModelsByMachine.get(machineId) ?? []).filter(
         (model) => model.runnerKind === rule.runner_kind || model.runnerKind === registrationKind,
       ),
       agents: assignedAgentIds.map((id) => ({
@@ -222,9 +226,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     const status = localExecution.status;
     const hasMissingAdvertisedModel =
       liveModelRowsAvailable &&
-      runners.some(
-        (runner) => Boolean(runner.model) && !runner.liveModels?.some((model) => model.model === runner.model),
-      );
+      runners.some((runner) => Boolean(runner.model) && !runner.models?.some((model) => model.model === runner.model));
     const lastError =
       hasMissingAdvertisedModel && status === "online"
         ? "Configured model is not currently advertised by the helper."

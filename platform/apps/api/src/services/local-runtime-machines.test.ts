@@ -628,7 +628,10 @@ describe("testLocalRuntimeDispatchForWorkspace", () => {
       helperConnected: true,
       modelAdvertised: false,
       dispatchSucceeded: false,
-      error: "Configured model is not currently advertised by the helper.",
+      error: {
+        code: "model_not_advertised",
+        message: "Configured model is not currently advertised by the helper.",
+      },
     });
   });
 });

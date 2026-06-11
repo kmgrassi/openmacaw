@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Session } from "../hooks/useSessions";
+import { parseAgentScopedSessionAgentId } from "../api/ws-types/scope";
 import {
   parseAgentIdFromSessionKey,
   selectVisibleSessions,
@@ -14,9 +15,22 @@ describe("parseAgentIdFromSessionKey", () => {
     expect(parseAgentIdFromSessionKey(`agent:${AGENT_ID}:main`)).toBe(AGENT_ID);
   });
 
+  it("parses agent-scoped non-main keys", () => {
+    expect(parseAgentIdFromSessionKey(`agent:${AGENT_ID}:tool-battery:run-1`)).toBe(
+      AGENT_ID,
+    );
+  });
+
   it("returns undefined for keys it does not recognize", () => {
     expect(parseAgentIdFromSessionKey("")).toBeUndefined();
     expect(parseAgentIdFromSessionKey("plan:abc:main")).toBeUndefined();
+  });
+});
+
+describe("parseAgentScopedSessionAgentId", () => {
+  it("rejects non-agent or invalid agent keys", () => {
+    expect(parseAgentScopedSessionAgentId("plan:abc:main")).toBeNull();
+    expect(parseAgentScopedSessionAgentId("agent:not-a-uuid:main")).toBeNull();
   });
 });
 
@@ -56,6 +70,48 @@ describe("selectVisibleSessions", () => {
   it("filters non-manager agent sessions when the active key is a regular agent", () => {
     const result = selectVisibleSessions(
       [managerSession, codingSession],
+      `agent:${AGENT_ID}:main`,
+      false,
+    );
+
+    expect(result).toEqual([codingSession]);
+  });
+
+  it("keeps agent-scoped non-main sessions without relying on substring matches", () => {
+    const toolSession: Session = {
+      key: `agent:${AGENT_ID}:tool-battery:run-1`,
+      id: "tool-thread-1",
+      label: "Tool battery",
+      lastMessageAt: 1_700_000_300_000,
+    };
+
+    const result = selectVisibleSessions(
+      [managerSession, codingSession, toolSession],
+      `agent:${AGENT_ID}:main`,
+      false,
+    );
+
+    expect(result).toEqual([codingSession, toolSession]);
+  });
+
+  it("does not leak sessions from a different agent whose key happens to contain the active id", () => {
+    const overlappingAgentId = `${AGENT_ID}-suffix`;
+    const unrelatedSession: Session = {
+      key: `external:${AGENT_ID}:mirror`,
+      id: "external-thread-1",
+      label: "External mirror",
+      lastMessageAt: 1_700_000_250_000,
+    };
+    const overlappingSession: Session = {
+      key: `agent:${MANAGER_AGENT_ID}:main`,
+      id: "other-thread-1",
+      label: "Different agent",
+      agentId: overlappingAgentId,
+      lastMessageAt: 1_700_000_350_000,
+    };
+
+    const result = selectVisibleSessions(
+      [codingSession, unrelatedSession, overlappingSession],
       `agent:${AGENT_ID}:main`,
       false,
     );

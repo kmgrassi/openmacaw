@@ -34,6 +34,7 @@ export type LocalExecutionTarget = {
   helperOnline: boolean;
   status: "online" | "offline" | "degraded";
   lastError: string | null;
+  lastErrorAt: string | null;
   lastSeenAt: string | null;
   workspaceRoot: string | null;
   registered: boolean;
@@ -43,12 +44,14 @@ export type LocalExecutionTarget = {
   runtimeManagedTools: boolean | null;
 };
 
-export type LocalRuntimeLiveModel = {
+export type LocalRuntimeModel = {
+  id: string;
+  machineId: string;
   runnerKind: string;
   model: string;
   provider: string | null;
   capabilities: Record<string, unknown>;
-  lastAdvertisedAt: string | null;
+  lastAdvertisedAt: string;
 };
 
 /** One advertised runner attached to a registered helper machine. */
@@ -61,7 +64,7 @@ export type LocalRuntimeRunner = {
   model: string;
   provider: string;
   toolCallCapability: LocalToolCallCapability | null;
-  liveModels: LocalRuntimeLiveModel[];
+  models: LocalRuntimeModel[];
   agents: LocalRuntimeAgent[];
 };
 
@@ -151,11 +154,22 @@ export type LocalRuntimeEventsResponse = {
   events: LocalRuntimeEvent[];
 };
 
+export type LocalRuntimeTestDispatchError = {
+  code: string;
+  message: string;
+  detail: {
+    httpStatus?: number;
+    dialError?: string;
+    endpoint?: string;
+    rawMessage?: string;
+  } | null;
+};
+
 export type LocalRuntimeTestDispatchResponse = {
   helperConnected: boolean;
   modelAdvertised: boolean;
   dispatchSucceeded: boolean;
-  error: string | null;
+  error: LocalRuntimeTestDispatchError | null;
 };
 
 export type AssignLocalRuntimeInput = {

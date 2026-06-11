@@ -19,6 +19,7 @@ export const LocalRuntimeMachineRowSchema = z.object({
 });
 
 export const LocalRuntimeModelRowSchema = z.object({
+  id: z.string(),
   machine_id: z.string(),
   runner_kind: z.string(),
   model: z.string(),

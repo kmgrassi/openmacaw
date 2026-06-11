@@ -183,6 +183,10 @@ function optionalEventTableMissing(error: unknown) {
   );
 }
 
+function testDispatchError(code: string, message: string) {
+  return { code, message, detail: null };
+}
+
 export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, machineId: string, limit = 50) {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   const supabase = getServiceRoleSupabase();
@@ -228,16 +232,17 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
     (runtime.lastError ?? runtime.localExecution.lastError)?.includes("not currently advertised") === true;
   const modelAdvertised =
     !modelMissingError &&
-    (!runner?.model ||
-      runner.liveModels.length === 0 ||
-      runner.liveModels.some((model) => model.model === runner.model));
+    (!runner?.model || runner.models.length === 0 || runner.models.some((model) => model.model === runner.model));
 
   if (!helperConnected) {
     return LocalRuntimeTestDispatchResponseSchema.parse({
       helperConnected,
       modelAdvertised,
       dispatchSucceeded: false,
-      error: "Helper is offline. Start the local-runtime-helper daemon and wait for a fresh heartbeat.",
+      error: testDispatchError(
+        "helper_offline",
+        "Helper is offline. Start the local-runtime-helper daemon and wait for a fresh heartbeat.",
+      ),
     });
   }
 
@@ -246,7 +251,7 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
       helperConnected,
       modelAdvertised: false,
       dispatchSucceeded: false,
-      error: "No runner is registered for this machine.",
+      error: testDispatchError("runner_missing", "No runner is registered for this machine."),
     });
   }
 
@@ -255,8 +260,10 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
       helperConnected,
       modelAdvertised: false,
       dispatchSucceeded: false,
-      error:
+      error: testDispatchError(
+        "model_not_advertised",
         runtime.lastError ?? runtime.localExecution.lastError ?? "Configured model is not advertised by the helper.",
+      ),
     });
   }
 
@@ -274,7 +281,10 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
     helperConnected,
     modelAdvertised: probe.modelFound,
     dispatchSucceeded: probe.reachable && probe.modelFound,
-    error: probe.reachable && probe.modelFound ? null : (probe.error ?? "Model probe failed."),
+    error:
+      probe.reachable && probe.modelFound
+        ? null
+        : testDispatchError("probe_failed", probe.error ?? "Model probe failed."),
   });
 }
 

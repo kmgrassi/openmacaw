@@ -55,7 +55,7 @@ export function DoctorPanel({
       ),
     );
   const configuredModel = openAiRunner?.model ?? "";
-  const liveModels = openAiRunner?.liveModels.map((model) => model.model) ?? [];
+  const liveModels = openAiRunner?.models.map((model) => model.model) ?? [];
   const modelMissingError =
     (runtime.lastError ?? runtime.localExecution.lastError)?.includes(
       "not currently advertised",
@@ -91,7 +91,7 @@ export function DoctorPanel({
       passed: Boolean(testResult?.dispatchSucceeded),
       pending: !testResult,
       remediation:
-        testResult?.error ??
+        testResult?.error?.message ??
         "Run the dispatch test to verify the full local model path.",
     },
   ];

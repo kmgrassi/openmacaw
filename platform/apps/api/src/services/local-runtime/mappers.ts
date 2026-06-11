@@ -42,12 +42,14 @@ export type RunnerRow = {
   model: string | null;
   provider: string | null;
   toolCallCapability: LocalToolCallCapability | null;
-  liveModels?: Array<{
+  models?: Array<{
+    id: string;
+    machineId: string;
     runnerKind: string;
     model: string;
     provider: string | null;
     capabilities: Record<string, unknown>;
-    lastAdvertisedAt: string | null;
+    lastAdvertisedAt: string;
   }>;
   agents: Array<{ agentId: string; agentName: string }>;
 };
@@ -60,8 +62,8 @@ export function toLocalRuntimeRunner(input: RunnerRow): LocalRuntimeRunner {
     endpoint: input.endpoint ?? "",
     model: input.model ?? "",
     provider: input.provider ?? defaultProviderFor(input.kind),
+    models: input.models ?? [],
     toolCallCapability: input.toolCallCapability,
-    liveModels: input.liveModels ?? [],
     agents: input.agents,
   });
 }
