@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
-import { getServiceRoleSupabase, getUserScopedSupabase } from "../supabase-client.js";
+import { getServiceRoleSupabase } from "../supabase-client.js";
 import { createLocalRuntimeTestServer, workspaceId } from "./local-runtime.test-support.js";
 
 vi.mock("../supabase-client.js", () => ({

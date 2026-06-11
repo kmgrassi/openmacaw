@@ -7,7 +7,14 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
 
   require Logger
 
-  alias SymphonyElixir.LocalRelay.{MachineHeartbeatRecorder, Presence, ProtocolExtensions, Registry, TokenValidator}
+  alias SymphonyElixir.LocalRelay.{
+    MachineHeartbeatRecorder,
+    Presence,
+    ProtocolExtensions,
+    Registry,
+    TokenValidator
+  }
+
   alias SymphonyElixir.RuntimeLog
   alias SymphonyElixir.Schema.{LocalRelayHeartbeat, LocalRelayRegister}
 
@@ -75,6 +82,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
       Logger.warning("local_relay_heartbeat_timeout workspace_id=#{state.workspace_id} machine_id=#{state.machine_id}")
 
       cleanup_registered_connection(state)
+
       {:stop, {:shutdown, :heartbeat_timeout}, %{state | registered?: false, heartbeat_timer_ref: nil}}
     else
       {:ok, schedule_heartbeat_timeout(state, timeout_ms - elapsed_ms)}
@@ -100,7 +108,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   def terminate(_reason, _state), do: :ok
 
   defp handle_frame("register", frame, state) do
-    token = bearer_token(state.request_headers) || get_in(frame, ["auth", "token"]) || Map.get(frame, "token")
+    token =
+      bearer_token(state.request_headers) || get_in(frame, ["auth", "token"]) ||
+        Map.get(frame, "token")
 
     with {:ok, register} <- LocalRelayRegister.validate(frame),
          {:ok, token_metadata} <-
@@ -169,7 +179,8 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
           handle_registration_error({:error, reason}, register, frame, state)
       end
     else
-      {:error, reason} when reason in [:missing_token, :invalid_token, :local_runtime_token_revoked] ->
+      {:error, reason}
+      when reason in [:missing_token, :invalid_token, :local_runtime_token_revoked] ->
         Logger.warning("local_relay_register_rejected reason=#{reason}")
         reply = error_frame(Map.get(frame, "correlation_id"), reason, safe_message(reason))
         # WebSock's `{:stop, reason, close_detail, messages, state}` 5-tuple is
@@ -183,8 +194,12 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         message = LocalRelayRegister.error_message(changeset)
+
         Logger.warning("local_relay_register_rejected reason=schema_validation message=#{message}")
-        reply = error_frame(Map.get(frame, "correlation_id"), :local_runner_protocol_error, message)
+
+        reply =
+          error_frame(Map.get(frame, "correlation_id"), :local_runner_protocol_error, message)
+
         {:push, [reply], state}
 
       {:error, reason} ->
@@ -220,7 +235,13 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
       {:push, [text_frame(reply)], state}
     else
       {:error, :not_registered} ->
-        reply = error_frame(Map.get(frame, "correlation_id"), :local_runtime_offline, "helper is not registered")
+        reply =
+          error_frame(
+            Map.get(frame, "correlation_id"),
+            :local_runtime_offline,
+            "helper is not registered"
+          )
+
         {:push, [reply], state}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -236,12 +257,18 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   end
 
   defp handle_frame("heartbeat", frame, state) do
-    reply = error_frame(Map.get(frame, "correlation_id"), :local_runner_protocol_error, "register before heartbeat")
+    reply =
+      error_frame(
+        Map.get(frame, "correlation_id"),
+        :local_runner_protocol_error,
+        "register before heartbeat"
+      )
+
     {:push, [reply], state}
   end
 
   defp handle_frame(type, frame, %{registered?: true} = state)
-       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel_ack"] do
+       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result"] do
     correlation_id = Map.get(frame, "correlation_id")
     result = route_relay_frame(type, correlation_id, frame)
 
@@ -254,8 +281,28 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
     end
   end
 
+  defp handle_frame("cancel_ack", frame, %{registered?: true} = state) do
+    Logger.debug("local_relay_cancel_ack workspace_id=#{state.workspace_id} machine_id=#{state.machine_id} correlation_id=#{Map.get(frame, "correlation_id")} outcome=#{Map.get(frame, "outcome")}")
+
+    correlation_id = Map.get(frame, "correlation_id")
+
+    case route_relay_frame("cancel_ack", correlation_id, frame) do
+      :ok -> {:ok, state}
+      {:error, reason} -> {:push, [error_frame(correlation_id, reason, safe_message(reason))], state}
+    end
+  end
+
   defp handle_frame(type, frame, state)
-       when type in ["progress", "complete", "error", "tool_call_request", "tool_call_result", "cancel_ack", "cancel", "dispatch"] do
+       when type in [
+              "progress",
+              "complete",
+              "error",
+              "tool_call_request",
+              "tool_call_result",
+              "cancel_ack",
+              "cancel",
+              "dispatch"
+            ] do
     reply =
       error_frame(
         Map.get(frame, "correlation_id"),
@@ -267,7 +314,14 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   end
 
   defp handle_frame(_type, frame, state) do
-    {:push, [error_frame(Map.get(frame, "correlation_id"), :local_runner_protocol_error, "unknown frame type")], state}
+    {:push,
+     [
+       error_frame(
+         Map.get(frame, "correlation_id"),
+         :local_runner_protocol_error,
+         "unknown frame type"
+       )
+     ], state}
   end
 
   defp frame_type(%{"type" => type}) when is_binary(type) and type != "", do: {:ok, type}
@@ -290,7 +344,11 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   defp heartbeat_updates(frame, heartbeat) do
     %{}
     |> maybe_put_if_present(frame, "runner_kinds", heartbeat.runner_kinds || [])
-    |> maybe_put_if_present(frame, "runners", Enum.map(heartbeat.runners || [], &heartbeat_runner_to_map/1))
+    |> maybe_put_if_present(
+      frame,
+      "runners",
+      Enum.map(heartbeat.runners || [], &heartbeat_runner_to_map/1)
+    )
     |> maybe_put_if_present(frame, "metadata", heartbeat.metadata || %{})
   end
 
@@ -356,12 +414,24 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   end
 
   defp route_relay_frame(_type, nil, _frame), do: {:error, :local_runner_protocol_error}
-  defp route_relay_frame("progress", correlation_id, frame), do: Registry.progress(correlation_id, frame)
-  defp route_relay_frame("complete", correlation_id, frame), do: Registry.complete(correlation_id, frame)
-  defp route_relay_frame("error", correlation_id, frame), do: Registry.error(correlation_id, frame)
-  defp route_relay_frame("tool_call_request", correlation_id, frame), do: Registry.tool_call_request(correlation_id, frame)
-  defp route_relay_frame("tool_call_result", correlation_id, frame), do: Registry.tool_call_result(correlation_id, frame)
-  defp route_relay_frame("cancel_ack", correlation_id, frame), do: Registry.cancel_ack(correlation_id, frame)
+
+  defp route_relay_frame("progress", correlation_id, frame),
+    do: Registry.progress(correlation_id, frame)
+
+  defp route_relay_frame("complete", correlation_id, frame),
+    do: Registry.complete(correlation_id, frame)
+
+  defp route_relay_frame("error", correlation_id, frame),
+    do: Registry.error(correlation_id, frame)
+
+  defp route_relay_frame("tool_call_request", correlation_id, frame),
+    do: Registry.tool_call_request(correlation_id, frame)
+
+  defp route_relay_frame("tool_call_result", correlation_id, frame),
+    do: Registry.tool_call_result(correlation_id, frame)
+
+  defp route_relay_frame("cancel_ack", correlation_id, frame),
+    do: Registry.cancel_ack(correlation_id, frame)
 
   defp error_frame(correlation_id, code, message) do
     text_frame(%{
@@ -378,7 +448,10 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   defp safe_message(:workspace_mismatch), do: "local runtime token workspace mismatch"
   defp safe_message(:machine_mismatch), do: "local runtime token machine mismatch"
   defp safe_message(:validator_unavailable), do: "local runtime token validator unavailable"
-  defp safe_message(:workspace_connection_limit_exceeded), do: "local relay workspace connection limit exceeded"
+
+  defp safe_message(:workspace_connection_limit_exceeded),
+    do: "local relay workspace connection limit exceeded"
+
   defp safe_message(reason) when is_binary(reason), do: reason
   defp safe_message(reason), do: to_string(reason)
 
@@ -397,7 +470,11 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
 
   defp schedule_heartbeat_timeout(state, delay_ms \\ heartbeat_timeout_ms()) do
     cancel_heartbeat_timer(state.heartbeat_timer_ref)
-    %{state | heartbeat_timer_ref: Process.send_after(self(), :local_relay_heartbeat_timeout, delay_ms)}
+
+    %{
+      state
+      | heartbeat_timer_ref: Process.send_after(self(), :local_relay_heartbeat_timeout, delay_ms)
+    }
   end
 
   defp cancel_heartbeat_timer(nil), do: :ok

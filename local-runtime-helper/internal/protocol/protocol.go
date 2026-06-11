@@ -120,8 +120,8 @@ type ErrorFrame struct {
 	Detail    *ErrorDetail `json:"detail,omitempty"`
 }
 
-// ErrorDetail carries provider/transport details that are useful for
-// diagnostics but are not part of retry classification.
+// ErrorDetail preserves provider/transport-specific failure context alongside
+// the normalized retry code.
 type ErrorDetail struct {
 	HTTPStatus *int   `json:"http_status,omitempty"`
 	DialError  string `json:"dial_error,omitempty"`
@@ -143,7 +143,7 @@ type CancelFrame struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// CancelAckFrame reports whether a cancel request matched an in-flight dispatch.
+// CancelAckFrame confirms the helper observed a cancel frame.
 type CancelAckFrame struct {
 	CorrelatedFrame
 	Outcome string `json:"outcome"`

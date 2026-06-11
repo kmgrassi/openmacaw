@@ -93,6 +93,16 @@ heartbeat can include refreshed runner metadata or capability snapshots.
   "correlation_id": "hb-001",
   "ts": 1777200000000,
   "runner_kinds": ["openai_compatible"],
+  "runners": [
+    {
+      "runner_kind": "openai_compatible",
+      "provider": "ollama",
+      "model": "qwen2.5-coder:latest",
+      "capabilities": {
+        "tool_calls": true
+      }
+    }
+  ],
   "metadata": {
     "helper_version": "0.1.1"
   }
@@ -110,8 +120,26 @@ Runtime responds:
 }
 ```
 
-Heartbeat updates the helper's `last_seen_ms` in runtime presence state. Socket
-termination removes the helper from online presence.
+Heartbeat updates the helper's `last_seen_ms` in runtime presence state.
+Including `runners` lets helpers refresh model availability without
+re-registering. Socket termination removes the helper from online presence.
+
+## Cancel Ack
+
+When Runtime sends a `cancel` frame for an in-flight dispatch, helpers can
+acknowledge that the cancel landed:
+
+```json
+{
+  "type": "cancel_ack",
+  "schema_version": "1",
+  "correlation_id": "dispatch-001",
+  "outcome": "cancelled"
+}
+```
+
+Runtime accepts this frame for observability and does not change retry
+semantics.
 
 ## Dispatch Tool Grants
 
@@ -171,3 +199,22 @@ The relay socket only returns safe, typed error codes:
 Later dispatch PRs will extend this with runtime execution errors such as
 `local_runner_busy`, `endpoint_unreachable`, `model_not_found`, and
 `generation_timeout`.
+
+Helper-sent dispatch errors preserve normalized retry fields and optional
+provider or transport detail:
+
+```json
+{
+  "type": "error",
+  "schema_version": "1",
+  "correlation_id": "dispatch-001",
+  "code": "endpoint_unreachable",
+  "message": "local endpoint refused connection",
+  "retryable": true,
+  "detail": {
+    "dial_error": "connect: connection refused",
+    "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "raw_message": "dial tcp 127.0.0.1:11434: connect: connection refused"
+  }
+}
+```
