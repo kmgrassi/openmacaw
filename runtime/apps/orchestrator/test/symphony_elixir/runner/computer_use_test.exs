@@ -164,7 +164,7 @@ defmodule SymphonyElixir.Runner.ComputerUseTest do
         "timeout_ms" => 5_000,
         "poll_interval_ms" => 50,
         "fallbacks" => [
-          %{"adapter_config" => %{"endpoint" => "http://localhost:#{fallback_port}", "session_id" => fallback_session_id}}
+          %{"adapter_config" => %{"endpoint" => "http://localhost:#{fallback_port}"}}
         ]
       }
 
