@@ -120,30 +120,38 @@ export async function summarizeProviderFailures(input: {
       workspaceId: input.workspaceId,
     },
     async () => {
-      const { data, error } = await providerFailureTable()
-        .select(PROVIDER_FAILURE_SELECT)
-        .eq("workspace_id", input.workspaceId)
-        .gte("created_at", input.since)
-        .order("created_at", { ascending: false })
-        .range(0, 999);
-
-      if (error) throw normalizeSupabaseError("provider_failure summary query", error as SupabaseError);
-      const rows = parseRows("provider_failure summary query", data);
       const groups = new Map<string, ProviderFailureSummaryEntry>();
+      const pageSize = 1000;
+      let offset = 0;
 
-      for (const row of rows) {
-        const key = `${row.provider}\u0000${row.model}\u0000${row.errorCode}`;
-        const existing = groups.get(key);
-        if (existing) {
-          existing.count += 1;
-          continue;
+      for (;;) {
+        const { data, error } = await providerFailureTable()
+          .select(PROVIDER_FAILURE_SELECT)
+          .eq("workspace_id", input.workspaceId)
+          .gte("created_at", input.since)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + pageSize - 1);
+
+        if (error) throw normalizeSupabaseError("provider_failure summary query", error as SupabaseError);
+        const rows = parseRows("provider_failure summary query", data);
+
+        for (const row of rows) {
+          const key = `${row.provider}\u0000${row.model}\u0000${row.errorCode}`;
+          const existing = groups.get(key);
+          if (existing) {
+            existing.count += 1;
+            continue;
+          }
+          groups.set(key, {
+            provider: row.provider,
+            model: row.model,
+            errorCode: row.errorCode,
+            count: 1,
+          } as ProviderFailureSummaryEntry);
         }
-        groups.set(key, {
-          provider: row.provider,
-          model: row.model,
-          errorCode: row.errorCode,
-          count: 1,
-        } as ProviderFailureSummaryEntry);
+
+        if (rows.length < pageSize) break;
+        offset += pageSize;
       }
 
       return Array.from(groups.values()).sort((left, right) => right.count - left.count);

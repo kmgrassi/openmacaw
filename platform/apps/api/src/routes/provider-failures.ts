@@ -34,6 +34,20 @@ function parseSummaryQuery(query: Record<string, unknown>) {
   return parsed.data;
 }
 
+async function requireWorkspaceMembership(userId: string, workspaceId: string) {
+  try {
+    await assertWorkspaceMembership(userId, workspaceId);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "Authenticated user is not authorized for the requested workspace"
+    ) {
+      throw new ApiRouteError(403, "forbidden", "Authenticated user is not authorized for the requested workspace");
+    }
+    throw error;
+  }
+}
+
 export function registerProviderFailureRoutes(app: Express) {
   app.get(
     "/api/workspaces/:workspaceId/provider-failures/recent",
@@ -41,7 +55,7 @@ export function registerProviderFailureRoutes(app: Express) {
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireRouteParam(req, "workspaceId");
-        await assertWorkspaceMembership(userId, workspaceId);
+        await requireWorkspaceMembership(userId, workspaceId);
         const query = parseRecentQuery(req.query);
         const response = await listRecentProviderFailures({
           workspaceId,
@@ -60,7 +74,7 @@ export function registerProviderFailureRoutes(app: Express) {
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireRouteParam(req, "workspaceId");
-        await assertWorkspaceMembership(userId, workspaceId);
+        await requireWorkspaceMembership(userId, workspaceId);
         const query = parseSummaryQuery(req.query);
         const items = await summarizeProviderFailures({
           workspaceId,

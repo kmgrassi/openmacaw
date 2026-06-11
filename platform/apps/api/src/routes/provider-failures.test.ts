@@ -23,6 +23,24 @@ vi.mock("../services/work-item-ingest.js", () => ({
 const userId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 
+function providerFailureRow(index: number, overrides: Record<string, unknown> = {}) {
+  return {
+    id: `failure-${index}`,
+    created_at: `2026-06-11T12:${String(index % 60).padStart(2, "0")}:00.000Z`,
+    workspace_id: workspaceId,
+    agent_id: null,
+    work_item_id: null,
+    run_id: null,
+    runner_kind: "planner",
+    provider: "openai",
+    model: "gpt-5",
+    error_code: "provider_rate_limited",
+    status_code: 429,
+    attempt: 1,
+    ...overrides,
+  };
+}
+
 function closeServer(server: Server | undefined) {
   if (!server) return Promise.resolve();
   server.closeAllConnections?.();
@@ -162,12 +180,37 @@ describe("provider failure routes", () => {
     });
   });
 
+  it("summarizes every row in high-volume failure windows", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        provider_failure: Array.from({ length: 1002 }, (_value, index) => providerFailureRow(index + 1)),
+      }) as never,
+    );
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspaceId}/provider-failures/summary?since=2026-06-11T11:50:00.000Z`,
+      {
+        headers: { authorization: "Bearer test-token" },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      since: "2026-06-11T11:50:00.000Z",
+      items: [
+        {
+          provider: "openai",
+          model: "gpt-5",
+          errorCode: "provider_rate_limited",
+          count: 1002,
+        },
+      ],
+    });
+  });
+
   it("requires workspace membership before reading service-role data", async () => {
     vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(
-      Object.assign(new Error("forbidden"), {
-        status: 403,
-        code: "forbidden",
-      }),
+      new Error("Authenticated user is not authorized for the requested workspace"),
     );
 
     const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/provider-failures/recent`, {
@@ -175,6 +218,12 @@ describe("provider failure routes", () => {
     });
 
     expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "forbidden",
+        message: "Authenticated user is not authorized for the requested workspace",
+      },
+    });
   });
 
   it("requires a valid summary timestamp", async () => {
