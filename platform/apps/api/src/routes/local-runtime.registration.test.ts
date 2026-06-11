@@ -24,6 +24,166 @@ describe("local runtime route registration", () => {
     await closeServer();
   });
 
+  it("lists a freshly heartbeating helper as online when persisted status is still offline", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          machine_id: "machine-1",
+          last_error: null,
+          last_error_at: null,
+        },
+      ],
+      routing_rule_match: [
+        {
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+          workspace_id: workspaceId,
+        },
+        {
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+          workspace_id: workspaceId,
+        },
+        {
+          rule_id: "local-rule-1",
+          kind: "local_workspace_root",
+          key: "path",
+          value: "/Users/me/project",
+          workspace_id: workspaceId,
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          display_name: "Kevin's Mac",
+          last_seen_at: new Date().toISOString(),
+          revoked_at: null,
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          status: "offline",
+        },
+      ],
+      local_runtime_model: [
+        {
+          id: "model-1",
+          machine_id: "machine-1",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          capabilities: {},
+          last_advertised_at: new Date().toISOString(),
+        },
+      ],
+      agent: [],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
+      headers: {
+        authorization: "Bearer test-token",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      runtimes: [
+        {
+          id: "machine-1",
+          status: "online",
+          localExecution: {
+            helperOnline: true,
+            status: "online",
+          },
+          models: [
+            {
+              model: "qwen3-coder:30b",
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("test-dispatch treats a fresh heartbeat as connected before status write-through lands", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          machine_id: "machine-1",
+          last_error: null,
+          last_error_at: null,
+        },
+      ],
+      routing_rule_match: [
+        {
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+          workspace_id: workspaceId,
+        },
+        {
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+          workspace_id: workspaceId,
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          display_name: "Kevin's Mac",
+          last_seen_at: new Date().toISOString(),
+          revoked_at: null,
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          status: "offline",
+        },
+      ],
+      local_runtime_model: [],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(
+      `${baseUrl}/api/local-runtime/runtimes/machine-1/test-dispatch?workspaceId=${workspaceId}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-token",
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      machineId: "machine-1",
+      helperConnected: true,
+      modelAdvertised: false,
+      dispatchSucceeded: false,
+      error: {
+        code: "model_unavailable",
+      },
+    });
+  });
+
   it("registers a model-only runtime and emits an [runner.openai_compatible] snippet", async () => {
     const db = {
       local_runtime_machine: [] as Array<Record<string, unknown>>,

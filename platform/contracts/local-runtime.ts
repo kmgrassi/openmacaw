@@ -207,6 +207,8 @@ export const LocalRuntimeRunnerSchema = z.object({
   provider: z.string(),
   /** Live model rows advertised by this machine for this runner kind. */
   models: z.array(LocalRuntimeModelSchema).default([]),
+  lastError: z.string().nullable().default(null),
+  lastErrorAt: z.string().nullable().default(null),
   /** Null for runtimes whose tool loop is internal (e.g. openclaw). */
   toolCallCapability: LocalToolCallCapabilitySchema.nullable(),
   agents: z
@@ -276,8 +278,9 @@ export const LocalRuntimeListItemSchema = z.object({
   id: z.string(),
   machineDisplayName: z.string(),
   status: LocalRuntimeMachineStatusSchema.default("offline"),
-  lastError: z.string().nullable().default(null),
   localExecution: LocalExecutionTargetSchema,
+  models: z.array(LocalRuntimeModelSchema).default([]),
+  lastError: z.string().nullable().default(null),
   runners: z.array(LocalRuntimeRunnerSchema),
 });
 export type LocalRuntimeListItem = z.infer<typeof LocalRuntimeListItemSchema>;
@@ -298,6 +301,7 @@ export type LocalRuntimeEventsResponse = z.infer<
 >;
 
 export const LocalRuntimeTestDispatchResponseSchema = z.object({
+  machineId: z.string(),
   helperConnected: z.boolean(),
   modelAdvertised: z.boolean(),
   dispatchSucceeded: z.boolean(),
@@ -315,7 +319,8 @@ export type LocalRuntimeTestDispatchResponse = z.infer<
 >;
 
 export const AgentLocalRuntimeAssignRequestSchema = z.object({
-  agentId: z.string().min(1, "agentId is required"),
+  agentId: z.string().min(1, "agentId is required").optional(),
+  machineId: z.string().min(1, "machineId is required"),
   localRuntimeId: z.string().min(1, "localRuntimeId is required"),
 });
 export type AgentLocalRuntimeAssignRequest = z.infer<
@@ -325,6 +330,7 @@ export type AgentLocalRuntimeAssignRequest = z.infer<
 export const AgentLocalRuntimeAssignResponseSchema = z.object({
   routingRuleId: z.string(),
   agentId: z.string(),
+  machineId: z.string(),
   model: z.string(),
 });
 export type AgentLocalRuntimeAssignResponse = z.infer<

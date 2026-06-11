@@ -1,14 +1,14 @@
+import type { PostgrestError } from "@supabase/supabase-js";
+import type { LocalRuntimeRegistrationRequest } from "../../../../contracts/local-runtime.js";
 import {
   LocalRuntimeEventsResponseSchema,
   LocalRuntimeTestDispatchResponseSchema,
-  type LocalRuntimeRegistrationRequest,
 } from "../../../../contracts/local-runtime.js";
-import type { PostgrestError } from "@supabase/supabase-js";
 import { ApiRouteError } from "../http.js";
 import { parseNullableSupabaseRow, parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
-import { buildLocalExecution } from "./local-runtime/config-snippet.js";
+import { buildLocalExecution, helperOnline } from "./local-runtime/config-snippet.js";
 import {
   buildLocalRuntimeConfigResponse,
   buildRegistrationConfig,
@@ -25,10 +25,11 @@ import {
   unreferencedMachineIdsAfterLocalRuntimeDelete,
 } from "./local-runtime/machines.js";
 import { getLocalRuntimeMachineDetails } from "./local-runtime/routing-metadata.js";
-import { probeLocalModel, probeRegisteredLocalRuntimeForWorkspace } from "./local-runtime/probing.js";
 import {
   LocalRuntimeEventRowSchema,
   LocalRuntimeMachineIdRowSchema,
+  LocalRuntimeMachineRowSchema,
+  LocalRuntimeModelRowSchema,
   RoutingRuleIdRowSchema,
 } from "./local-runtime/row-schemas.js";
 import {
@@ -39,7 +40,7 @@ import {
 } from "./local-runtime/registration.js";
 import { createMachineToken, rotateMachineToken } from "./local-runtime/tokens.js";
 
-export { probeLocalModel, probeRegisteredLocalRuntimeForWorkspace };
+export { probeLocalModel, probeRegisteredLocalRuntimeForWorkspace } from "./local-runtime/probing.js";
 
 type RegisterLocalRuntimeInput = {
   workspaceId: string;
@@ -47,27 +48,20 @@ type RegisterLocalRuntimeInput = {
   request: LocalRuntimeRegistrationRequest;
 };
 
-type OptionalEventTableClient = {
-  from(table: "local_runtime_event"): {
-    select(columns: string): {
-      eq(
-        column: string,
-        value: string,
-      ): {
-        eq(
-          column: string,
-          value: string,
-        ): {
-          order(
-            column: "created_at",
-            options: { ascending: boolean },
-          ): {
-            limit(limit: number): Promise<{ data: unknown[] | null; error: PostgrestError | null }>;
-          };
-        };
-      };
-    };
-  };
+type LocalRuntimeTableQuery = {
+  select(columns: string): LocalRuntimeTableQuery;
+  eq(column: string, value: string): LocalRuntimeTableQuery;
+  order(column: string, options: { ascending: boolean }): LocalRuntimeTableQuery;
+  limit(limit: number): Promise<{ data: unknown[] | null; error: PostgrestError | null }>;
+  then<TResult1 = { data: unknown[] | null; error: PostgrestError | null }>(
+    onfulfilled?:
+      | ((value: { data: unknown[] | null; error: PostgrestError | null }) => TResult1 | PromiseLike<TResult1>)
+      | null,
+  ): Promise<TResult1>;
+};
+
+type LocalRuntimeUntypedSupabase = {
+  from(table: "local_runtime_event" | "local_runtime_model"): LocalRuntimeTableQuery;
 };
 
 export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, request }: RegisterLocalRuntimeInput) {
@@ -133,6 +127,7 @@ export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, re
         revoked_at: null,
         runner_kinds: machineRunnerKinds,
         advertised_runner_kinds: [],
+        status: "offline",
       },
       workspaceRoot: sharedWorkspaceRoot,
     }),
@@ -173,25 +168,23 @@ export async function listLocalRuntimesForWorkspace(workspaceId: string) {
   return listRegisteredLocalRuntimesForWorkspace(workspaceId);
 }
 
-function optionalEventTableMissing(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const maybeError = error as { code?: string; message?: string };
-  return (
-    maybeError.code === "42P01" ||
-    maybeError.code === "PGRST205" ||
-    maybeError.message?.includes("local_runtime_event") === true
-  );
-}
-
-function testDispatchError(code: string, message: string) {
-  return { code, message, detail: null };
-}
-
-export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, machineId: string, limit = 50) {
+export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, machineId: string, limit: number) {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   const supabase = getServiceRoleSupabase();
-  const optionalTables = supabase as unknown as OptionalEventTableClient;
-  const { data, error } = await optionalTables
+
+  const { data: machine, error: machineError } = await supabase
+    .from("local_runtime_machine")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("id", machineId)
+    .is("revoked_at", null)
+    .single();
+
+  if (machineError || !machine) {
+    throw new ApiRouteError(404, "local_runtime_machine_not_found", "Local runtime machine was not found");
+  }
+
+  const { data: events, error: eventsError } = await (supabase as never as LocalRuntimeUntypedSupabase)
     .from("local_runtime_event")
     .select("id, machine_id, workspace_id, kind, detail, created_at")
     .eq("workspace_id", workspaceId)
@@ -199,93 +192,139 @@ export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, ma
     .order("created_at", { ascending: false })
     .limit(safeLimit);
 
-  if (error && optionalEventTableMissing(error)) {
-    return LocalRuntimeEventsResponseSchema.parse({ events: [] });
-  }
-  if (error) {
-    assertSupabaseSuccess("list local runtime events", data, error);
+  if (eventsError) {
+    assertSupabaseSuccess("list local runtime events", events, eventsError);
   }
 
-  const rows = parseSupabaseRows("list local runtime events", LocalRuntimeEventRowSchema, data);
   return LocalRuntimeEventsResponseSchema.parse({
-    events: rows.map((row) => ({
-      id: row.id,
-      machineId: row.machine_id,
-      workspaceId: row.workspace_id,
-      kind: row.kind,
-      detail: row.detail ?? {},
-      createdAt: row.created_at,
+    events: parseSupabaseRows("list local runtime events", LocalRuntimeEventRowSchema, events).map((event) => ({
+      id: event.id,
+      machineId: event.machine_id,
+      workspaceId: event.workspace_id,
+      kind: event.kind,
+      detail: event.detail,
+      createdAt: event.created_at,
     })),
   });
 }
 
 export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, machineId: string) {
-  const list = await listLocalRuntimesForWorkspace(workspaceId);
-  const runtime = list.runtimes.find((candidate) => candidate.id === machineId);
-  if (!runtime) {
-    throw new ApiRouteError(404, "local_runtime_not_found", "Local runtime was not found");
-  }
-
-  const helperConnected = runtime.status === "online";
-  const runner = runtime.runners.find((candidate) => candidate.kind === "openai_compatible") ?? runtime.runners[0];
-  const modelMissingError =
-    (runtime.lastError ?? runtime.localExecution.lastError)?.includes("not currently advertised") === true;
-  const modelAdvertised =
-    !modelMissingError &&
-    (!runner?.model || runner.models.length === 0 || runner.models.some((model) => model.model === runner.model));
-
-  if (!helperConnected) {
-    return LocalRuntimeTestDispatchResponseSchema.parse({
-      helperConnected,
-      modelAdvertised,
-      dispatchSucceeded: false,
-      error: testDispatchError(
-        "helper_offline",
-        "Helper is offline. Start the local-runtime-helper daemon and wait for a fresh heartbeat.",
-      ),
-    });
-  }
-
+  const supabase = getServiceRoleSupabase();
+  const details = await getLocalRuntimeMachineDetails(workspaceId, machineId);
+  const runner = details.runners.find((candidate) => candidate.kind === "openai_compatible") ?? details.runners[0];
   if (!runner) {
-    return LocalRuntimeTestDispatchResponseSchema.parse({
-      helperConnected,
-      modelAdvertised: false,
-      dispatchSucceeded: false,
-      error: testDispatchError("runner_missing", "No runner is registered for this machine."),
-    });
+    throw new ApiRouteError(409, "local_runtime_incomplete", "Local runtime machine has no usable runners");
   }
 
-  if (!modelAdvertised) {
-    return LocalRuntimeTestDispatchResponseSchema.parse({
-      helperConnected,
-      modelAdvertised: false,
-      dispatchSucceeded: false,
-      error: testDispatchError(
-        "model_not_advertised",
-        runtime.lastError ?? runtime.localExecution.lastError ?? "Configured model is not advertised by the helper.",
-      ),
-    });
+  const { data: machine, error: machineError } = await supabase
+    .from("local_runtime_machine")
+    .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds, status")
+    .eq("workspace_id", workspaceId)
+    .eq("id", machineId)
+    .is("revoked_at", null)
+    .single();
+
+  if (machineError || !machine) {
+    throw new ApiRouteError(404, "local_runtime_machine_not_found", "Local runtime machine was not found");
+  }
+  const parsedMachine = parseNullableSupabaseRow(
+    "read local runtime machine for test dispatch",
+    LocalRuntimeMachineRowSchema,
+    machine,
+  );
+  const helperConnected = helperOnline(parsedMachine?.last_seen_at);
+
+  const { data: models, error: modelsError } = await (supabase as never as LocalRuntimeUntypedSupabase)
+    .from("local_runtime_model")
+    .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
+    .eq("machine_id", machineId);
+
+  if (modelsError) {
+    assertSupabaseSuccess("list local runtime models for test dispatch", models, modelsError);
   }
 
-  if (runner.kind !== "openai_compatible") {
+  const advertisedModels = parseSupabaseRows(
+    "list local runtime models for test dispatch",
+    LocalRuntimeModelRowSchema,
+    models,
+  );
+  const modelAdvertised = advertisedModels.some(
+    (model) =>
+      model.model === runner.model && (model.runner_kind === runner.runnerKind || model.runner_kind === runner.kind),
+  );
+
+  if (!helperConnected || !modelAdvertised) {
     return LocalRuntimeTestDispatchResponseSchema.parse({
+      machineId,
       helperConnected,
       modelAdvertised,
-      dispatchSucceeded: true,
-      error: null,
+      dispatchSucceeded: false,
+      error: {
+        code: !helperConnected ? "helper_disconnected" : "model_unavailable",
+        message: !helperConnected ? "Helper is not connected." : "Model is not advertised by this helper.",
+        detail: {
+          rawMessage: `${runner.runnerKind}:${runner.model ?? ""}`,
+        },
+      },
     });
   }
 
-  const probe = await probeRegisteredLocalRuntimeForWorkspace(workspaceId, runner.id);
-  return LocalRuntimeTestDispatchResponseSchema.parse({
-    helperConnected,
-    modelAdvertised: probe.modelFound,
-    dispatchSucceeded: probe.reachable && probe.modelFound,
-    error:
-      probe.reachable && probe.modelFound
-        ? null
-        : testDispatchError("probe_failed", probe.error ?? "Model probe failed."),
-  });
+  return LocalRuntimeTestDispatchResponseSchema.parse(await runRuntimeDiagnostics({ workspaceId, machineId, runner }));
+}
+
+async function runRuntimeDiagnostics(input: {
+  workspaceId: string;
+  machineId: string;
+  runner: {
+    runnerKind: string;
+    model: string | null;
+  };
+}) {
+  const baseUrl = (process.env.ORCHESTRATOR_BASE_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
+  const url = new URL(`${baseUrl}/api/v1/local-runtime/health`);
+  url.searchParams.set("workspace_id", input.workspaceId);
+  url.searchParams.set("machine_id", input.machineId);
+  url.searchParams.set("target_runner_kind", input.runner.runnerKind);
+  if (input.runner.model) {
+    url.searchParams.set("model", input.runner.model);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+      const ok = response.ok && body?.ok === true;
+      return {
+        machineId: input.machineId,
+        helperConnected: true,
+        modelAdvertised: true,
+        dispatchSucceeded: ok,
+        error: ok
+          ? null
+          : {
+              code: String(body?.reason ?? body?.status ?? "runtime_diagnostic_failed"),
+              message: "Runtime diagnostics did not report the local runtime path as ready.",
+              detail: body ?? {},
+            },
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (error) {
+    return {
+      machineId: input.machineId,
+      helperConnected: true,
+      modelAdvertised: true,
+      dispatchSucceeded: false,
+      error: {
+        code: "runtime_unreachable",
+        message: "Could not reach the runtime diagnostics endpoint.",
+        detail: { reason: error instanceof Error ? error.message : String(error) },
+      },
+    };
+  }
 }
 
 export async function deleteLocalRuntimeForWorkspace(workspaceId: string, machineId: string) {

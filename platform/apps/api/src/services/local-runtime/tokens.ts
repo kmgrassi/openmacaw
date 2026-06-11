@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import type { PostgrestError } from "@supabase/supabase-js";
 import type { TablesInsert, TablesUpdate } from "@kmgrassi/supabase-schema";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
 import type { getServiceRoleSupabase } from "../../supabase-client.js";
@@ -28,14 +29,25 @@ export function hashToken(token: string): string {
 }
 
 type SupabaseClient = ReturnType<typeof getServiceRoleSupabase>;
+const MACHINE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+type LocalRuntimeTokenInsertQuery = PromiseLike<{ data: unknown[] | null; error: PostgrestError | null }>;
+type LocalRuntimeUntypedSupabase = {
+  from(table: "local_runtime_token"): {
+    insert(values: Record<string, unknown>): LocalRuntimeTokenInsertQuery;
+  };
+};
 
 export async function createMachineToken(input: { supabase: SupabaseClient; machineId: string; workspaceId: string }) {
   const plaintextToken = generateMachineToken();
-  const { error } = await input.supabase.from("local_runtime_token").insert({
+  const tokenRow: TablesInsert<"local_runtime_token"> & { expires_at: string } = {
     machine_id: input.machineId,
     workspace_id: input.workspaceId,
     token_hash: hashToken(plaintextToken),
-  } satisfies TablesInsert<"local_runtime_token">);
+    expires_at: new Date(Date.now() + MACHINE_TOKEN_TTL_MS).toISOString(),
+  };
+  const { error } = await (input.supabase as never as LocalRuntimeUntypedSupabase)
+    .from("local_runtime_token")
+    .insert(tokenRow);
 
   return { plaintextToken, error };
 }

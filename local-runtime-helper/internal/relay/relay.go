@@ -131,15 +131,16 @@ func (d *Dispatcher) StartDispatch(ctx context.Context, frame *protocol.Dispatch
 	return nil
 }
 
-// Cancel cancels an in-flight dispatch. Unknown correlation IDs are ignored so
-// duplicate cancel frames from the cloud are harmless.
-func (d *Dispatcher) Cancel(correlationID string) {
+// Cancel cancels an in-flight dispatch and reports whether one was found.
+func (d *Dispatcher) Cancel(correlationID string) bool {
 	d.mu.Lock()
 	cancel := d.inflight[correlationID]
 	d.mu.Unlock()
 	if cancel != nil {
 		cancel()
+		return true
 	}
+	return false
 }
 
 // HandleFrame routes cloud frames relevant to dispatch execution.
@@ -148,8 +149,14 @@ func (d *Dispatcher) HandleFrame(ctx context.Context, frame protocol.Frame) erro
 	case *protocol.DispatchFrame:
 		return d.StartDispatch(ctx, f)
 	case *protocol.CancelFrame:
-		d.Cancel(f.CorrelationID)
-		return nil
+		outcome := "not_found"
+		if d.Cancel(f.CorrelationID) {
+			outcome = "canceled"
+		}
+		return d.sender.SendFrame(ctx, &protocol.CancelAckFrame{
+			CorrelatedFrame: correlated(protocol.TypeCancelAck, f.CorrelationID),
+			Outcome:         outcome,
+		})
 	default:
 		return nil
 	}
@@ -247,6 +254,9 @@ func (d *Dispatcher) runDispatch(ctx context.Context, frame *protocol.DispatchFr
 		var runnerErr *runner.Error
 		if errors.As(err, &runnerErr) {
 			code = string(runnerErr.Kind)
+			log.Error("dispatch failed", "error", err)
+			_ = d.sendTerminalErrorWithDetail(ctx, frame.CorrelationID, code, err.Error(), protocolErrorDetail(runnerErr.Detail))
+			return
 		}
 		log.Error("dispatch failed", "error", err)
 		_ = d.sendTerminalError(ctx, frame.CorrelationID, code, err.Error())
@@ -329,11 +339,28 @@ func (d *Dispatcher) sendError(ctx context.Context, correlationID, code, message
 }
 
 func (d *Dispatcher) sendTerminalError(ctx context.Context, correlationID, code, message string) error {
+	return d.sendTerminalErrorWithDetail(ctx, correlationID, code, message, nil)
+}
+
+func (d *Dispatcher) sendTerminalErrorWithDetail(ctx context.Context, correlationID, code, message string, detail *protocol.ErrorDetail) error {
 	return d.sendTerminalFrame(ctx, &protocol.ErrorFrame{
 		CorrelatedFrame: correlated(protocol.TypeError, correlationID),
 		Code:            code,
 		Message:         message,
+		Detail:          detail,
 	})
+}
+
+func protocolErrorDetail(detail runner.ErrorDetail) *protocol.ErrorDetail {
+	if detail.HTTPStatus == nil && detail.DialError == "" && detail.Endpoint == "" && detail.RawMessage == "" {
+		return nil
+	}
+	return &protocol.ErrorDetail{
+		HTTPStatus: detail.HTTPStatus,
+		DialError:  detail.DialError,
+		Endpoint:   detail.Endpoint,
+		RawMessage: detail.RawMessage,
+	}
 }
 
 func (d *Dispatcher) sendTerminalFrame(ctx context.Context, frame protocol.Frame) error {

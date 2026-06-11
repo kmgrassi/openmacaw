@@ -65,6 +65,8 @@ export type LocalRuntimeRunner = {
   provider: string;
   toolCallCapability: LocalToolCallCapability | null;
   models: LocalRuntimeModel[];
+  lastError: string | null;
+  lastErrorAt: string | null;
   agents: LocalRuntimeAgent[];
 };
 
@@ -74,6 +76,7 @@ export type LocalRuntime = {
   machineDisplayName: string;
   status: "online" | "offline" | "degraded";
   lastError: string | null;
+  models: LocalRuntimeModel[];
   localExecution: LocalExecutionTarget;
   runners: LocalRuntimeRunner[];
 };
@@ -166,6 +169,7 @@ export type LocalRuntimeTestDispatchError = {
 };
 
 export type LocalRuntimeTestDispatchResponse = {
+  machineId: string;
   helperConnected: boolean;
   modelAdvertised: boolean;
   dispatchSucceeded: boolean;

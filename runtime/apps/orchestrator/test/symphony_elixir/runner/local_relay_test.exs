@@ -177,6 +177,32 @@ defmodule SymphonyElixir.Runner.LocalRelayTest do
     refute_received {:dispatch_frame, _frame}
   end
 
+  test "accepts a requested model from any advertised runner registration" do
+    parent = self()
+    helper = start_helper(parent)
+
+    Registry.register(%{
+      workspace_id: "workspace-1",
+      machine_id: "machine-1",
+      pid: helper,
+      runners: [
+        %{runner_kind: "openai_compatible", provider: "ollama", model: "first-model"},
+        %{runner_kind: "openai_compatible", provider: "ollama", model: "second-model"}
+      ]
+    })
+
+    {:ok, session} =
+      LocalRelay.start_session(
+        %{"workspace_id" => "workspace-1", "model" => "second-model"},
+        nil
+      )
+
+    assert {:ok, result} = LocalRelay.run_turn(session, "prompt", build_work_item())
+    assert result["output_text"] == "hello"
+
+    assert_receive {:dispatch_frame, %{"model" => "second-model"}}
+  end
+
   test "matches capability keys without creating atoms" do
     parent = self()
     helper = start_helper(parent)

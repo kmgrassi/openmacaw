@@ -32,7 +32,8 @@ export function localRuntimeBindingStatusForAgent(
         (runner.model.length > 0 &&
           liveModels.length > 0 &&
           !liveModels.includes(runner.model)) ||
-        lastError?.includes("not currently advertised") === true;
+        lastError?.includes("not currently advertised") === true ||
+        lastError?.includes("not advertised") === true;
 
       if (runtime.status === "offline") {
         return {

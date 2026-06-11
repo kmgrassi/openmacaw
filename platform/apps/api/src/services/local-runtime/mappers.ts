@@ -5,6 +5,7 @@ import {
   LocalRuntimeRunnerSchema,
   type LocalRuntimeRegistrationRunnerKind,
   type LocalRuntimeRunner,
+  type LocalRuntimeModel,
   type LocalToolCallCapability,
 } from "../../../../../contracts/local-runtime.js";
 import {
@@ -41,16 +42,10 @@ export type RunnerRow = {
   endpoint: string | null;
   model: string | null;
   provider: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  models: LocalRuntimeModel[];
   toolCallCapability: LocalToolCallCapability | null;
-  models?: Array<{
-    id: string;
-    machineId: string;
-    runnerKind: string;
-    model: string;
-    provider: string | null;
-    capabilities: Record<string, unknown>;
-    lastAdvertisedAt: string;
-  }>;
   agents: Array<{ agentId: string; agentName: string }>;
 };
 
@@ -62,7 +57,9 @@ export function toLocalRuntimeRunner(input: RunnerRow): LocalRuntimeRunner {
     endpoint: input.endpoint ?? "",
     model: input.model ?? "",
     provider: input.provider ?? defaultProviderFor(input.kind),
-    models: input.models ?? [],
+    models: input.models,
+    lastError: input.lastError,
+    lastErrorAt: input.lastErrorAt,
     toolCallCapability: input.toolCallCapability,
     agents: input.agents,
   });
@@ -90,17 +87,19 @@ export function toLocalRuntimeRegistrationResponse(input: {
 export function toLocalRuntimeListItem(input: {
   machineId: string;
   machineDisplayName: string;
-  status: "online" | "offline" | "degraded";
-  lastError: string | null;
   localExecution: LocalExecution;
+  status: "online" | "offline" | "degraded";
+  models: LocalRuntimeModel[];
+  lastError: string | null;
   runners: RunnerRow[];
 }) {
   return LocalRuntimeListItemSchema.parse({
     id: input.machineId,
     machineDisplayName: input.machineDisplayName,
-    status: input.status,
-    lastError: input.lastError,
     localExecution: input.localExecution,
+    status: input.status,
+    models: input.models,
+    lastError: input.lastError,
     runners: input.runners.map(toLocalRuntimeRunner),
   });
 }

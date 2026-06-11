@@ -47,8 +47,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
       handle_frame(type, frame, state)
     else
       {:error, reason} ->
-        {:push, [error_frame(nil, :local_runner_protocol_error, protocol_error_message(reason))],
-         state}
+        {:push, [error_frame(nil, :local_runner_protocol_error, protocol_error_message(reason))], state}
 
       _ ->
         {:push, [error_frame(nil, :local_runner_protocol_error, "invalid frame")], state}
@@ -80,14 +79,11 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
     elapsed_ms = now - state.last_heartbeat_ms
 
     if elapsed_ms >= timeout_ms do
-      Logger.warning(
-        "local_relay_heartbeat_timeout workspace_id=#{state.workspace_id} machine_id=#{state.machine_id}"
-      )
+      Logger.warning("local_relay_heartbeat_timeout workspace_id=#{state.workspace_id} machine_id=#{state.machine_id}")
 
       cleanup_registered_connection(state)
 
-      {:stop, {:shutdown, :heartbeat_timeout},
-       %{state | registered?: false, heartbeat_timer_ref: nil}}
+      {:stop, {:shutdown, :heartbeat_timeout}, %{state | registered?: false, heartbeat_timer_ref: nil}}
     else
       {:ok, schedule_heartbeat_timeout(state, timeout_ms - elapsed_ms)}
     end
@@ -96,9 +92,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   def handle_info(:local_relay_heartbeat_timeout, state), do: {:ok, state}
 
   def handle_info({:local_relay_evicted, reason}, %{registered?: true} = state) do
-    Logger.info(
-      "local_relay_connection_evicted reason=#{reason} workspace_id=#{state.workspace_id} machine_id=#{state.machine_id}"
-    )
+    Logger.info("local_relay_connection_evicted reason=#{reason} workspace_id=#{state.workspace_id} machine_id=#{state.machine_id}")
 
     cleanup_registered_connection(state)
     {:stop, {:shutdown, reason}, %{state | registered?: false, heartbeat_timer_ref: nil}}
@@ -163,9 +157,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
           reconnect: %{backoff_ms: [1_000, 2_000, 5_000, 15_000], jitter: true}
         }
 
-        Logger.info(
-          "local_relay_registered workspace_id=#{register.workspace_id} machine_id=#{register.machine_id}"
-        )
+        Logger.info("local_relay_registered workspace_id=#{register.workspace_id} machine_id=#{register.machine_id}")
 
         state =
           state
@@ -203,9 +195,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
       {:error, %Ecto.Changeset{} = changeset} ->
         message = LocalRelayRegister.error_message(changeset)
 
-        Logger.warning(
-          "local_relay_register_rejected reason=schema_validation message=#{message}"
-        )
+        Logger.warning("local_relay_register_rejected reason=schema_validation message=#{message}")
 
         reply =
           error_frame(Map.get(frame, "correlation_id"), :local_runner_protocol_error, message)
@@ -213,8 +203,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
         {:push, [reply], state}
 
       {:error, reason} ->
-        {:push, [error_frame(Map.get(frame, "correlation_id"), reason, safe_message(reason))],
-         state}
+        {:push, [error_frame(Map.get(frame, "correlation_id"), reason, safe_message(reason))], state}
     end
   end
 
@@ -293,11 +282,14 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   end
 
   defp handle_frame("cancel_ack", frame, %{registered?: true} = state) do
-    Logger.debug(
-      "local_relay_cancel_ack workspace_id=#{state.workspace_id} machine_id=#{state.machine_id} correlation_id=#{Map.get(frame, "correlation_id")} outcome=#{Map.get(frame, "outcome")}"
-    )
+    Logger.debug("local_relay_cancel_ack workspace_id=#{state.workspace_id} machine_id=#{state.machine_id} correlation_id=#{Map.get(frame, "correlation_id")} outcome=#{Map.get(frame, "outcome")}")
 
-    {:ok, state}
+    correlation_id = Map.get(frame, "correlation_id")
+
+    case route_relay_frame("cancel_ack", correlation_id, frame) do
+      :ok -> {:ok, state}
+      {:error, reason} -> {:push, [error_frame(correlation_id, reason, safe_message(reason))], state}
+    end
   end
 
   defp handle_frame(type, frame, state)
@@ -404,9 +396,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   defp handle_registration_error({:error, reason}, register, frame, state) do
     _ = Presence.offline(register.workspace_id, register.machine_id, self())
 
-    Logger.warning(
-      "local_relay_register_rejected reason=#{reason} workspace_id=#{register.workspace_id} machine_id=#{register.machine_id}"
-    )
+    Logger.warning("local_relay_register_rejected reason=#{reason} workspace_id=#{register.workspace_id} machine_id=#{register.machine_id}")
 
     reply = error_frame(Map.get(frame, "correlation_id"), reason, safe_message(reason))
     {:push, [reply], state}
@@ -439,6 +429,9 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
 
   defp route_relay_frame("tool_call_result", correlation_id, frame),
     do: Registry.tool_call_result(correlation_id, frame)
+
+  defp route_relay_frame("cancel_ack", correlation_id, frame),
+    do: Registry.cancel_ack(correlation_id, frame)
 
   defp error_frame(correlation_id, code, message) do
     text_frame(%{

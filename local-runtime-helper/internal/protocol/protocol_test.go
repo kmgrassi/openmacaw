@@ -146,7 +146,7 @@ func TestFrameRoundTrip(t *testing.T) {
 					BaseFrame:     BaseFrame{Type: TypeCancelAck, SchemaVersion: SchemaVersion},
 					CorrelationID: "dispatch_123",
 				},
-				Outcome: "cancelled",
+				Outcome: "canceled",
 			},
 		},
 		{

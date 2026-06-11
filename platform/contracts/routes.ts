@@ -22,6 +22,7 @@ export const StoredAgentRouteTemplates = {
 
 export const AgentRouteTemplates = {
   runtimeProfile: `${AGENTS_PREFIX}/:agentId/runtime-profile`,
+  assignLocalModel: `${AGENTS_PREFIX}/:agentId/assign-local-model`,
 } as const;
 
 export const LocalRuntimeRouteTemplates = {
@@ -84,6 +85,16 @@ export function agentRuntimeProfileRoute(
 ) {
   return appendWorkspaceQuery(
     `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/runtime-profile`,
+    workspaceId,
+  );
+}
+
+export function agentAssignLocalModelRoute(
+  agentId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/assign-local-model`,
     workspaceId,
   );
 }

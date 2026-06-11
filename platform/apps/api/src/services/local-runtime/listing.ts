@@ -1,5 +1,4 @@
 import { LocalRuntimeListResponseSchema } from "../../../../../contracts/local-runtime.js";
-import type { PostgrestError } from "@supabase/supabase-js";
 import { parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
@@ -11,8 +10,8 @@ import {
 import { toLocalRuntimeListItem, type RunnerRow } from "./mappers.js";
 import {
   LocalRuntimeAgentRowSchema,
-  LocalRuntimeModelRowSchema,
   LocalRuntimeMachineRowSchema,
+  LocalRuntimeModelRowSchema,
   LocalRuntimeRoutingRuleListRowSchema,
   RoutingRuleMatchRowSchema,
 } from "./row-schemas.js";
@@ -23,40 +22,12 @@ import {
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
 } from "./routing-metadata.js";
 
-type LiveModel = {
-  id: string;
-  machineId: string;
-  runnerKind: string;
-  model: string;
-  provider: string | null;
-  capabilities: Record<string, unknown>;
-  lastAdvertisedAt: string;
-};
-
-type OptionalModelTableClient = {
-  from(table: "local_runtime_model"): {
-    select(columns: string): {
-      in(column: "machine_id", values: string[]): Promise<{ data: unknown[] | null; error: PostgrestError | null }>;
-    };
-  };
-};
-
-function isMissingOptionalLocalRuntimeTable(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const maybeError = error as { code?: string; message?: string };
-  return (
-    maybeError.code === "42P01" ||
-    maybeError.code === "PGRST205" ||
-    maybeError.message?.includes("local_runtime_model") === true
-  );
-}
-
 export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: string) {
   const supabase = getServiceRoleSupabase();
 
   const { data: rules, error: rulesError } = await supabase
     .from("routing_rule")
-    .select("id, model, provider, runner_kind, name")
+    .select("id, model, provider, runner_kind, name, machine_id, last_error, last_error_at")
     .eq("workspace_id", workspaceId)
     .in("runner_kind", [...REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS])
     .like("name", `${LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX}%`);
@@ -104,7 +75,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
 
   const machineIdsFromRules = new Map<string, string>();
   for (const rule of candidateRules) {
-    const machineId = matchValue(matchesByRule.get(rule.id) ?? [], "local_machine", "id");
+    const machineId = rule.machine_id ?? matchValue(matchesByRule.get(rule.id) ?? [], "local_machine", "id");
     if (machineId) {
       machineIdsFromRules.set(rule.id, machineId);
     }
@@ -115,7 +86,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     machineIds.length > 0
       ? await supabase
           .from("local_runtime_machine")
-          .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds")
+          .select("id, display_name, last_seen_at, revoked_at, runner_kinds, advertised_runner_kinds, status")
           .eq("workspace_id", workspaceId)
           .is("revoked_at", null)
           .in("id", machineIds)
@@ -126,40 +97,18 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   }
   const parsedMachines = parseSupabaseRows("list local runtime machines", LocalRuntimeMachineRowSchema, machines);
 
-  const liveModelsByMachine = new Map<string, LiveModel[]>();
-  let liveModelRowsAvailable = false;
-  if (machineIds.length > 0) {
-    const optionalTables = supabase as unknown as OptionalModelTableClient;
-    const { data: modelRows, error: modelError } = await optionalTables
-      .from("local_runtime_model")
-      .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
-      .in("machine_id", machineIds);
+  const { data: liveModels, error: liveModelsError } =
+    machineIds.length > 0
+      ? await supabase
+          .from("local_runtime_model" as never)
+          .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
+          .in("machine_id", machineIds)
+      : { data: [], error: null };
 
-    if (modelError && !isMissingOptionalLocalRuntimeTable(modelError)) {
-      assertSupabaseSuccess("list local runtime live models", modelRows, modelError);
-    }
-    if (!modelError) {
-      liveModelRowsAvailable = true;
-      const parsedModelRows = parseSupabaseRows(
-        "list local runtime live models",
-        LocalRuntimeModelRowSchema,
-        modelRows,
-      );
-      for (const row of parsedModelRows) {
-        const list = liveModelsByMachine.get(row.machine_id) ?? [];
-        list.push({
-          id: row.id,
-          machineId: row.machine_id,
-          runnerKind: row.runner_kind,
-          model: row.model,
-          provider: row.provider,
-          capabilities: row.capabilities ?? {},
-          lastAdvertisedAt: row.last_advertised_at ?? new Date(0).toISOString(),
-        });
-        liveModelsByMachine.set(row.machine_id, list);
-      }
-    }
+  if (liveModelsError) {
+    assertSupabaseSuccess("list local runtime live models", liveModels, liveModelsError);
   }
+  const parsedLiveModels = parseSupabaseRows("list local runtime live models", LocalRuntimeModelRowSchema, liveModels);
 
   const agentIds = Array.from(
     new Set(ruleMatches.filter((match) => match.kind === "agent_id").map((match) => match.value)),
@@ -176,11 +125,18 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
 
   const machinesById = new Map(parsedMachines.map((machine) => [machine.id, machine]));
   const agentsById = new Map(parsedAgents.map((agent) => [agent.id, agent]));
+  const liveModelsByMachine = new Map<string, typeof parsedLiveModels>();
+  for (const model of parsedLiveModels) {
+    const current = liveModelsByMachine.get(model.machine_id) ?? [];
+    current.push(model);
+    liveModelsByMachine.set(model.machine_id, current);
+  }
 
   const runnersByMachine = new Map<string, RunnerRow[]>();
   const workspaceRootByMachine = new Map<string, string>();
+  const lastErrorByMachine = new Map<string, { message: string; at: string | null }>();
   for (const rule of candidateRules) {
-    const machineId = machineIdsFromRules.get(rule.id);
+    const machineId = rule.machine_id ?? machineIdsFromRules.get(rule.id);
     if (!machineId) continue;
     const ruleMatchesForRule = matchesByRule.get(rule.id) ?? [];
     const endpoint = matchValue(ruleMatchesForRule, "local_endpoint", "url");
@@ -193,6 +149,23 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     if (workspaceRoot && !workspaceRootByMachine.has(machineId)) {
       workspaceRootByMachine.set(machineId, workspaceRoot);
     }
+    if (rule.last_error) {
+      const current = lastErrorByMachine.get(machineId);
+      if (!current || String(rule.last_error_at ?? "") > String(current.at ?? "")) {
+        lastErrorByMachine.set(machineId, { message: rule.last_error, at: rule.last_error_at });
+      }
+    }
+    const liveModelsForRunner = (liveModelsByMachine.get(machineId) ?? [])
+      .filter((model) => model.runner_kind === rule.runner_kind || model.runner_kind === registrationKind)
+      .map((model) => ({
+        id: model.id,
+        machineId: model.machine_id,
+        runnerKind: model.runner_kind,
+        model: model.model,
+        provider: model.provider,
+        capabilities: model.capabilities,
+        lastAdvertisedAt: model.last_advertised_at,
+      }));
     const runner: RunnerRow = {
       id: rule.id,
       kind: registrationKind,
@@ -200,13 +173,13 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
       endpoint,
       model: rule.model ?? null,
       provider: rule.provider ?? (registrationKind === "openclaw" ? "openclaw" : "openai_compatible"),
+      lastError: rule.last_error,
+      lastErrorAt: rule.last_error_at,
+      models: liveModelsForRunner,
       toolCallCapability:
         registrationKind === "openclaw"
           ? null
           : normalizeToolCallCapability(matchValue(ruleMatchesForRule, "local_model_capability", "tool_call")),
-      models: (liveModelsByMachine.get(machineId) ?? []).filter(
-        (model) => model.runnerKind === rule.runner_kind || model.runnerKind === registrationKind,
-      ),
       agents: assignedAgentIds.map((id) => ({
         agentId: id,
         agentName: agentsById.get(id)?.name ?? id,
@@ -219,27 +192,27 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
 
   const runtimes = Array.from(runnersByMachine.entries()).map(([machineId, runners]) => {
     const machine = machinesById.get(machineId) ?? null;
+    const models = (liveModelsByMachine.get(machineId) ?? []).map((model) => ({
+      id: model.id,
+      machineId: model.machine_id,
+      runnerKind: model.runner_kind,
+      model: model.model,
+      provider: model.provider,
+      capabilities: model.capabilities,
+      lastAdvertisedAt: model.last_advertised_at,
+    }));
+    const lastError = lastErrorByMachine.get(machineId)?.message ?? null;
     const localExecution = buildLocalExecution({
       machine,
       workspaceRoot: workspaceRootByMachine.get(machineId) ?? null,
     });
-    const status = localExecution.status;
-    const hasMissingAdvertisedModel =
-      liveModelRowsAvailable &&
-      runners.some((runner) => Boolean(runner.model) && !runner.models?.some((model) => model.model === runner.model));
-    const lastError =
-      hasMissingAdvertisedModel && status === "online"
-        ? "Configured model is not currently advertised by the helper."
-        : null;
     return toLocalRuntimeListItem({
       machineId,
       machineDisplayName: machine?.display_name ?? machineId,
-      status,
+      localExecution,
+      status: localExecution.status,
+      models,
       lastError,
-      localExecution: {
-        ...localExecution,
-        lastError,
-      },
       runners,
     });
   });

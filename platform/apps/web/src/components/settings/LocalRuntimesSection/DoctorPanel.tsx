@@ -59,6 +59,9 @@ export function DoctorPanel({
   const modelMissingError =
     (runtime.lastError ?? runtime.localExecution.lastError)?.includes(
       "not currently advertised",
+    ) === true ||
+    (runtime.lastError ?? runtime.localExecution.lastError)?.includes(
+      "not advertised",
     ) === true;
   const modelPresent =
     !modelMissingError &&
