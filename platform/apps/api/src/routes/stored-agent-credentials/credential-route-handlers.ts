@@ -12,7 +12,9 @@ import { ApiRouteError, errorPayload, handleApiRouteError, requestAccessToken, r
 import {
   getAgentCredentialReferenceRule,
   getRoutingRuleLocalEndpointUrl,
+  listRoutingRuleFallbacks,
   upsertAgentCredentialReferenceRule,
+  credentialRefFromRoutingRuleFallback,
 } from "../../repositories/routing-rules.js";
 import { validateCredentialRecord } from "../../services/credential-validation.js";
 import { ensureDefaultAgentToolsForAgent } from "../../services/default-agent-tools.js";
@@ -109,6 +111,12 @@ export async function getStoredAgentCredentialReference(req: Request, res: Respo
           workspaceId,
         })
       : null;
+    const fallbacks = rule
+      ? await listRoutingRuleFallbacks({
+          ruleId: rule.id,
+          workspaceId,
+        })
+      : [];
 
     return res.status(200).json(
       buildCredentialReferenceResponse({
@@ -116,6 +124,11 @@ export async function getStoredAgentCredentialReference(req: Request, res: Respo
         workspaceId,
         state,
         rule,
+        fallbacks: fallbacks.map((fallback) => ({
+          provider: fallback.provider,
+          model: fallback.model,
+          credentialRef: credentialRefFromRoutingRuleFallback(fallback),
+        })),
         localEndpointUrl,
         runnerKind: resolvedProfile?.runnerKind ?? defaultRunnerKindForAgentType(agent.agentType),
         provider: resolvedProfile?.provider ?? agent.provider ?? deriveProviderFromModel(agent.model),
@@ -144,6 +157,12 @@ async function upsertCredentialReference(req: Request, request: UpsertAgentCrede
     workspaceId: request.workspaceId,
     credentialRef: request.credentialRef,
   });
+  for (const fallback of request.fallbacks) {
+    await assertCredentialReferenceBelongsToWorkspace({
+      workspaceId: request.workspaceId,
+      credentialRef: fallback.credentialRef,
+    });
+  }
 
   const requestedRunnerKind = request.runnerKind ?? defaultRunnerKindForAgentType(agent.agentType);
   const localModelRule =
@@ -161,6 +180,8 @@ async function upsertCredentialReference(req: Request, request: UpsertAgentCrede
     provider: localModelRule?.provider ?? request.provider ?? agent.provider ?? deriveProviderFromModel(agent.model),
     model: localModelRule?.model ?? request.model ?? agent.model,
     credentialRef: request.credentialRef,
+    fallbacks: request.fallbacks,
+    modelTierFloor: request.modelTierFloor,
     localEndpointUrl: localModelRule?.endpointUrl ?? request.localEndpointUrl ?? null,
   });
   if (rule.runner_kind === "local_model_coding") {
@@ -185,12 +206,21 @@ async function upsertCredentialReference(req: Request, request: UpsertAgentCrede
       ruleId: rule.id,
       workspaceId: request.workspaceId,
     }));
+  const fallbacks = await listRoutingRuleFallbacks({
+    ruleId: rule.id,
+    workspaceId: request.workspaceId,
+  });
 
   return buildCredentialReferenceResponse({
     agent,
     workspaceId: request.workspaceId,
     state,
     rule,
+    fallbacks: fallbacks.map((fallback) => ({
+      provider: fallback.provider,
+      model: fallback.model,
+      credentialRef: credentialRefFromRoutingRuleFallback(fallback),
+    })),
     localEndpointUrl,
     runnerKind: rule.runner_kind,
     provider: agent.provider,

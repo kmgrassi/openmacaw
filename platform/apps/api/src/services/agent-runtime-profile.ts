@@ -11,9 +11,11 @@ import { ApiRouteError } from "../http.js";
 import { findStoredAgentRowById, getStoredAgentGatewayConfig, updateStoredAgentRow } from "../repositories/agents.js";
 import type { SetupAgentRow } from "../repositories/agents.js";
 import {
+  credentialRefFromRoutingRuleFallback,
   credentialRefFromRoutingRule,
   getAgentCredentialReferenceRule,
   getRoutingRuleLocalEndpointUrl,
+  listRoutingRuleFallbacks,
   upsertAgentCredentialReferenceRule,
 } from "../repositories/routing-rules.js";
 import { getCredentialRowByIdForWorkspace, resolveCredentialAlias } from "../repositories/credentials.js";
@@ -212,6 +214,18 @@ async function assertCredentialReferenceBelongsToWorkspace(input: {
   if (!credential) throw new ApiRouteError(404, "credential_not_found", "Credential was not found");
 }
 
+async function assertFallbackCredentialsBelongToWorkspace(input: {
+  workspaceId: string;
+  fallbacks: NonNullable<AgentRuntimeProfileUpdateRequest["fallbacks"]>;
+}) {
+  for (const fallback of input.fallbacks) {
+    await assertCredentialReferenceBelongsToWorkspace({
+      workspaceId: input.workspaceId,
+      credentialRef: fallback.credentialRef,
+    });
+  }
+}
+
 export async function getAgentRuntimeProfile(input: {
   accessToken: string;
   userId: string;
@@ -250,6 +264,12 @@ export async function getAgentRuntimeProfile(input: {
         workspaceId: agent.workspace_id,
       })
     : null;
+  const fallbacks = rule
+    ? await listRoutingRuleFallbacks({
+        ruleId: rule.id,
+        workspaceId: agent.workspace_id,
+      })
+    : [];
 
   return AgentRuntimeProfileSchema.parse({
     agentId: agent.id,
@@ -259,6 +279,12 @@ export async function getAgentRuntimeProfile(input: {
     provider: parsedProvider.data,
     model,
     credentialRef: credentialRefFromRoutingRule(rule) ?? profile?.credentialRef ?? null,
+    fallbacks: fallbacks.map((fallback) => ({
+      provider: fallback.provider,
+      model: fallback.model,
+      credentialRef: credentialRefFromRoutingRuleFallback(fallback),
+    })),
+    modelTierFloor: rule?.model_tier_floor ?? "any",
     localEndpointUrl,
     localHelperRegistered:
       provider === "local"
@@ -297,6 +323,10 @@ export async function updateAgentRuntimeProfile(input: {
     workspaceId: agent.workspace_id,
     credentialRef,
   });
+  await assertFallbackCredentialsBelongToWorkspace({
+    workspaceId: agent.workspace_id,
+    fallbacks: input.body.fallbacks ?? [],
+  });
 
   await updateAgentPrimaryModel({
     accessToken: input.accessToken,
@@ -312,6 +342,8 @@ export async function updateAgentRuntimeProfile(input: {
     provider: input.body.provider,
     model: input.body.model,
     credentialRef,
+    fallbacks: input.body.fallbacks ?? [],
+    modelTierFloor: input.body.modelTierFloor ?? "any",
     localEndpointUrl: input.body.localEndpointUrl ?? null,
   });
 

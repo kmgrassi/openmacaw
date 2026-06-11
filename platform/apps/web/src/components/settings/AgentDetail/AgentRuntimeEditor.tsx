@@ -10,14 +10,29 @@ import { ensureStoredAgentDefaultRouting } from "../../../api/stored-agents";
 import {
   useLocalRuntimeMutations,
   useLocalRuntimesQuery,
+  useResolvedCredentialQuery,
 } from "../../../hooks/useServerStateQueries";
 import type { Agent } from "../../../types/agents";
 import type { AgentRuntimeProfile } from "../../../../../../contracts/agents";
+import type { CredentialReference } from "../../../../../../contracts/credentials";
+import {
+  MODEL_TIER_REGISTRY,
+  modelRegistryEntry,
+  modelTier,
+  type ModelTierFloor,
+} from "../../../../../../contracts/model-tiers";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { Select } from "../../ui/Select";
 import { HostedModelSelect } from "../HostedModelSelect";
 import { RUNTIME_PROVIDER_OPTIONS } from "./constants";
+import {
+  credentialProviderLabel,
+  credentialRefValue,
+  credentialRowId,
+  credentialValidationLabel,
+  matchesProviderFilter,
+} from "../credential-picker/credential-picker-utils";
 
 type AgentRuntimeEditorProps = {
   agent: Agent;
@@ -26,16 +41,21 @@ type AgentRuntimeEditorProps = {
   setRuntimeProvider: (value: AgentRuntimeProfile["provider"]) => void;
   runtimeModel: string;
   setRuntimeModel: (value: string) => void;
+  runtimeFallbacks: AgentRuntimeProfile["fallbacks"];
+  setRuntimeFallbacks: (value: AgentRuntimeProfile["fallbacks"]) => void;
+  runtimeModelTierFloor: ModelTierFloor;
+  setRuntimeModelTierFloor: (value: ModelTierFloor) => void;
   runtimeProfileLoading: boolean;
   runtimeProfileSaving: boolean;
   runtimeProfileDirty: boolean;
   runtimeProviderIsLocal: boolean;
   runtimeCredentialMissing: boolean;
-  onRuntimeProfileSave: () => void;
   onRuntimeProfileSaveInput: (input: {
     provider: AgentRuntimeProfile["provider"];
     model: string;
     credentialRef?: AgentRuntimeProfile["credentialRef"];
+    fallbacks?: AgentRuntimeProfile["fallbacks"];
+    modelTierFloor?: ModelTierFloor;
     localEndpointUrl?: string | null;
   }) => Promise<void> | void;
   onAgentReload: () => Promise<void>;
@@ -56,12 +76,15 @@ export function AgentRuntimeEditor({
   setRuntimeProvider,
   runtimeModel,
   setRuntimeModel,
+  runtimeFallbacks,
+  setRuntimeFallbacks,
+  runtimeModelTierFloor,
+  setRuntimeModelTierFloor,
   runtimeProfileLoading,
   runtimeProfileSaving,
   runtimeProfileDirty,
   runtimeProviderIsLocal,
   runtimeCredentialMissing,
-  onRuntimeProfileSave,
   onRuntimeProfileSaveInput,
   onAgentReload,
   onError,
@@ -77,6 +100,7 @@ export function AgentRuntimeEditor({
   const workspaceId = agent.workspaceId;
   const localRuntimesQuery = useLocalRuntimesQuery(workspaceId);
   const localRuntimeMutations = useLocalRuntimeMutations(workspaceId);
+  const credentialQuery = useResolvedCredentialQuery(agent.id, workspaceId);
   const localRunnerOptions = useMemo(
     () =>
       (localRuntimesQuery.data?.runtimes ?? []).flatMap((runtime) =>
@@ -271,6 +295,23 @@ export function AgentRuntimeEditor({
   const localRuntimeSaving =
     localRuntimeMutations.assignLocalModel.isPending || runtimeProfileSaving;
   const localRuntimeTesting = localRuntimeMutations.probeRegistered.isPending;
+  const routingWarnings = buildRoutingWarnings({
+    primaryProvider: runtimeProvider,
+    primaryModel: runtimeModel,
+    modelTierFloor: runtimeModelTierFloor,
+    fallbacks: runtimeFallbacks,
+  });
+
+  const saveRuntimeWithCutover = async () => {
+    await onRuntimeProfileSaveInput({
+      provider: runtimeProvider,
+      model: runtimeModel,
+      credentialRef: runtimeProfile?.credentialRef ?? null,
+      fallbacks: runtimeFallbacks,
+      modelTierFloor: runtimeModelTierFloor,
+      localEndpointUrl: runtimeProfile?.localEndpointUrl ?? null,
+    });
+  };
 
   return (
     <Card>
@@ -318,7 +359,7 @@ export function AgentRuntimeEditor({
               !runtimeProfileDirty ||
               runtimeCredentialMissing
             }
-            onClick={onRuntimeProfileSave}
+            onClick={saveRuntimeWithCutover}
           >
             Save runtime
           </Button>
@@ -369,6 +410,46 @@ export function AgentRuntimeEditor({
           />
         )}
       </div>
+      {runtimeProvider !== "local" && (
+        <div className="mt-4 space-y-3 rounded-md border border-white/5 bg-surface px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h5 className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                Cutover policy
+              </h5>
+            </div>
+            <Select
+              aria-label="Adequacy floor"
+              value={runtimeModelTierFloor}
+              onChange={(event) =>
+                setRuntimeModelTierFloor(event.target.value as ModelTierFloor)
+              }
+              options={MODEL_TIER_FLOOR_OPTIONS}
+              disabled={runtimeProfileLoading}
+              className="min-w-36"
+            />
+          </div>
+
+          <FallbackChainBuilder
+            agentId={agent.id}
+            workspaceId={workspaceId}
+            fallbacks={runtimeFallbacks}
+            disabled={runtimeProfileLoading || runtimeProfileSaving}
+            credentialState={credentialQuery.data ?? null}
+            onChange={setRuntimeFallbacks}
+          />
+
+          {routingWarnings.length > 0 && (
+            <div className="space-y-1 rounded-md border border-amber-600/30 bg-amber-950/20 px-3 py-2">
+              {routingWarnings.map((warning) => (
+                <p key={warning} className="text-xs text-amber-200">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {runtimeProvider === "local" && (
         <div className="mt-4 space-y-3 rounded-md border border-white/5 bg-surface px-3 py-3">
           <div className="grid gap-2 text-xs md:grid-cols-3">
@@ -483,6 +564,258 @@ export function AgentRuntimeEditor({
       )}
     </Card>
   );
+}
+
+const MODEL_TIER_FLOOR_OPTIONS: Array<{
+  value: ModelTierFloor;
+  label: string;
+}> = [
+  { value: "any", label: "Any model" },
+  { value: "local", label: "Local or better" },
+  { value: "mid", label: "Mid or better" },
+  { value: "frontier", label: "Frontier only" },
+];
+
+const FALLBACK_PROVIDER_OPTIONS = Array.from(
+  new Set(MODEL_TIER_REGISTRY.map((entry) => entry.provider)),
+).map((provider) => ({
+  value: provider,
+  label: providerLabel(provider),
+}));
+
+function FallbackChainBuilder({
+  agentId,
+  workspaceId,
+  fallbacks,
+  disabled,
+  credentialState,
+  onChange,
+}: {
+  agentId: string;
+  workspaceId: string | null | undefined;
+  fallbacks: AgentRuntimeProfile["fallbacks"];
+  disabled: boolean;
+  credentialState: ReturnType<typeof useResolvedCredentialQuery>["data"] | null;
+  onChange: (value: AgentRuntimeProfile["fallbacks"]) => void;
+}) {
+  const updateLink = (
+    index: number,
+    patch: Partial<AgentRuntimeProfile["fallbacks"][number]>,
+  ) => {
+    onChange(
+      fallbacks.map((fallback, candidateIndex) =>
+        candidateIndex === index ? { ...fallback, ...patch } : fallback,
+      ),
+    );
+  };
+
+  const moveLink = (index: number, direction: -1 | 1) => {
+    const next = [...fallbacks];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    const current = next[index];
+    const targetFallback = next[target];
+    if (!current || !targetFallback) return;
+    next[index] = targetFallback;
+    next[target] = current;
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      {fallbacks.length === 0 && (
+        <p className="text-xs text-slate-500">No fallback links configured.</p>
+      )}
+      {fallbacks.map((fallback, index) => (
+        <div
+          key={`${fallback.provider}:${fallback.model}:${index}`}
+          className="grid gap-2 rounded-md border border-white/5 bg-surface-raised p-2 md:grid-cols-[2rem_1fr_1.4fr_1.3fr_auto]"
+        >
+          <div
+            className="flex h-9 items-center justify-center rounded border border-border text-slate-500"
+            title="Drag handle"
+          >
+            ::
+          </div>
+          <Select
+            label={index === 0 ? "Provider" : undefined}
+            aria-label={`Fallback ${index + 1} provider`}
+            value={fallback.provider}
+            onChange={(event) => {
+              const provider = event.target.value;
+              updateLink(index, {
+                provider,
+                model: firstModelForProvider(provider),
+                credentialRef: null,
+              });
+            }}
+            options={FALLBACK_PROVIDER_OPTIONS}
+            disabled={disabled}
+          />
+          <Select
+            label={index === 0 ? "Model" : undefined}
+            aria-label={`Fallback ${index + 1} model`}
+            value={fallback.model}
+            onChange={(event) =>
+              updateLink(index, { model: event.target.value })
+            }
+            options={modelOptionsForProvider(fallback.provider)}
+            disabled={disabled}
+          />
+          <Select
+            label={index === 0 ? "Credential" : undefined}
+            aria-label={`Fallback ${index + 1} credential`}
+            value={credentialRefValue(fallback.credentialRef)}
+            onChange={(event) =>
+              updateLink(index, {
+                credentialRef: credentialRefFromValue(event.target.value),
+              })
+            }
+            options={credentialOptionsForProvider(
+              credentialState,
+              fallback.provider,
+            )}
+            disabled={!workspaceId || disabled}
+          />
+          <div className="flex items-end gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={disabled || index === 0}
+              onClick={() => moveLink(index, -1)}
+              title="Move fallback up"
+            >
+              Up
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={disabled || index === fallbacks.length - 1}
+              onClick={() => moveLink(index, 1)}
+              title="Move fallback down"
+            >
+              Down
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              disabled={disabled}
+              onClick={() =>
+                onChange(
+                  fallbacks.filter(
+                    (_fallback, candidateIndex) => candidateIndex !== index,
+                  ),
+                )
+              }
+            >
+              Remove
+            </Button>
+          </div>
+        </div>
+      ))}
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => {
+          const provider = FALLBACK_PROVIDER_OPTIONS[0]?.value ?? "openai";
+          onChange([
+            ...fallbacks,
+            {
+              provider,
+              model: firstModelForProvider(provider),
+              credentialRef: null,
+            },
+          ]);
+        }}
+      >
+        Add fallback
+      </Button>
+      {!agentId && <span className="sr-only">Agent unavailable</span>}
+    </div>
+  );
+}
+
+function buildRoutingWarnings(input: {
+  primaryProvider: string;
+  primaryModel: string;
+  modelTierFloor: ModelTierFloor;
+  fallbacks: AgentRuntimeProfile["fallbacks"];
+}) {
+  const warnings: string[] = [];
+  const primaryTier = modelTier(input.primaryProvider, input.primaryModel);
+  if (input.modelTierFloor === "frontier" && primaryTier === "mid") {
+    warnings.push(
+      "Frontier floor is advisory here: the primary model is mid-tier, so cutover may escalate instead of degrading.",
+    );
+  }
+  input.fallbacks.forEach((fallback, index) => {
+    const entry = modelRegistryEntry(fallback.provider, fallback.model);
+    if (entry && !entry.executable) {
+      warnings.push(
+        `Fallback ${index + 1} uses ${providerLabel(fallback.provider)}, whose execution adapter is not available yet. See the provider adapter rollout scope.`,
+      );
+    }
+  });
+  return warnings;
+}
+
+function firstModelForProvider(provider: string) {
+  return (
+    MODEL_TIER_REGISTRY.find((entry) => entry.provider === provider)?.model ??
+    ""
+  );
+}
+
+function modelOptionsForProvider(provider: string) {
+  return MODEL_TIER_REGISTRY.filter((entry) => entry.provider === provider).map(
+    (entry) => ({
+      value: entry.model,
+      label: `${entry.label} (${entry.tier})`,
+    }),
+  );
+}
+
+function credentialOptionsForProvider(
+  state: ReturnType<typeof useResolvedCredentialQuery>["data"] | null,
+  provider: string,
+) {
+  const credentials = state?.credentials ?? [];
+  const aliases = state?.aliases ?? [];
+  return [
+    { value: "", label: "No credential reference" },
+    ...aliases
+      .filter((alias) => matchesProviderFilter(alias.credential, provider))
+      .map((alias) => ({
+        value: `alias:${alias.alias}`,
+        label: `Alias: ${alias.alias}${alias.credential ? ` (${credentialProviderLabel(alias.credential)} - ${alias.credential.label})` : ""}`,
+      })),
+    ...credentials
+      .filter((credential) => matchesProviderFilter(credential, provider))
+      .map((credential) => ({
+        value: `credential_id:${credentialRowId(credential)}`,
+        label: `${credentialProviderLabel(credential)} - ${credential.label} (${credentialValidationLabel(credential)})`,
+      })),
+  ];
+}
+
+function credentialRefFromValue(value: string): CredentialReference | null {
+  const [type, refValue] = value.split(":", 2);
+  if ((type === "alias" || type === "credential_id") && refValue) {
+    return { type, value: refValue };
+  }
+  return null;
+}
+
+function providerLabel(provider: string) {
+  return provider
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function localRunnerLabel(option: LocalRuntimeRunnerOption) {

@@ -21,6 +21,7 @@ type QueryBuilder = {
   insert: MockFn;
   limit: MockFn;
   maybeSingle: MockFn;
+  order: MockFn;
   select: MockFn;
   single: MockFn;
   update: MockFn;
@@ -34,6 +35,7 @@ function mockBuilder(result: unknown): QueryBuilder {
     insert: vi.fn(),
     limit: vi.fn(),
     maybeSingle: vi.fn(),
+    order: vi.fn(),
     select: vi.fn(),
     single: vi.fn(),
     update: vi.fn(),
@@ -43,6 +45,7 @@ function mockBuilder(result: unknown): QueryBuilder {
   builder.eq.mockReturnValue(builder);
   builder.insert.mockReturnValue(builder);
   builder.limit.mockReturnValue(builder);
+  builder.order.mockReturnValue(builder);
   builder.select.mockReturnValue(builder);
   builder.update.mockReturnValue(builder);
   builder.maybeSingle.mockResolvedValue(result);
@@ -182,6 +185,87 @@ describe("routing rule repository", () => {
       key: "id",
       value: "agent-1",
     });
+  });
+
+  it("replaces fallback rows in position order when explicitly provided", async () => {
+    const existingRule = {
+      id: "rule-1",
+      workspace_id: "workspace-1",
+      name: "agent:agent-1:execution-profile",
+      runner_kind: "codex",
+      provider: "openai",
+      model: "openai/gpt-5.2",
+      credential_id: "primary-credential",
+      credential_alias: null,
+      model_tier_floor: "any",
+      updated_at: "2026-04-29T12:00:00.000Z",
+    };
+    const updatedRule = {
+      ...existingRule,
+      model_tier_floor: "frontier",
+      updated_at: "2026-04-29T12:01:00.000Z",
+    };
+    const currentRuleQuery = mockBuilder({ data: existingRule, error: null });
+    const updateQuery = mockBuilder({ data: updatedRule, error: null });
+    const matchQuery = mockBuilder({ data: [{ id: "match-1" }], error: null });
+    const deleteEndpointQuery = mockBuilder({ data: null, error: null });
+    const deleteFallbacksQuery = mockBuilder({ data: null, error: null });
+    const insertFallbacksQuery = mockBuilder({ data: null, error: null });
+    useBuilders([
+      currentRuleQuery,
+      updateQuery,
+      matchQuery,
+      deleteEndpointQuery,
+      deleteFallbacksQuery,
+      insertFallbacksQuery,
+    ]);
+
+    await expect(
+      upsertAgentCredentialReferenceRule({
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+        runnerKind: "codex",
+        provider: "openai",
+        model: "openai/gpt-5.2",
+        credentialRef: { type: "credential_id", value: "primary-credential" },
+        modelTierFloor: "frontier",
+        fallbacks: [
+          {
+            provider: "anthropic",
+            model: "anthropic/claude-sonnet-4-6",
+            credentialRef: { type: "alias", value: "default-anthropic" },
+          },
+          {
+            provider: "openai",
+            model: "openai/gpt-4.1-mini",
+            credentialRef: { type: "credential_id", value: "fallback-openai" },
+          },
+        ],
+      }),
+    ).resolves.toEqual(updatedRule);
+
+    expect(updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({ model_tier_floor: "frontier" }));
+    expect(deleteFallbacksQuery.delete).toHaveBeenCalled();
+    expect(insertFallbacksQuery.insert).toHaveBeenCalledWith([
+      {
+        rule_id: "rule-1",
+        workspace_id: "workspace-1",
+        position: 0,
+        provider: "anthropic",
+        model: "anthropic/claude-sonnet-4-6",
+        credential_alias: "default-anthropic",
+        credential_id: null,
+      },
+      {
+        rule_id: "rule-1",
+        workspace_id: "workspace-1",
+        position: 1,
+        provider: "openai",
+        model: "openai/gpt-4.1-mini",
+        credential_alias: null,
+        credential_id: "fallback-openai",
+      },
+    ]);
   });
 });
 

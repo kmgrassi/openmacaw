@@ -5,6 +5,7 @@ import {
 } from "../../../hooks/useSetupQueries";
 import type { Agent } from "../../../types/agents";
 import type { AgentRuntimeProfile } from "../../../../../../contracts/agents";
+import type { ModelTierFloor } from "../../../../../../contracts/model-tiers";
 import { HOSTED_RUNTIME_PROVIDERS } from "./constants";
 
 type UseAgentRuntimeProfileArgs = {
@@ -19,6 +20,8 @@ type RuntimeProfileSaveInput = {
   provider: AgentRuntimeProfile["provider"];
   model: string;
   credentialRef?: AgentRuntimeProfile["credentialRef"];
+  fallbacks?: AgentRuntimeProfile["fallbacks"];
+  modelTierFloor?: ModelTierFloor;
   localEndpointUrl?: string | null;
 };
 
@@ -42,11 +45,18 @@ export function useAgentRuntimeProfile({
     (agent.provider as AgentRuntimeProfile["provider"] | undefined) ?? "openai",
   );
   const [runtimeModel, setRuntimeModel] = useState(agent.model ?? "");
+  const [runtimeFallbacks, setRuntimeFallbacks] = useState<
+    AgentRuntimeProfile["fallbacks"]
+  >([]);
+  const [runtimeModelTierFloor, setRuntimeModelTierFloor] =
+    useState<ModelTierFloor>("any");
 
   useEffect(() => {
     if (runtimeProfile) {
       setRuntimeProvider(runtimeProfile.provider);
       setRuntimeModel(runtimeProfile.model);
+      setRuntimeFallbacks(runtimeProfile.fallbacks);
+      setRuntimeModelTierFloor(runtimeProfile.modelTierFloor);
       return;
     }
     setRuntimeProvider(
@@ -54,6 +64,8 @@ export function useAgentRuntimeProfile({
         "openai",
     );
     setRuntimeModel(agent.model ?? "");
+    setRuntimeFallbacks([]);
+    setRuntimeModelTierFloor("any");
   }, [agent.id, agent.model, agent.provider, runtimeProfile]);
 
   useEffect(() => {
@@ -68,6 +80,8 @@ export function useAgentRuntimeProfile({
     if (profile) {
       setRuntimeProvider(profile.provider);
       setRuntimeModel(profile.model);
+      setRuntimeFallbacks(profile.fallbacks);
+      setRuntimeModelTierFloor(profile.modelTierFloor);
     }
   };
 
@@ -82,6 +96,8 @@ export function useAgentRuntimeProfile({
       input && "credentialRef" in input
         ? (input.credentialRef ?? null)
         : (runtimeProfile?.credentialRef ?? null);
+    const nextFallbacks = input?.fallbacks ?? runtimeFallbacks;
+    const nextModelTierFloor = input?.modelTierFloor ?? runtimeModelTierFloor;
 
     if (!nextModel.trim()) {
       onError("Runtime model is required.");
@@ -99,10 +115,14 @@ export function useAgentRuntimeProfile({
         provider: nextProvider,
         model: nextModel.trim(),
         credentialRef: nextProvider === "local" ? null : nextCredentialRef,
+        fallbacks: nextFallbacks,
+        modelTierFloor: nextModelTierFloor,
         localEndpointUrl: input?.localEndpointUrl ?? null,
       });
       setRuntimeProvider(profile.provider);
       setRuntimeModel(profile.model);
+      setRuntimeFallbacks(profile.fallbacks);
+      setRuntimeModelTierFloor(profile.modelTierFloor);
       await onSaved();
     } catch (err) {
       onError(String(err));
@@ -116,7 +136,10 @@ export function useAgentRuntimeProfile({
   const runtimeProfileDirty =
     runtimeProvider !==
       (runtimeProfile?.provider ?? agent.provider ?? "openai") ||
-    runtimeModel.trim() !== (runtimeProfile?.model ?? agent.model ?? "");
+    runtimeModel.trim() !== (runtimeProfile?.model ?? agent.model ?? "") ||
+    JSON.stringify(runtimeFallbacks) !==
+      JSON.stringify(runtimeProfile?.fallbacks ?? []) ||
+    runtimeModelTierFloor !== (runtimeProfile?.modelTierFloor ?? "any");
   const runtimeProviderIsLocal = runtimeProvider === "local";
   const runtimeProviderNeedsCredential =
     HOSTED_RUNTIME_PROVIDERS.has(runtimeProvider);
@@ -129,6 +152,10 @@ export function useAgentRuntimeProfile({
     setRuntimeProvider,
     runtimeModel,
     setRuntimeModel,
+    runtimeFallbacks,
+    setRuntimeFallbacks,
+    runtimeModelTierFloor,
+    setRuntimeModelTierFloor,
     runtimeProfileLoading: runtimeProfileQuery.isLoading,
     runtimeProfileSaving: updateRuntimeProfile.isPending,
     runtimeProfileDirty,
