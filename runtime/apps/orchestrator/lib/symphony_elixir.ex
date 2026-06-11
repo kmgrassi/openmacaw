@@ -34,6 +34,7 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.Orchestrator.WorkerSlotReservations,
         SymphonyElixir.RuntimeLease.Registry,
         SymphonyElixir.LocalRuntime.Registry,
+        SymphonyElixir.Cutover.Cooldown,
         SymphonyElixir.CloudExecution.Aws.TaskStore,
         SymphonyElixir.Planner.RepositoryIndex,
         SymphonyElixir.LocalRelay.Registry,
