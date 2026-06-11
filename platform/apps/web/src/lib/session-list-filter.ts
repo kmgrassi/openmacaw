@@ -1,14 +1,11 @@
+import { parseAgentScopedSessionAgentId } from "../api/ws-types/scope";
 import type { Session } from "../hooks/useSessions";
 
-const AGENT_KEY_RE = /^agent:([^:]+):/;
-
 /**
- * Extracts the agent id encoded in a session key of the form
- * `agent:{agentId}:main`.
+ * Extracts the agent id encoded in an agent-scoped session key.
  */
 export function parseAgentIdFromSessionKey(key: string): string | undefined {
-  const agentMatch = AGENT_KEY_RE.exec(key);
-  return agentMatch?.[1];
+  return parseAgentScopedSessionAgentId(key) ?? undefined;
 }
 
 export type VisibleSession =
@@ -33,7 +30,11 @@ export function selectVisibleSessions(
 ): VisibleSession[] {
   const agentId = parseAgentIdFromSessionKey(activeKey);
   const agentSessions = agentId
-    ? sessions.filter((s) => s.agentId === agentId || s.key.includes(agentId))
+    ? sessions.filter((session) => {
+        const sessionAgentId =
+          session.agentId ?? parseAgentScopedSessionAgentId(session.key);
+        return sessionAgentId === agentId;
+      })
     : sessions;
 
   if (
