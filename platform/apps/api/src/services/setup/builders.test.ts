@@ -55,6 +55,8 @@ describe("setup gateway config builders", () => {
         provider: "openai_compatible",
         model: "qwen3-coder:30b",
         credentialRef: null,
+        fallbacks: [],
+        modelTierFloor: "any",
         toolProfile: "coding",
         capabilities: {
           streaming: true,

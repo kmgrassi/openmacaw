@@ -92,6 +92,8 @@ function resolution(routingRuleId: string | null, missing: ExecutionProfileResol
           provider: "openai",
           model: "gpt-5",
           credentialRef: null,
+          fallbacks: [],
+          modelTierFloor: "any",
           toolProfile: "coding",
           capabilities: {
             streaming: true,

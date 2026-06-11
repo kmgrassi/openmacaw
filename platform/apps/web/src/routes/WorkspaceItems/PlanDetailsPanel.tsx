@@ -1,5 +1,7 @@
 import type { PlanRecord, WorkItemProjection } from "../../api/plans";
+import type { ProviderCutover } from "../../api/provider-cutovers";
 import { Button } from "../../components/ui/Button";
+import { WorkItemFallbackBadge } from "../../components/work-items/WorkItemFallbackBadge";
 import { SnoozeButton } from "../../components/work-items/SnoozeButton";
 import { SnoozedBadge } from "../../components/work-items/SnoozedBadge";
 import { DetailChip, EmptyState, formatDate, StatusBadge } from "./utils";
@@ -8,6 +10,7 @@ type Props = {
   workspaceId: string;
   plan: PlanRecord;
   workItems: WorkItemProjection[];
+  cutoversByWorkItemId: ReadonlyMap<string, readonly ProviderCutover[]>;
   deletingId: string | null;
   onClose: () => void;
   onDeleteWorkItem: (workItem: WorkItemProjection) => void;
@@ -19,6 +22,7 @@ export function PlanDetailsPanel({
   workspaceId,
   plan,
   workItems,
+  cutoversByWorkItemId,
   deletingId,
   onClose,
   onDeleteWorkItem,
@@ -80,6 +84,12 @@ export function PlanDetailsPanel({
                     <div className="min-w-0">
                       <div className="truncate font-medium text-slate-100">
                         {workItem.title || "Untitled work item"}
+                      </div>
+                      <div className="mt-2">
+                        <WorkItemFallbackBadge
+                          workItemId={workItem.id}
+                          cutovers={cutoversByWorkItemId.get(workItem.id) ?? []}
+                        />
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         {workItem.identifier || workItem.id}

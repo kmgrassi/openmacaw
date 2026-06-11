@@ -1,228 +1,367 @@
 defmodule SymphonyElixir.Cutover do
   @moduledoc """
-  Walks an execution profile's provider fallback chain and emits audit rows.
+  Walks execution-profile fallback chains for cutover-eligible provider calls.
 
-  This module owns the decision shape used by runner integrations. It accepts
-  both generated execution-profile structs and plain maps so it can be wired
-  before the generated profile mirror grows explicit fallback fields.
+  Runner call sites supply the provider invocation as `call_fn`; this module
+  owns chain ordering, model-tier floor enforcement, cooldown skipping, and the
+  decision object returned to callers.
   """
 
-  alias SymphonyElixir.Cutover.{Audit, Decision, Link}
+  alias SymphonyElixir.Cutover.{Audit, Cooldown}
+  alias SymphonyElixir.ModelTiers
 
-  @type walk_result ::
-          {:ok, term(), Decision.t()}
-          | {:error, :exhausted | :floor_exhausted, Decision.t()}
-          | {:error, term()}
+  defmodule CutoverLink do
+    @moduledoc "A single primary or fallback provider target."
 
-  @spec walk(map() | struct(), map(), (Link.t() -> {:ok, term()} | {:error, term()}), keyword()) ::
-          walk_result()
-  def walk(profile, context, call_fn, opts \\ [])
-      when is_map(context) and is_function(call_fn, 1) do
-    started_at = monotonic_ms()
-    primary = primary_link(profile)
+    @enforce_keys [:provider]
+    defstruct [
+      :workspace_id,
+      :agent_id,
+      :provider,
+      :model,
+      :credential_ref,
+      :credential_id,
+      :adapter_available?,
+      :position,
+      source: :fallback
+    ]
 
-    profile
-    |> chain(primary)
-    |> Enum.reduce_while({:continue, []}, fn link, {:continue, attempts} ->
-      cond do
-        not adapter_available?(link) ->
-          skipped_attempt = skipped_adapter_attempt(link)
-
-          decision =
-            decision(profile, context, primary, link, attempts ++ [skipped_attempt], %{
-              outcome: :skipped_no_adapter,
-              error_code: "provider_adapter_missing",
-              elapsed_ms: elapsed_ms(started_at)
-            })
-
-          audit(decision, opts)
-          {:cont, {:continue, attempts ++ [skipped_attempt]}}
-
-        true ->
-          case call_fn.(link) do
-            {:ok, result} ->
-              decision =
-                decision(profile, context, primary, link, attempts, %{
-                  outcome: :fallback_succeeded,
-                  error_code: trigger_error_code(attempts),
-                  status_code: trigger_status_code(attempts),
-                  elapsed_ms: elapsed_ms(started_at)
-                })
-
-              audit(decision, opts)
-              {:halt, {:ok, result, decision}}
-
-            {:error, failure} ->
-              attempt = attempt_for(link, failure)
-
-              if retryable?(failure) do
-                {:cont, {:continue, attempts ++ [attempt]}}
-              else
-                {:halt, {:error, failure}}
-              end
-          end
-      end
-    end)
-    |> exhausted_decision(profile, context, primary, started_at, opts)
+    @type t :: %__MODULE__{
+            workspace_id: String.t() | nil,
+            agent_id: String.t() | nil,
+            provider: String.t(),
+            model: String.t() | nil,
+            credential_ref: term(),
+            credential_id: String.t() | nil,
+            adapter_available?: boolean(),
+            position: non_neg_integer() | nil,
+            source: :primary | :fallback
+          }
   end
 
-  defp exhausted_decision({:continue, attempts}, profile, context, primary, started_at, opts) do
-    outcome = if floor_exhausted?(attempts), do: :escalated_floor, else: :escalated_exhausted
-    reason = if outcome == :escalated_floor, do: :floor_exhausted, else: :exhausted
+  defmodule CutoverDecision do
+    @moduledoc "Decision summary for a single cutover walk."
 
-    decision =
-      decision(profile, context, primary, List.last(attempts), attempts, %{
-        outcome: outcome,
-        error_code: trigger_error_code(attempts),
-        status_code: trigger_status_code(attempts),
-        elapsed_ms: elapsed_ms(started_at)
-      })
+    defstruct [
+      :workspace_id,
+      :agent_id,
+      :work_item_id,
+      :from_provider,
+      :from_model,
+      :from_credential_id,
+      :to_provider,
+      :to_model,
+      :to_credential_id,
+      :trigger_error_code,
+      :trigger_status_code,
+      :outcome,
+      :elapsed_ms,
+      attempts: [],
+      skipped: []
+    ]
 
+    @type t :: %__MODULE__{
+            workspace_id: String.t() | nil,
+            agent_id: String.t() | nil,
+            work_item_id: String.t() | nil,
+            from_provider: String.t() | nil,
+            from_model: String.t() | nil,
+            from_credential_id: String.t() | nil,
+            to_provider: String.t() | nil,
+            to_model: String.t() | nil,
+            to_credential_id: String.t() | nil,
+            trigger_error_code: String.t() | nil,
+            trigger_status_code: integer() | nil,
+            outcome: String.t() | nil,
+            elapsed_ms: non_neg_integer() | nil,
+            attempts: [map()],
+            skipped: [map()]
+          }
+  end
+
+  @type profile :: %{optional(String.t() | atom()) => term()}
+
+  @spec walk(profile(), map(), (CutoverLink.t() -> {:ok, term()} | {:error, term()}), keyword()) ::
+          {:ok, term(), CutoverDecision.t()}
+          | {:error, :exhausted | :floor_exhausted | {:non_retryable, term()}, CutoverDecision.t()}
+  def walk(profile, context, call_fn, opts \\ []) when is_map(profile) and is_map(context) and is_function(call_fn, 1) do
+    started_at = monotonic_ms()
+    profile = normalize_keys(profile)
+    context = normalize_keys(context)
+    floor = normalize_string(Map.get(profile, "model_tier_floor")) || "any"
+
+    state = %{
+      context: context,
+      started_at: started_at,
+      attempts: [],
+      skipped: [],
+      first_failure: nil,
+      floor_skipped?: false
+    }
+
+    profile
+    |> chain()
+    |> walk_chain(floor, call_fn, state, opts)
+  end
+
+  defp walk_chain([], _floor, _call_fn, state, opts) do
+    floor_only_exhaustion? = state.floor_skipped? and state.attempts == []
+    outcome = if floor_only_exhaustion?, do: "escalated_floor", else: "escalated_exhausted"
+    reason = if floor_only_exhaustion?, do: :floor_exhausted, else: :exhausted
+    decision = decision(state, nil, outcome)
     audit(decision, opts)
     {:error, reason, decision}
   end
 
-  defp exhausted_decision(result, _profile, _context, _primary, _started_at, _opts), do: result
+  defp walk_chain([link | rest], floor, call_fn, state, opts) do
+    cond do
+      not adapter_available?(link) ->
+        skip = skip_record(link, "no_adapter")
+        state = %{state | skipped: state.skipped ++ [skip]}
+        audit(decision(state, link, "skipped_no_adapter"), opts)
+        walk_chain(rest, floor, call_fn, state, opts)
 
-  defp audit(%Decision{} = decision, opts) do
+      below_floor?(link, floor) ->
+        skip = skip_record(link, "below_model_tier_floor", model_tier: ModelTiers.tier_of(link.provider, link.model), floor: floor)
+        walk_chain(rest, floor, call_fn, %{state | skipped: state.skipped ++ [skip], floor_skipped?: true}, opts)
+
+      cooldown_active?(link) ->
+        skip = skip_record(link, "credential_in_cooldown")
+        walk_chain(rest, floor, call_fn, %{state | skipped: state.skipped ++ [skip]}, opts)
+
+      true ->
+        attempt_link(link, rest, floor, call_fn, state, opts)
+    end
+  end
+
+  defp attempt_link(link, rest, floor, call_fn, state, opts) do
+    case call_fn.(link) do
+      {:ok, result} ->
+        attempt = attempt_record(link, "succeeded", nil)
+        decision = decision(%{state | attempts: state.attempts ++ [attempt]}, link, "fallback_succeeded")
+        audit(decision, opts)
+        {:ok, result, decision}
+
+      {:error, failure} ->
+        attempt = attempt_record(link, "failed", failure)
+        state = record_failure(%{state | attempts: state.attempts ++ [attempt]}, failure)
+        maybe_put_cooldown(link, failure)
+
+        if retryable_failure?(failure) do
+          walk_chain(rest, floor, call_fn, state, opts)
+        else
+          decision = decision(state, nil, "fallback_failed")
+          audit(decision, opts)
+          {:error, {:non_retryable, failure}, decision}
+        end
+    end
+  end
+
+  defp audit(%CutoverDecision{} = decision, opts) do
     opts
     |> Keyword.get(:audit_module, Audit)
     |> apply(:write_best_effort, [decision, opts])
   end
 
-  defp decision(profile, context, primary, target, attempts, attrs) do
-    target = target_link(target)
-
-    %Decision{
-      workspace_id: required_context(context, profile, ["workspace_id", "workspaceId", :workspace_id]),
-      agent_id: required_context(context, profile, ["agent_id", "agentId", :agent_id]),
-      work_item_id: context_value(context, ["work_item_id", "workItemId", :work_item_id]),
-      from_provider: primary.provider,
-      from_model: primary.model,
-      from_credential_id: primary.credential_id,
-      to_provider: target && target.provider,
-      to_model: target && target.model,
-      to_credential_id: target && target.credential_id,
-      trigger_error_code: Map.get(attrs, :error_code) || "provider_unknown",
-      trigger_status_code: Map.get(attrs, :status_code),
-      elapsed_ms: Map.fetch!(attrs, :elapsed_ms),
-      outcome: Map.fetch!(attrs, :outcome),
-      triggered_at: DateTime.utc_now(),
-      attempts: attempts
+  defp chain(profile) do
+    primary = %{
+      "workspace_id" => Map.get(profile, "workspace_id"),
+      "agent_id" => Map.get(profile, "agent_id"),
+      "provider" => Map.get(profile, "provider"),
+      "model" => Map.get(profile, "model"),
+      "credential_ref" => Map.get(profile, "credential_ref")
     }
+
+    [link_from(primary, :primary, 0) | fallback_links(profile)]
+    |> Enum.reject(&is_nil/1)
   end
 
-  defp primary_link(profile) do
-    %Link{
-      provider: profile_value(profile, ["provider", :provider]),
-      model: profile_value(profile, ["model", :model]),
-      credential_ref: profile_value(profile, ["credential_ref", "credentialRef", :credential_ref]),
-      credential_id: credential_id(profile_value(profile, ["credential_ref", "credentialRef", :credential_ref])),
-      runner_kind: profile_value(profile, ["runner_kind", "runnerKind", :runner_kind]),
-      position: 0
-    }
+  defp fallback_links(profile) do
+    profile
+    |> Map.get("fallbacks", [])
+    |> case do
+      fallbacks when is_list(fallbacks) -> fallbacks
+      _ -> []
+    end
+    |> Enum.with_index(1)
+    |> Enum.map(fn {fallback, index} ->
+      fallback
+      |> normalize_keys()
+      |> Map.put_new("workspace_id", Map.get(profile, "workspace_id"))
+      |> Map.put_new("agent_id", Map.get(profile, "agent_id"))
+      |> link_from(:fallback, index)
+    end)
   end
 
-  defp chain(profile, primary) do
-    fallbacks =
-      profile
-      |> profile_value(["fallbacks", :fallbacks])
-      |> case do
-        links when is_list(links) -> links
-        _ -> []
-      end
-      |> Enum.with_index(1)
-      |> Enum.map(fn {link, position} -> normalize_link(link, position) end)
+  defp link_from(attrs, source, position) when is_map(attrs) do
+    provider = normalize_string(Map.get(attrs, "provider"))
 
-    [primary | fallbacks]
+    if is_nil(provider) do
+      nil
+    else
+      credential_ref = Map.get(attrs, "credential_ref")
+
+      %CutoverLink{
+        workspace_id: normalize_string(Map.get(attrs, "workspace_id")),
+        agent_id: normalize_string(Map.get(attrs, "agent_id")),
+        provider: provider,
+        model: normalize_string(Map.get(attrs, "model")),
+        credential_ref: credential_ref,
+        credential_id: credential_id(credential_ref),
+        adapter_available?: adapter_available?(attrs),
+        position: position,
+        source: source
+      }
+    end
   end
 
-  defp normalize_link(%Link{} = link, position), do: %{link | position: link.position || position}
-
-  defp normalize_link(link, position) when is_map(link) do
-    credential_ref = map_value(link, ["credential_ref", "credentialRef", :credential_ref])
-
-    %Link{
-      provider: map_value(link, ["provider", :provider]),
-      model: map_value(link, ["model", :model]),
-      credential_ref: credential_ref,
-      credential_id: map_value(link, ["credential_id", "credentialId", :credential_id]) || credential_id(credential_ref),
-      runner_kind: map_value(link, ["runner_kind", "runnerKind", :runner_kind]),
-      position: map_value(link, ["position", :position]) || position,
-      adapter_available?: adapter_available?(link),
-      metadata: map_value(link, ["metadata", :metadata]) || %{}
-    }
+  defp below_floor?(link, floor) do
+    link.provider
+    |> ModelTiers.tier_of(link.model)
+    |> ModelTiers.meets_floor?(floor)
+    |> Kernel.not()
   end
 
-  defp normalize_link(_link, position), do: %Link{position: position, adapter_available?: false}
-
-  defp target_link(%Link{} = link), do: link
-  defp target_link(%{} = attempt), do: Map.get(attempt, :link) || Map.get(attempt, "link")
-  defp target_link(_target), do: nil
-
-  defp attempt_for(%Link{} = link, failure) do
-    %{
-      link: link,
-      error_code: failure_value(failure, ["error_code", :error_code]) || "provider_unknown",
-      status_code: failure_value(failure, ["status_code", :status_code, "status", :status, "provider_status", :provider_status]),
-      retryable: retryable?(failure),
-      floor_exhausted?: failure_value(failure, ["floor_exhausted?", :floor_exhausted?]) == true
-    }
+  defp cooldown_active?(%CutoverLink{workspace_id: workspace_id, credential_id: credential_id})
+       when is_binary(workspace_id) and is_binary(credential_id) do
+    Cooldown.active?(workspace_id, credential_id)
   end
 
-  defp skipped_adapter_attempt(%Link{} = link) do
-    %{
-      link: link,
-      error_code: "provider_adapter_missing",
-      status_code: nil,
-      retryable: true,
-      floor_exhausted?: false,
-      skipped?: true,
-      skip_reason: "no_adapter"
-    }
-  end
+  defp cooldown_active?(_link), do: false
 
-  defp trigger_error_code([]), do: "provider_unknown"
-  defp trigger_error_code([attempt | _attempts]), do: Map.get(attempt, :error_code)
-
-  defp trigger_status_code([]), do: nil
-  defp trigger_status_code([attempt | _attempts]), do: Map.get(attempt, :status_code)
-
-  defp retryable?(%{retryable: true}), do: true
-  defp retryable?(%{"retryable" => true}), do: true
-  defp retryable?(_failure), do: false
-
-  defp floor_exhausted?(attempts), do: Enum.any?(attempts, &Map.get(&1, :floor_exhausted?))
-
-  defp adapter_available?(%Link{adapter_available?: value}), do: value != false
-  defp adapter_available?(%{adapter_available?: false}), do: false
-  defp adapter_available?(%{"adapterAvailable" => false}), do: false
+  defp adapter_available?(%CutoverLink{adapter_available?: value}), do: value != false
   defp adapter_available?(%{"adapter_available" => false}), do: false
-  defp adapter_available?(_link), do: true
+  defp adapter_available?(%{"adapterAvailable" => false}), do: false
+  defp adapter_available?(%{adapter_available?: false}), do: false
+  defp adapter_available?(_attrs), do: true
 
-  defp credential_id(%{"id" => value}) when is_binary(value), do: value
-  defp credential_id(%{id: value}) when is_binary(value), do: value
-  defp credential_id(%{"credential_id" => value}) when is_binary(value), do: value
-  defp credential_id(%{credential_id: value}) when is_binary(value), do: value
-  defp credential_id(value) when is_binary(value), do: value
+  defp maybe_put_cooldown(link, failure) do
+    if rate_limited_failure?(failure) and is_binary(link.workspace_id) and is_binary(link.credential_id) do
+      Cooldown.put(link.workspace_id, link.credential_id)
+    end
+
+    :ok
+  end
+
+  defp record_failure(%{first_failure: nil} = state, failure), do: %{state | first_failure: failure}
+  defp record_failure(state, _failure), do: state
+
+  defp decision(state, success_link, outcome) do
+    first_attempt = List.first(state.attempts) || List.first(state.skipped) || %{}
+    failure = state.first_failure || failure_from_attempt(first_attempt) || %{}
+
+    %CutoverDecision{
+      workspace_id: normalize_string(Map.get(state.context, "workspace_id") || Map.get(first_attempt, :workspace_id)),
+      agent_id: normalize_string(Map.get(state.context, "agent_id") || Map.get(first_attempt, :agent_id)),
+      work_item_id: normalize_string(Map.get(state.context, "work_item_id")),
+      from_provider: Map.get(first_attempt, :provider),
+      from_model: Map.get(first_attempt, :model),
+      from_credential_id: Map.get(first_attempt, :credential_id),
+      to_provider: success_link && success_link.provider,
+      to_model: success_link && success_link.model,
+      to_credential_id: success_link && success_link.credential_id,
+      trigger_error_code: error_code(failure),
+      trigger_status_code: status_code(failure),
+      outcome: outcome,
+      elapsed_ms: max(monotonic_ms() - state.started_at, 0),
+      attempts: state.attempts,
+      skipped: state.skipped
+    }
+  end
+
+  defp attempt_record(link, outcome, failure) do
+    link
+    |> link_record()
+    |> Map.put(:outcome, outcome)
+    |> maybe_put(:error_code, error_code(failure))
+    |> maybe_put(:status_code, status_code(failure))
+    |> maybe_put(:retryable, retryable_failure?(failure))
+    |> maybe_put(:failure, failure)
+  end
+
+  defp skip_record(link, reason, extra \\ []) do
+    link
+    |> link_record()
+    |> Map.put(:outcome, "skipped")
+    |> Map.put(:reason, reason)
+    |> Map.merge(Map.new(extra))
+  end
+
+  defp link_record(%CutoverLink{} = link) do
+    %{
+      workspace_id: link.workspace_id,
+      agent_id: link.agent_id,
+      provider: link.provider,
+      model: link.model,
+      credential_id: link.credential_id,
+      position: link.position,
+      source: link.source
+    }
+  end
+
+  defp failure_from_attempt(%{failure: failure}), do: failure
+  defp failure_from_attempt(_attempt), do: nil
+
+  defp retryable_failure?(failure) when is_map(failure) do
+    Map.get(failure, :retryable) == true or Map.get(failure, "retryable") == true
+  end
+
+  defp retryable_failure?(_failure), do: false
+
+  defp rate_limited_failure?(failure) do
+    error_code(failure) == "provider_rate_limited" or status_code(failure) == 429
+  end
+
+  defp error_code(failure) when is_map(failure),
+    do: normalize_string(Map.get(failure, :error_code) || Map.get(failure, "error_code"))
+
+  defp error_code(_failure), do: nil
+
+  defp status_code(failure) when is_map(failure),
+    do: Map.get(failure, :status_code) || Map.get(failure, "status_code") || Map.get(failure, :status) || Map.get(failure, "status")
+
+  defp status_code(_failure), do: nil
+
+  defp credential_id(%{"type" => "credential_id", "value" => value}), do: normalize_string(value)
+  defp credential_id(%{type: "credential_id", value: value}), do: normalize_string(value)
+  defp credential_id(%{type: :credential_id, value: value}), do: normalize_string(value)
+  defp credential_id(%{"credential_id" => value}), do: normalize_string(value)
+  defp credential_id(%{credential_id: value}), do: normalize_string(value)
+  defp credential_id(value) when is_binary(value), do: normalize_string(value)
   defp credential_id(_value), do: nil
 
-  defp required_context(context, profile, keys) do
-    context_value(context, keys) || profile_value(profile, keys) || raise ArgumentError, "missing cutover audit context"
+  defp normalize_keys(map) when is_map(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {canonical_key(Atom.to_string(key)), normalize_value(value)}
+      {key, value} -> {canonical_key(key), normalize_value(value)}
+    end)
   end
 
-  defp context_value(context, keys), do: map_value(context, keys)
+  defp normalize_keys(_value), do: %{}
 
-  defp profile_value(%_{} = profile, keys), do: profile |> Map.from_struct() |> map_value(keys)
-  defp profile_value(profile, keys), do: map_value(profile, keys)
+  defp canonical_key("agentId"), do: "agent_id"
+  defp canonical_key("workspaceId"), do: "workspace_id"
+  defp canonical_key("runnerKind"), do: "runner_kind"
+  defp canonical_key("credentialRef"), do: "credential_ref"
+  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
+  defp canonical_key(key), do: key
 
-  defp map_value(map, keys) when is_map(map) do
-    Enum.find_value(keys, &Map.get(map, &1))
+  defp normalize_value(value) when is_map(value), do: normalize_keys(value)
+  defp normalize_value(value) when is_list(value), do: Enum.map(value, &normalize_value/1)
+  defp normalize_value(value), do: value
+
+  defp normalize_string(value) when is_binary(value) do
+    value = String.trim(value)
+    if value == "", do: nil, else: value
   end
 
-  defp failure_value(%{} = failure, keys), do: map_value(failure, keys)
-  defp failure_value(_failure, _keys), do: nil
+  defp normalize_string(value) when is_atom(value) and not is_nil(value),
+    do: value |> Atom.to_string() |> normalize_string()
+
+  defp normalize_string(_value), do: nil
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp monotonic_ms, do: System.monotonic_time(:millisecond)
-  defp elapsed_ms(started_at), do: max(monotonic_ms() - started_at, 0)
 end

@@ -1,5 +1,7 @@
 import type { PlanRecord, WorkItemProjection } from "../../api/plans";
+import type { ProviderCutover } from "../../api/provider-cutovers";
 import { Button } from "../../components/ui/Button";
+import { WorkItemFallbackBadge } from "../../components/work-items/WorkItemFallbackBadge";
 import { SnoozeButton } from "../../components/work-items/SnoozeButton";
 import { SnoozedBadge } from "../../components/work-items/SnoozedBadge";
 import { DetailChip, EmptyState, formatDate, StatusBadge } from "./utils";
@@ -8,6 +10,7 @@ type Props = {
   workspaceId: string;
   plans: PlanRecord[];
   workItems: WorkItemProjection[];
+  cutoversByWorkItemId: ReadonlyMap<string, readonly ProviderCutover[]>;
   loading: boolean;
   deletingId: string | null;
   onDeleteWorkItem: (workItem: WorkItemProjection) => void;
@@ -19,6 +22,7 @@ export function WorkItemsList({
   workspaceId,
   plans,
   workItems,
+  cutoversByWorkItemId,
   loading,
   deletingId,
   onDeleteWorkItem,
@@ -49,6 +53,12 @@ export function WorkItemsList({
                 <td className="px-4 py-3">
                   <div className="font-medium text-slate-100">
                     {workItem.title || "Untitled work item"}
+                  </div>
+                  <div className="mt-2">
+                    <WorkItemFallbackBadge
+                      workItemId={workItem.id}
+                      cutovers={cutoversByWorkItemId.get(workItem.id) ?? []}
+                    />
                   </div>
                   <div className="mt-1 max-w-xl truncate text-xs text-slate-500">
                     {workItem.description ||

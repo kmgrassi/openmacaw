@@ -139,6 +139,18 @@ export const ROUTES = {
     `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/snooze`,
   workItemWake: (workspaceId: string, workItemId: string) =>
     `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/wake`,
+  workItemCutovers: (workItemId: string) =>
+    `${WORK_ITEMS_PREFIX}/${encodeURIComponent(workItemId)}/cutovers`,
+  workspaceRecentCutovers: (
+    workspaceId: string,
+    options: { limit?: number; cursor?: string | null } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    if (options.cursor) params.set("cursor", options.cursor);
+    const query = params.toString();
+    return `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/cutovers/recent${query ? `?${query}` : ""}`;
+  },
   workspaceScheduledTasks: (workspaceId: string, agentId?: string | null) => {
     const path = `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/scheduled-tasks`;
     return agentId ? `${path}?agentId=${encodeURIComponent(agentId)}` : path;

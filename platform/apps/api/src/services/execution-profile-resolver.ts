@@ -9,11 +9,12 @@ import {
   getAgent,
   getAgentCredentialId,
   getAgentGatewayConfig,
-  getRoutingRulesWithFallback,
-  getRuleMatchesWithFallback,
+  getRoutingRuleFallbacks,
+  getRoutingRules,
+  getRuleMatches,
   hasScopedCredential,
 } from "./execution-profile-resolver/queries.js";
-import { resolveRoutingRuleChain, selectRoutingRule } from "./execution-profile-resolver/routing-rules.js";
+import { resolveRoutingRule, selectRoutingRule } from "./execution-profile-resolver/routing-rules.js";
 import type { ResolveExecutionProfileInput } from "./execution-profile-resolver/types.js";
 
 export type { ResolveExecutionProfileInput } from "./execution-profile-resolver/types.js";
@@ -27,8 +28,13 @@ export async function resolveExecutionProfile(
   const role = normalizeRole(agent.type);
   const intent = input.intent?.trim() || null;
   const intentKey = input.intentKey?.trim() || null;
-  const rules = await getRoutingRulesWithFallback(agent.workspace_id, input.accessToken);
-  const matches = await getRuleMatchesWithFallback(
+  const rules = await getRoutingRules(agent.workspace_id, input.accessToken);
+  const matches = await getRuleMatches(
+    agent.workspace_id,
+    rules.map((rule) => rule.id),
+    input.accessToken,
+  );
+  const fallbacks = await getRoutingRuleFallbacks(
     agent.workspace_id,
     rules.map((rule) => rule.id),
     input.accessToken,
@@ -46,15 +52,15 @@ export async function resolveExecutionProfile(
   }
 
   if (rule) {
-    const resolution = await resolveRoutingRuleChain({
+    const resolution = await resolveRoutingRule({
       agent,
       role,
       rule,
-      rulesById: new Map(rules.map((candidate) => [candidate.id, candidate])),
       matches,
+      fallbacks,
       accessToken: input.accessToken,
     });
-    if (resolution) return resolution;
+    return resolution;
   }
 
   const gatewayConfig = await getAgentGatewayConfig(input);

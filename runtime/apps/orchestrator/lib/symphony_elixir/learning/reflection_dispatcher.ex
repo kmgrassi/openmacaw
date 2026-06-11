@@ -27,7 +27,7 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcher do
 
   ## Payload shape
 
-  The row is intentionally one-shot: `schedule: %{"at" => <now>}`
+  The row is intentionally one-shot: `schedule: %{"kind" => "at", "runAt" => <now>}`
   produces `{:ok, nil}` from `NextRun.next_after/3`, so the scheduler
   marks `next_run_at = nil` after the first dispatch and the row stops
   firing. The delivery sub-object carries only identifiers — the
@@ -215,8 +215,10 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcher do
          %{
            "workspace_id" => workspace_id,
            "agent_id" => agent_id,
+           "title" => "Learning reflection",
+           "instructions" => "Reflect on the completed agent run and extract durable workspace memory.",
            "enabled" => true,
-           "schedule" => %{"at" => now_iso},
+           "schedule" => %{"kind" => "at", "runAt" => now_iso},
            "timezone" => "Etc/UTC",
            "next_run_at" => now_iso,
            "delivery" => delivery,

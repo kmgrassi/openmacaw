@@ -117,6 +117,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       "provider" => provider_for_runner(runner_kind, codex.model_provider),
       "model" => model_for_runner(runner_kind, codex.model),
       "credential_ref" => nil,
+      "fallbacks" => [],
+      "model_tier_floor" => "any",
       "tool_profile" => "coding",
       "capabilities" => %{},
       "source_metadata" => %{
@@ -133,11 +135,13 @@ defmodule SymphonyElixir.ExecutionProfile do
       |> Map.update("source_metadata", %{}, &normalize_map/1)
       |> Map.update("capabilities", %{}, &normalize_map/1)
       |> Map.update("adapter_config", %{}, &normalize_map/1)
+      |> Map.update("fallbacks", [], &normalize_fallbacks/1)
       |> Map.update("runner_kind", nil, &normalize_string/1)
       |> Map.update("role", nil, &normalize_string/1)
       |> Map.update("provider", nil, &normalize_string/1)
       |> Map.update("model", nil, &normalize_string/1)
       |> Map.update("credential_ref", nil, &normalize_string/1)
+      |> Map.update("model_tier_floor", "any", &normalize_model_tier_floor/1)
       |> Map.update("tool_profile", nil, &normalize_string/1)
       |> normalize_family_runner_kind()
 
@@ -290,6 +294,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       |> maybe_put_normalized("model")
       |> maybe_put_normalized("role")
       |> maybe_put_normalized("tool_profile")
+      |> Map.update("fallbacks", [], &normalize_fallbacks/1)
+      |> Map.update("model_tier_floor", "any", &normalize_model_tier_floor/1)
       |> normalize_source_metadata()
 
     case ExecutionProfileSchema.validate(profile) do
@@ -342,6 +348,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       "runner_kind" => runner_kind,
       "provider" => fallback_provider(config, model, runner_kind),
       "model" => normalize_codex_model(model),
+      "fallbacks" => [],
+      "model_tier_floor" => "any",
       "role" => get_in(config, ["stored_agent", "type"]),
       "source_metadata" => %{
         "fallback_used" => true,
@@ -508,8 +516,29 @@ defmodule SymphonyElixir.ExecutionProfile do
   defp canonical_key("credentialRef"), do: "credential_ref"
   defp canonical_key("adapterConfig"), do: "adapter_config"
   defp canonical_key("sourceMetadata"), do: "source_metadata"
+  defp canonical_key("modelTierFloor"), do: "model_tier_floor"
   defp canonical_key("modelProvider"), do: "model_provider"
   defp canonical_key(key), do: key
+
+  defp normalize_fallbacks(fallbacks) when is_list(fallbacks) do
+    fallbacks
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(fn fallback ->
+      fallback
+      |> normalize_keys()
+      |> maybe_put_normalized("provider")
+      |> maybe_put_normalized("model")
+    end)
+  end
+
+  defp normalize_fallbacks(_fallbacks), do: []
+
+  defp normalize_model_tier_floor(value) do
+    case normalize_string(value) do
+      floor when floor in ~w(any frontier mid local) -> floor
+      _ -> "any"
+    end
+  end
 
   defp normalize_value(value) when is_map(value), do: normalize_keys(value)
   defp normalize_value(value) when is_list(value), do: Enum.map(value, &normalize_value/1)
