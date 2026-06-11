@@ -5,9 +5,11 @@ import {
   WorkspacePolicySchema,
 } from "./local-model-coding.js";
 import { KnownExecutionProviderSchema } from "./provider-registry.js";
+import { ModelTierSchema, RegisteredProviderSchema } from "./model-tiers.js";
 import { RUNNER_KINDS } from "./runner-kinds.js";
 import { ToolDefinitionSchema } from "./tool-definition.js";
 export { KnownExecutionProviderSchema } from "./provider-registry.js";
+export { ModelTierSchema, RegisteredProviderSchema } from "./model-tiers.js";
 
 export const AgentRoleSchema = z.enum([
   "planning",
@@ -54,6 +56,12 @@ export const ExecutionProfileSourceMetadataSchema = z.record(
   z.string(),
   z.unknown(),
 );
+
+export const ExecutionProfileFallbackSchema = z.object({
+  provider: RegisteredProviderSchema,
+  model: z.string().trim().min(1),
+  credentialRef: CredentialReferenceSchema.optional(),
+});
 
 export const WorkspaceSandboxSchema = z.enum(["read_only", "workspace_write"]);
 
@@ -232,6 +240,8 @@ export const ExecutionProfileSchema = z.object({
   provider: ExecutionProviderSchema,
   model: z.string().trim().min(1),
   credentialRef: CredentialReferenceSchema.nullable(),
+  fallbacks: z.array(ExecutionProfileFallbackSchema).default([]),
+  modelTierFloor: ModelTierSchema.default("any"),
   toolProfile: ToolProfileSchema,
   workspacePolicy: WorkspacePolicySchema.optional(),
   capabilityRequirements: CapabilityRequirementsSchema.optional(),
@@ -294,6 +304,9 @@ export type ExecutionProfileAdapterConfig = z.infer<
 >;
 export type ExecutionProfileSourceMetadata = z.infer<
   typeof ExecutionProfileSourceMetadataSchema
+>;
+export type ExecutionProfileFallback = z.infer<
+  typeof ExecutionProfileFallbackSchema
 >;
 export type WorkspaceSandbox = z.infer<typeof WorkspaceSandboxSchema>;
 export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;

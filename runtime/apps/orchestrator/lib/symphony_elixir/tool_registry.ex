@@ -29,6 +29,16 @@ defmodule SymphonyElixir.ToolRegistry do
     SymphonyElixir.ScheduledTask.Tools.Delete
   ]
 
+  @router_tools [
+    SymphonyElixir.Router.Tools.RoutingRuleList,
+    SymphonyElixir.Router.Tools.RoutingRuleRead,
+    SymphonyElixir.Router.Tools.RoutingRuleUpdate,
+    SymphonyElixir.Router.Tools.ProviderFailureList,
+    SymphonyElixir.Router.Tools.LocalModelList,
+    SymphonyElixir.Router.Tools.ProviderCutoverList,
+    SymphonyElixir.ScheduledTask.Tools.Read
+  ]
+
   @planner_tools [
     SymphonyElixir.Planner.Tools.PlanCreate,
     SymphonyElixir.Planner.Tools.PlanUpdate,
@@ -72,7 +82,10 @@ defmodule SymphonyElixir.ToolRegistry do
     SymphonyElixir.Tools.WorkspaceSettings
   ]
 
-  @tools @manager_tools ++ @planner_tools ++ @scheduled_task_tools ++ @codex_tools ++ @default_modules ++ @universal_tools
+  @tools @manager_tools ++
+           @planner_tools ++
+           @scheduled_task_tools ++
+           @router_tools ++ @codex_tools ++ @default_modules ++ @universal_tools
   @planning "planning"
   @read_only_turn_sandbox %{"type" => "readOnly", "networkAccess" => false}
   @planner_database_tools [
@@ -198,7 +211,8 @@ defmodule SymphonyElixir.ToolRegistry do
           {:error, :not_allowed} ->
             failure_response(%{
               "error" => %{
-                "message" => "Dynamic tool #{inspect(name)} is not allowed by this agent's tool policy.",
+                "message" =>
+                  "Dynamic tool #{inspect(name)} is not allowed by this agent's tool policy.",
                 "supportedTools" => allowed_tools
               }
             })
@@ -230,7 +244,8 @@ defmodule SymphonyElixir.ToolRegistry do
     |> enforce_planner_mutation_boundary(kind, tool_policy)
   end
 
-  def resolve_for_agent(agent_kind, _tool_policy, runtime_settings) when is_map(runtime_settings) do
+  def resolve_for_agent(agent_kind, _tool_policy, runtime_settings)
+      when is_map(runtime_settings) do
     resolve_for_agent(agent_kind, %{}, runtime_settings)
   end
 
@@ -251,7 +266,12 @@ defmodule SymphonyElixir.ToolRegistry do
         "order" => "created_at.asc.nullslast"
       }
 
-      case PostgRESTClient.get(tool_grant_client(config), config.grant_table, query, log_metadata: tool_grant_log_metadata("tool_registry.resolve_for_agent", config.grant_table, agent_id: agent_id)) do
+      case PostgRESTClient.get(tool_grant_client(config), config.grant_table, query,
+             log_metadata:
+               tool_grant_log_metadata("tool_registry.resolve_for_agent", config.grant_table,
+                 agent_id: agent_id
+               )
+           ) do
         {:ok, rows} when is_list(rows) ->
           tool_names =
             rows
@@ -306,14 +326,16 @@ defmodule SymphonyElixir.ToolRegistry do
   behavior until runtime reads `agent_tool_grant` directly.
   """
   @spec effective_definitions(map(), [tool_name()]) :: [map()]
-  def effective_definitions(config, fallback_names) when is_map(config) and is_list(fallback_names) do
+  def effective_definitions(config, fallback_names)
+      when is_map(config) and is_list(fallback_names) do
     case map_value(config, :tool_definitions) || map_value(config, :toolDefinitions) do
       tools when is_list(tools) -> normalize_definitions(tools)
       _other -> specs(fallback_names)
     end
   end
 
-  def effective_definitions(_config, fallback_names) when is_list(fallback_names), do: specs(fallback_names)
+  def effective_definitions(_config, fallback_names) when is_list(fallback_names),
+    do: specs(fallback_names)
 
   @doc "Extract runtime tool names from model-agnostic tool definitions."
   @spec definition_names([map()]) :: [tool_name()]
@@ -393,7 +415,9 @@ defmodule SymphonyElixir.ToolRegistry do
       ]
   end
 
-  defp repo_read_tool_names, do: ["repo.list", "repo.search", "repo.read_file", "repo.read_symbols"]
+  defp repo_read_tool_names,
+    do: ["repo.list", "repo.search", "repo.read_file", "repo.read_symbols"]
+
   defp agent_communication_tool_names, do: ["agent.message", "agent.remediate"]
 
   defp maybe_add_agent_control_tools(dynamic_tool_names, @planning, tool_policy) do
@@ -404,7 +428,8 @@ defmodule SymphonyElixir.ToolRegistry do
     end
   end
 
-  defp maybe_add_agent_control_tools(dynamic_tool_names, _kind, _tool_policy), do: dynamic_tool_names
+  defp maybe_add_agent_control_tools(dynamic_tool_names, _kind, _tool_policy),
+    do: dynamic_tool_names
 
   defp enforce_planner_mutation_boundary(resolved, @planning, tool_policy) do
     if workspace_mutation_tools_enabled?(tool_policy) do
@@ -424,7 +449,10 @@ defmodule SymphonyElixir.ToolRegistry do
         truthy?(value)
 
       :error ->
-        truthy?(Map.get(tool_policy, "allow_workspace_mutation_tools") || Map.get(tool_policy, :allow_workspace_mutation_tools))
+        truthy?(
+          Map.get(tool_policy, "allow_workspace_mutation_tools") ||
+            Map.get(tool_policy, :allow_workspace_mutation_tools)
+        )
     end
   end
 
@@ -434,7 +462,10 @@ defmodule SymphonyElixir.ToolRegistry do
         truthy?(value)
 
       :error ->
-        truthy?(Map.get(tool_policy, "allow_agent_control_tools") || Map.get(tool_policy, :allow_agent_control_tools))
+        truthy?(
+          Map.get(tool_policy, "allow_agent_control_tools") ||
+            Map.get(tool_policy, :allow_agent_control_tools)
+        )
     end
   end
 
@@ -483,11 +514,14 @@ defmodule SymphonyElixir.ToolRegistry do
         {:ok, config}
 
       table ->
-        {:error, {:invalid_tool_registry_config, "tool_registry_db grant_table must be a non-empty string, got: #{inspect(table)}"}}
+        {:error,
+         {:invalid_tool_registry_config,
+          "tool_registry_db grant_table must be a non-empty string, got: #{inspect(table)}"}}
     end
   end
 
-  defp granted_tool_name(%{"tool" => %{"slug" => slug, "enabled" => true}}) when is_binary(slug) do
+  defp granted_tool_name(%{"tool" => %{"slug" => slug, "enabled" => true}})
+       when is_binary(slug) do
     case get(slug) do
       {:ok, _module} -> [slug]
       :error -> []
@@ -508,7 +542,8 @@ defmodule SymphonyElixir.ToolRegistry do
   end
 
   defp execution_context(context) when is_map(context) do
-    {Map.drop(context, [:allowed_tools, "allowed_tools"]), Map.get(context, :allowed_tools) || Map.get(context, "allowed_tools")}
+    {Map.drop(context, [:allowed_tools, "allowed_tools"]),
+     Map.get(context, :allowed_tools) || Map.get(context, "allowed_tools")}
   end
 
   defp normalize_arguments(arguments) when is_map(arguments), do: arguments
@@ -522,13 +557,19 @@ defmodule SymphonyElixir.ToolRegistry do
     }
   end
 
-  defp output_success("linear_graphql", %{"errors" => errors}) when is_list(errors) and errors != [], do: false
-  defp output_success("linear_graphql", %{errors: errors}) when is_list(errors) and errors != [], do: false
+  defp output_success("linear_graphql", %{"errors" => errors})
+       when is_list(errors) and errors != [], do: false
+
+  defp output_success("linear_graphql", %{errors: errors}) when is_list(errors) and errors != [],
+    do: false
+
   defp output_success(_name, _output), do: true
 
   defp failure_response(payload), do: dynamic_tool_response(false, encode_payload(payload))
 
-  defp encode_payload(payload) when is_map(payload) or is_list(payload), do: Jason.encode!(payload, pretty: true)
+  defp encode_payload(payload) when is_map(payload) or is_list(payload),
+    do: Jason.encode!(payload, pretty: true)
+
   defp encode_payload(payload), do: inspect(payload)
 
   defp supported_tool_names(allowed_tools) when is_list(allowed_tools), do: allowed_tools
@@ -539,40 +580,79 @@ defmodule SymphonyElixir.ToolRegistry do
   end
 
   defp tool_error_payload("linear_graphql", :invalid_arguments) do
-    %{"error" => %{"message" => "`linear_graphql` expects either a GraphQL query string or an object with `query` and optional `variables`."}}
+    %{
+      "error" => %{
+        "message" =>
+          "`linear_graphql` expects either a GraphQL query string or an object with `query` and optional `variables`."
+      }
+    }
   end
 
   defp tool_error_payload("linear_graphql", :invalid_variables) do
-    %{"error" => %{"message" => "`linear_graphql.variables` must be a JSON object when provided."}}
+    %{
+      "error" => %{"message" => "`linear_graphql.variables` must be a JSON object when provided."}
+    }
   end
 
   defp tool_error_payload("linear_graphql", :missing_linear_api_token) do
-    %{"error" => %{"message" => "Symphony is missing Linear auth. Set `linear.api_key` in `WORKFLOW.md` or export `LINEAR_API_KEY`."}}
+    %{
+      "error" => %{
+        "message" =>
+          "Symphony is missing Linear auth. Set `linear.api_key` in `WORKFLOW.md` or export `LINEAR_API_KEY`."
+      }
+    }
   end
 
   defp tool_error_payload("linear_graphql", {:linear_api_status, status}) do
-    %{"error" => %{"message" => "Linear GraphQL request failed with HTTP #{status}.", "status" => status}}
+    %{
+      "error" => %{
+        "message" => "Linear GraphQL request failed with HTTP #{status}.",
+        "status" => status
+      }
+    }
   end
 
   defp tool_error_payload("linear_graphql", {:linear_api_request, reason}) do
-    %{"error" => %{"message" => "Linear GraphQL request failed before receiving a successful response.", "reason" => inspect(reason)}}
+    %{
+      "error" => %{
+        "message" => "Linear GraphQL request failed before receiving a successful response.",
+        "reason" => inspect(reason)
+      }
+    }
   end
 
   defp tool_error_payload("linear_graphql", reason) do
-    %{"error" => %{"message" => "Linear GraphQL tool execution failed.", "reason" => inspect(reason)}}
+    %{
+      "error" => %{
+        "message" => "Linear GraphQL tool execution failed.",
+        "reason" => inspect(reason)
+      }
+    }
   end
 
-  defp tool_error_payload("snooze_work_item", reason), do: named_error_payload("snooze_work_item failed.", reason)
-  defp tool_error_payload("planning_profile." <> _rest = tool, reason), do: named_error_payload("Planning profile tool execution failed.", reason, tool)
-  defp tool_error_payload("repo." <> _rest = tool, reason), do: named_error_payload("#{tool} failed.", reason)
-  defp tool_error_payload("agent." <> _rest = tool, reason), do: named_error_payload("#{tool} failed.", reason)
-  defp tool_error_payload("plan." <> _rest = tool, reason), do: named_error_payload("#{tool} failed.", reason)
+  defp tool_error_payload("snooze_work_item", reason),
+    do: named_error_payload("snooze_work_item failed.", reason)
+
+  defp tool_error_payload("planning_profile." <> _rest = tool, reason),
+    do: named_error_payload("Planning profile tool execution failed.", reason, tool)
+
+  defp tool_error_payload("repo." <> _rest = tool, reason),
+    do: named_error_payload("#{tool} failed.", reason)
+
+  defp tool_error_payload("agent." <> _rest = tool, reason),
+    do: named_error_payload("#{tool} failed.", reason)
+
+  defp tool_error_payload("plan." <> _rest = tool, reason),
+    do: named_error_payload("#{tool} failed.", reason)
 
   defp tool_error_payload("task." <> _rest = tool, {:validation_failed, validation_feedback}),
     do: validation_error_payload("#{tool} failed validation.", validation_feedback)
 
-  defp tool_error_payload("task." <> _rest = tool, reason), do: named_error_payload("#{tool} failed.", reason)
-  defp tool_error_payload(_tool, reason), do: named_error_payload("Tool execution failed.", reason)
+  defp tool_error_payload("task." <> _rest = tool, reason),
+    do: named_error_payload("#{tool} failed.", reason)
+
+  defp tool_error_payload(_tool, reason),
+    do: named_error_payload("Tool execution failed.", reason)
 
   defp validation_error_payload(message, validation_feedback) do
     %{
@@ -633,7 +713,9 @@ defmodule SymphonyElixir.ToolRegistry do
     end)
   end
 
-  defp map_value(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
+  defp map_value(map, key) when is_map(map),
+    do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
+
   defp map_value(_map, _key), do: nil
 
   defp registered_module(name) do

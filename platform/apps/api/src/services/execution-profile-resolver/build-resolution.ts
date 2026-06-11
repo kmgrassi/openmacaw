@@ -3,10 +3,12 @@ import type {
   AgentRole,
   ExecutionProfile,
   ExecutionProfileAdapterConfig,
+  ExecutionProfileFallback,
   ExecutionProfileMissingRequirement,
   ExecutionProfileResolution,
   ExecutionProfileSourceMetadata,
 } from "../../../../../contracts/execution-profile.js";
+import type { ModelTier } from "../../../../../contracts/model-tiers.js";
 import {
   capabilitiesForRunnerKind,
   isCredentiallessRunnerKind,
@@ -29,6 +31,8 @@ export function buildResolution(input: {
   credentialAlias: string | null;
   fallbackUsed: boolean;
   legacyGatewayConfigUsed: boolean;
+  fallbacks?: ExecutionProfileFallback[];
+  modelTierFloor?: ModelTier;
   adapterConfig?: ExecutionProfileAdapterConfig;
   sourceMetadata?: ExecutionProfileSourceMetadata;
 }): ExecutionProfileResolution {
@@ -63,6 +67,8 @@ export function buildResolution(input: {
             provider,
             model: input.model,
             credentialRef: input.credentialRef,
+            fallbacks: input.fallbacks ?? [],
+            modelTierFloor: input.modelTierFloor ?? "any",
             toolProfile: toolProfileForAgentType(input.role),
             workspacePolicy: localCodingProfile
               ? { sandbox: "workspace_write", approvalPolicy: "on_request" }

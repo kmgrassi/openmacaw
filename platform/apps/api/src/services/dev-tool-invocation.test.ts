@@ -88,6 +88,8 @@ function profile() {
       provider: "local" as const,
       model: "qwen",
       credentialRef: null,
+      fallbacks: [],
+      modelTierFloor: "any" as const,
       toolProfile: "coding" as const,
       capabilities: {
         streaming: true,

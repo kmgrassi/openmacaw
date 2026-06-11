@@ -423,8 +423,8 @@ create table if not exists public.routing_rule (
   last_error_at timestamptz,
   machine_id uuid references public.local_runtime_machine(id) on delete set null,
   model text,
+  model_tier_floor text not null default 'any' check (model_tier_floor in ('frontier', 'mid', 'local', 'any')),
   name text not null,
-  next_fallback_rule_id uuid,
   priority integer,
   provider text,
   runner_family text,
@@ -437,6 +437,41 @@ create table if not exists public.routing_rule (
   primary key (id)
 );
 comment on table public.routing_rule is 'OpenMacaw runtime bridge table.';
+
+create table if not exists public.routing_rule_fallback (
+  routing_rule_id uuid not null references public.routing_rule(id) on delete cascade,
+  workspace_id uuid not null,
+  position integer not null check (position >= 0),
+  provider text not null check (provider in (
+    'openai',
+    'anthropic',
+    'openai_compatible',
+    'openai_codex',
+    'xai',
+    'google',
+    'mistral',
+    'groq',
+    'openrouter',
+    'together',
+    'perplexity',
+    'azure',
+    'codex',
+    'openclaw',
+    'computer_use',
+    'local'
+  )),
+  model text not null,
+  credential_id uuid references public.credential(id) on delete restrict,
+  credential_alias text check (
+    credential_alias is null
+    or (credential_alias ~ '^[a-z0-9-]+$' and length(credential_alias) <= 64)
+  ),
+  primary key (routing_rule_id, position),
+  constraint routing_rule_fallback_single_credential
+    check (num_nonnulls(credential_id, credential_alias) <= 1)
+);
+comment on table public.routing_rule_fallback is
+  'Ordered fallback chain links for intelligent provider cutovers.';
 
 create table if not exists public.routing_rule_match (
   created_at timestamptz default now(),
@@ -953,6 +988,8 @@ create index if not exists message_thread_created_idx on public.message (thread_
 create index if not exists plan_workspace_idx on public.plan (workspace_id);
 create unique index if not exists planning_profile_active_scope_key on public.planning_profile (scope_type, scope_id) where deleted_at is null and is_active = true;
 create index if not exists routing_rule_workspace_priority_idx on public.routing_rule (workspace_id, priority);
+create index if not exists routing_rule_fallback_rule_idx on public.routing_rule_fallback (routing_rule_id);
+create index if not exists routing_rule_fallback_workspace_rule_idx on public.routing_rule_fallback (workspace_id, routing_rule_id, position);
 create index if not exists routing_rule_match_rule_idx on public.routing_rule_match (rule_id);
 create index if not exists scheduled_task_due_idx on public.scheduled_task (enabled, next_run_at);
 create index if not exists scheduled_task_run_task_idx on public.scheduled_task_run (scheduled_task_id, created_at desc);
@@ -998,6 +1035,7 @@ begin
     'planning_profile',
     'planning_profile_versions',
     'routing_rule',
+    'routing_rule_fallback',
     'routing_rule_match',
     'scheduled_task',
     'scheduled_task_run',
@@ -1185,6 +1223,7 @@ begin
     'planning_profile',
     'planning_profile_versions',
     'routing_rule',
+    'routing_rule_fallback',
     'routing_rule_match',
     'scheduled_task',
     'scheduled_task_run',
