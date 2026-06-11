@@ -108,6 +108,117 @@ defmodule SymphonyElixir.Runner.OpenClawTest do
       stop_test_server(server_ref)
     end
 
+    test "walks fallback chain after provider failure" do
+      {primary_port, primary_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/v1/runs"} ->
+            {429, %{error: %{code: "rate_limit_exceeded", message: "try later"}}}
+        end)
+
+      {fallback_port, fallback_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/v1/runs"} ->
+            {200, %{id: "fallback-run", status: "running"}}
+
+          %{method: "GET", path: "/v1/runs/fallback-run"} ->
+            {200, %{id: "fallback-run", status: "completed", output: "fallback done"}}
+        end)
+
+      config = %{
+        "base_url" => "http://localhost:#{primary_port}",
+        "timeout_ms" => 5_000,
+        "poll_interval_ms" => 50,
+        "fallbacks" => [
+          %{"adapter_config" => %{"base_url" => "http://localhost:#{fallback_port}"}}
+        ]
+      }
+
+      {:ok, session} = OpenClaw.start_session(config, nil)
+
+      assert {:ok, %{"id" => "fallback-run", "status" => "completed"}} =
+               OpenClaw.run_turn(session, "Fix the bug", build_work_item())
+
+      stop_test_server(primary_ref)
+      stop_test_server(fallback_ref)
+    end
+
+    test "reads fallback chain from embedded execution profile" do
+      {primary_port, primary_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/v1/runs"} ->
+            {429, %{error: %{code: "rate_limit_exceeded", message: "try later"}}}
+        end)
+
+      {fallback_port, fallback_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/v1/runs"} ->
+            {200, %{id: "profile-fallback-run", status: "running"}}
+
+          %{method: "GET", path: "/v1/runs/profile-fallback-run"} ->
+            {200, %{id: "profile-fallback-run", status: "completed", output: "fallback done"}}
+        end)
+
+      config = %{
+        "base_url" => "http://localhost:#{primary_port}",
+        "timeout_ms" => 5_000,
+        "poll_interval_ms" => 50
+      }
+
+      {:ok, session} = OpenClaw.start_session(config, nil)
+
+      session =
+        session
+        |> Map.delete(:fallbacks)
+        |> Map.put(:execution_profile, %{
+          "fallbacks" => [
+            %{"adapter_config" => %{"base_url" => "http://localhost:#{fallback_port}"}}
+          ]
+        })
+
+      assert {:ok, %{"id" => "profile-fallback-run", "status" => "completed"}} =
+               OpenClaw.run_turn(session, "Fix the bug", build_work_item())
+
+      stop_test_server(primary_ref)
+      stop_test_server(fallback_ref)
+    end
+
+    test "walks fallback chain after polling provider failure" do
+      {primary_port, primary_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/v1/runs"} ->
+            {200, %{id: "poll-fails", status: "running"}}
+
+          %{method: "GET", path: "/v1/runs/poll-fails"} ->
+            {503, %{error: %{message: "overloaded"}}}
+        end)
+
+      {fallback_port, fallback_ref} =
+        start_test_server(fn
+          %{method: "POST", path: "/v1/runs"} ->
+            {200, %{id: "poll-fallback-run", status: "running"}}
+
+          %{method: "GET", path: "/v1/runs/poll-fallback-run"} ->
+            {200, %{id: "poll-fallback-run", status: "completed", output: "fallback done"}}
+        end)
+
+      config = %{
+        "base_url" => "http://localhost:#{primary_port}",
+        "timeout_ms" => 5_000,
+        "poll_interval_ms" => 50,
+        "fallbacks" => [
+          %{"adapter_config" => %{"base_url" => "http://localhost:#{fallback_port}"}}
+        ]
+      }
+
+      {:ok, session} = OpenClaw.start_session(config, nil)
+
+      assert {:ok, %{"id" => "poll-fallback-run", "status" => "completed"}} =
+               OpenClaw.run_turn(session, "Fix the bug", build_work_item())
+
+      stop_test_server(primary_ref)
+      stop_test_server(fallback_ref)
+    end
+
     test "polls until completion with intermediate pending states" do
       counter = :counters.new(1, [:atomics])
 

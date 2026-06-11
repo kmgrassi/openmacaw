@@ -80,6 +80,9 @@ defmodule SymphonyElixir.Cutover do
   end
 
   @type profile :: %{optional(String.t() | atom()) => term()}
+  @type classified_failure :: {:cutover_provider_failure, map(), term()}
+  @type session_call_result :: {:ok, term()} | {:error, term()}
+  @type session_call_fun :: (map(), non_neg_integer() -> session_call_result())
 
   @spec walk(profile(), map(), (CutoverLink.t() -> {:ok, term()} | {:error, term()}), keyword()) ::
           {:ok, term(), CutoverDecision.t()}
@@ -102,6 +105,128 @@ defmodule SymphonyElixir.Cutover do
     profile
     |> chain()
     |> walk_chain(floor, call_fn, state, opts)
+  end
+
+  @spec walk_session(map(), atom() | String.t(), session_call_fun()) :: session_call_result()
+  def walk_session(session, _runner_kind, call_fn) when is_map(session) and is_function(call_fn, 2) do
+    session
+    |> session_links()
+    |> do_walk_session(call_fn, nil, 1)
+  end
+
+  @spec classified_failure(map(), term()) :: {:error, classified_failure()}
+  def classified_failure(classification, reason) when is_map(classification) do
+    {:error, {:cutover_provider_failure, classification, reason}}
+  end
+
+  defp do_walk_session([], _call_fn, nil, _attempt), do: {:error, {:fatal, :cutover_chain_empty}}
+  defp do_walk_session([], _call_fn, last_error, _attempt), do: last_error
+
+  defp do_walk_session([link | remaining], call_fn, _last_error, attempt) do
+    case call_fn.(link, attempt) do
+      {:ok, _result} = success ->
+        success
+
+      {:error, {:cutover_provider_failure, classification, reason}} = error ->
+        if retryable_failure?(classification) and remaining != [] do
+          do_walk_session(remaining, call_fn, {:error, reason}, attempt + 1)
+        else
+          unwrap_classified_error(error)
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp session_links(session) do
+    [session | fallback_sessions(session)]
+  end
+
+  defp fallback_sessions(session) do
+    session
+    |> session_fallback_links()
+    |> List.wrap()
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(&merge_session_link(session, &1))
+  end
+
+  defp session_fallback_links(session) do
+    case session_value(session, :fallbacks, "fallbacks", []) do
+      links when is_list(links) and links != [] ->
+        links
+
+      _empty ->
+        session
+        |> session_value(:execution_profile, "execution_profile", %{})
+        |> session_normalize_map()
+        |> session_value(:fallbacks, "fallbacks", [])
+    end
+  end
+
+  defp merge_session_link(session, fallback) do
+    adapter_config =
+      fallback
+      |> session_value(:adapter_config, "adapter_config", %{})
+      |> session_normalize_map()
+      |> normalize_adapter_config()
+
+    session
+    |> Map.merge(adapter_config)
+    |> maybe_drop_provider_session_id(adapter_config, fallback)
+    |> maybe_put_from_fallback(fallback, :provider, "provider")
+    |> maybe_put_model_provider(fallback)
+    |> maybe_put_from_fallback(fallback, :model, "model")
+    |> maybe_put_from_fallback(fallback, :credential_id, "credential_id")
+    |> maybe_put_from_fallback(fallback, :credential_scope, "credential_scope")
+    |> maybe_put_from_fallback(fallback, :api_key, "api_key")
+    |> maybe_put_from_fallback(fallback, :base_url, "base_url")
+    |> maybe_put_from_fallback(fallback, :endpoint, "endpoint")
+    |> maybe_put_from_fallback(fallback, :session_id, "session_id")
+  end
+
+  defp maybe_drop_provider_session_id(session, adapter_config, fallback) do
+    if session_value(adapter_config, :session_id, "session_id", nil) ||
+         session_value(fallback, :session_id, "session_id", nil) do
+      session
+    else
+      Map.delete(session, :session_id)
+    end
+  end
+
+  defp maybe_put_from_fallback(session, fallback, atom_key, string_key) do
+    case session_value(fallback, atom_key, string_key, nil) do
+      nil -> session
+      value -> Map.put(session, atom_key, value)
+    end
+  end
+
+  defp maybe_put_model_provider(session, fallback) do
+    case session_value(fallback, :provider, "provider", nil) ||
+           session_value(fallback, :model_provider, "model_provider", nil) do
+      nil -> session
+      value -> Map.put(session, :model_provider, value)
+    end
+  end
+
+  defp unwrap_classified_error({:error, {:cutover_provider_failure, _classification, reason}}), do: {:error, reason}
+
+  defp session_value(map, atom_key, string_key, default) do
+    Map.get(map, atom_key) || Map.get(map, string_key) || default
+  end
+
+  defp session_normalize_map(value) when is_map(value), do: value
+  defp session_normalize_map(_value), do: %{}
+
+  defp normalize_adapter_config(config) do
+    Enum.reduce([:api_key, :base_url, :endpoint, :model_provider, :session_id, :session_type], config, fn key, acc ->
+      string_key = Atom.to_string(key)
+
+      case Map.get(acc, string_key) do
+        nil -> acc
+        value -> Map.put(acc, key, value)
+      end
+    end)
   end
 
   defp walk_chain([], _floor, _call_fn, state, opts) do
