@@ -33,6 +33,18 @@ export function parseAgentId(sessionKey: SessionKey | string): AgentId | null {
 }
 
 /**
+ * Extracts the agent ID from any `agent:{agentId}:...` session key.
+ * Returns `null` if the key does not look agent-scoped.
+ */
+export function parseAgentScopedSessionAgentId(
+  sessionKey: SessionKey | string,
+): AgentId | null {
+  const m = /^agent:([^:]+):/.exec(String(sessionKey || ""));
+  const candidate = m?.[1]?.trim() || "";
+  return isValidUuid(candidate) ? candidate : null;
+}
+
+/**
  * Runtime scope - the resolved identity context for a WS connection.
  * Every connected session MUST have all three fields populated.
  */
