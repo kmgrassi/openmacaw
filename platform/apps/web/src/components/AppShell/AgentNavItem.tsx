@@ -46,13 +46,13 @@ export function AgentNavItem({
       title={titleParts.join(" - ")}
       className={({ isActive }) =>
         cn(
-          "group relative flex min-h-9 rounded-md py-1.5 pr-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+          "group relative flex min-h-9 rounded-md py-1.5 pr-2.5 text-[0.9375rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
           collapsed
             ? "items-center justify-center pl-2.5"
             : "items-start gap-2.5 pl-3.5",
           isActive
             ? "bg-surface-raised text-slate-100 shadow-[inset_0_0_0_1px_rgba(96,165,250,0.18)]"
-            : "text-slate-400 hover:bg-surface-raised hover:text-slate-200",
+            : "text-slate-300 hover:bg-surface-raised hover:text-slate-100",
         )
       }
     >
@@ -103,7 +103,7 @@ function CollapsedAgentContent({
           "flex h-7 w-7 items-center justify-center rounded-md text-xs transition-colors",
           isActive
             ? "bg-blue-500/15 font-semibold text-slate-50"
-            : "text-slate-400",
+            : "text-slate-300",
         )}
       >
         {agent.name.slice(0, 1).toUpperCase()}
@@ -150,10 +150,10 @@ function ExpandedAgentContent({
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block truncate text-sm leading-5",
+            "block truncate text-[0.9375rem] leading-5",
             isActive
               ? "font-semibold text-slate-50"
-              : "font-medium text-slate-500 group-hover:text-slate-300",
+              : "font-medium text-slate-300 group-hover:text-slate-100",
           )}
         >
           {agent.name}
