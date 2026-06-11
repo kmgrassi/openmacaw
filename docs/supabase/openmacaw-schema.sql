@@ -1217,7 +1217,6 @@ begin
     'gateway_config',
     'gateway_config_state',
     'gateway_config_versions',
-    'local_runtime_event',
     'local_runtime_machine',
     'local_runtime_model',
     'local_runtime_token',
@@ -1313,6 +1312,52 @@ drop policy if exists workspace_members_visible_to_members on public.workspace_m
 create policy workspace_members_visible_to_members on public.workspace_members for all to authenticated
 using (user_id = public.current_app_user_id() or public.is_workspace_member(workspace_id))
 with check (user_id = public.current_app_user_id() or public.is_workspace_admin(workspace_id));
+
+alter table public.local_runtime_model enable row level security;
+drop policy if exists local_runtime_model_workspace_member_access on public.local_runtime_model;
+create policy local_runtime_model_workspace_member_access
+on public.local_runtime_model
+for all to authenticated
+using (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_model.machine_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_model.machine_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+);
+
+alter table public.local_runtime_event enable row level security;
+drop policy if exists local_runtime_event_workspace_member_access on public.local_runtime_event;
+create policy local_runtime_event_workspace_member_access
+on public.local_runtime_event
+for all to authenticated
+using (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_event.machine_id
+      and machine.workspace_id = local_runtime_event.workspace_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.local_runtime_machine machine
+    where machine.id = local_runtime_event.machine_id
+      and machine.workspace_id = local_runtime_event.workspace_id
+      and public.is_workspace_member(machine.workspace_id)
+  )
+);
 
 alter table public.agent_eval_suite enable row level security;
 drop policy if exists agent_eval_suite_member_access on public.agent_eval_suite;
@@ -1617,7 +1662,6 @@ begin
     'gateway_config',
     'gateway_config_state',
     'gateway_config_versions',
-    'local_runtime_event',
     'local_runtime_machine',
     'local_runtime_model',
     'local_runtime_token',

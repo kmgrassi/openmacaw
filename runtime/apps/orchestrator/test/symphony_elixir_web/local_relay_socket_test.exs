@@ -297,6 +297,20 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert reply["error"]["message"] == "register before heartbeat"
   end
 
+  test "cancel ack before register is rejected as protocol error" do
+    {:ok, state} = init_socket()
+
+    {:push, [{:text, reply_json}], ^state} =
+      LocalRelaySocket.handle_in(
+        {encode(%{type: "cancel_ack", correlation_id: "cancel-early", outcome: "cancelled"}), []},
+        state
+      )
+
+    reply = Jason.decode!(reply_json)
+    assert reply["error"]["code"] == "local_runner_protocol_error"
+    assert reply["error"]["message"] == "cancel_ack is not supported before relay dispatch"
+  end
+
   test "malformed JSON is rejected with an encodable protocol error" do
     {:ok, state} = init_socket()
 

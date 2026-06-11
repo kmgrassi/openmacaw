@@ -14,6 +14,32 @@ create unique index if not exists local_runtime_model_machine_runner_model_key
 create index if not exists local_runtime_model_machine_idx
   on public.local_runtime_model (machine_id);
 
+alter table public.local_runtime_model enable row level security;
+
+drop policy if exists local_runtime_model_workspace_member_access
+  on public.local_runtime_model;
+
+create policy local_runtime_model_workspace_member_access
+  on public.local_runtime_model
+  for all
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.local_runtime_machine machine
+      where machine.id = local_runtime_model.machine_id
+        and public.is_workspace_member(machine.workspace_id)
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.local_runtime_machine machine
+      where machine.id = local_runtime_model.machine_id
+        and public.is_workspace_member(machine.workspace_id)
+    )
+  );
+
 alter table public.routing_rule
   add column if not exists machine_id uuid references public.local_runtime_machine(id) on delete set null,
   add column if not exists last_error text,
@@ -51,12 +77,31 @@ create table if not exists public.local_runtime_event (
 alter table public.local_runtime_event enable row level security;
 
 drop policy if exists openmacaw_workspace_member_access on public.local_runtime_event;
-create policy openmacaw_workspace_member_access
+drop policy if exists local_runtime_event_workspace_member_access
+  on public.local_runtime_event;
+
+create policy local_runtime_event_workspace_member_access
   on public.local_runtime_event
   for all
   to authenticated
-  using (public.is_workspace_member(workspace_id))
-  with check (public.is_workspace_member(workspace_id));
+  using (
+    exists (
+      select 1
+      from public.local_runtime_machine machine
+      where machine.id = local_runtime_event.machine_id
+        and machine.workspace_id = local_runtime_event.workspace_id
+        and public.is_workspace_member(machine.workspace_id)
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.local_runtime_machine machine
+      where machine.id = local_runtime_event.machine_id
+        and machine.workspace_id = local_runtime_event.workspace_id
+        and public.is_workspace_member(machine.workspace_id)
+    )
+  );
 
 create index if not exists local_runtime_event_machine_created_idx
   on public.local_runtime_event (machine_id, created_at desc);

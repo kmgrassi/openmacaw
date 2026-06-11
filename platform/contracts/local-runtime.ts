@@ -121,21 +121,26 @@ export const LocalRuntimeEventSchema = z.object({
 });
 export type LocalRuntimeEvent = z.infer<typeof LocalRuntimeEventSchema>;
 
-export const LocalExecutionTargetSchema = z.object({
-  machineId: z.string().nullable(),
-  machineDisplayName: z.string().nullable(),
-  status: LocalRuntimeMachineStatusSchema.default("offline"),
-  helperOnline: z.boolean(),
-  lastSeenAt: z.string().nullable(),
-  workspaceRoot: z.string().nullable(),
-  registered: z.boolean(),
-  helperVersion: z.string().nullable().default(null),
-  advertisedRunnerKinds: z.array(z.string()).default([]),
-  advertisedModels: z.array(z.string()).default([]),
-  runtimeManagedTools: z.boolean().nullable().default(null),
-  lastError: z.string().nullable().default(null),
-  lastErrorAt: z.string().nullable().default(null),
-});
+export const LocalExecutionTargetSchema = z
+  .object({
+    machineId: z.string().nullable(),
+    machineDisplayName: z.string().nullable(),
+    status: LocalRuntimeMachineStatusSchema.optional(),
+    helperOnline: z.boolean(),
+    lastSeenAt: z.string().nullable(),
+    workspaceRoot: z.string().nullable(),
+    registered: z.boolean(),
+    helperVersion: z.string().nullable().default(null),
+    advertisedRunnerKinds: z.array(z.string()).default([]),
+    advertisedModels: z.array(z.string()).default([]),
+    runtimeManagedTools: z.boolean().nullable().default(null),
+    lastError: z.string().nullable().default(null),
+    lastErrorAt: z.string().nullable().default(null),
+  })
+  .transform((target) => ({
+    ...target,
+    status: target.status ?? (target.helperOnline ? "online" : "offline"),
+  }));
 export type LocalExecutionTarget = z.infer<typeof LocalExecutionTargetSchema>;
 
 const OpenAICompatibleRunnerInputSchema = z.object({
