@@ -76,6 +76,16 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
              )
   end
 
+  test "classifies Anthropic top-level refusal stop reasons as content refusals" do
+    body = %{
+      "type" => "message",
+      "content" => [%{"type" => "text", "text" => ""}],
+      "stop_reason" => "refusal"
+    }
+
+    assert Observability.provider_content_refusal?(body)
+  end
+
   test "classifies OpenAI content_filter finish reasons as retryable content refusals" do
     body = %{
       "choices" => [

@@ -308,6 +308,10 @@ defmodule SymphonyElixir.Runner.Observability do
   Detects provider payloads that refused generation for content-policy reasons.
   """
   @spec provider_content_refusal?(term()) :: boolean()
+  def provider_content_refusal?(%{"stop_reason" => "refusal"}), do: true
+
+  def provider_content_refusal?(%{"finish_reason" => "content_filter"}), do: true
+
   def provider_content_refusal?(%{"content" => content}) when is_list(content),
     do: Enum.any?(content, &anthropic_refusal_block?/1)
 
