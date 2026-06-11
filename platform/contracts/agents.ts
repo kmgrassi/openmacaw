@@ -3,11 +3,13 @@ import {
   CredentialReferenceSchema,
   KnownExecutionProviderSchema,
 } from "./execution-profile.js";
+import { ModelTierFloorSchema } from "./model-tiers.js";
 
 export const AgentTypeSchema = z.enum([
   "coding",
   "planning",
   "manager",
+  "router",
   "custom",
 ]);
 export type AgentType = z.infer<typeof AgentTypeSchema>;
@@ -152,6 +154,17 @@ export const AgentRuntimeProfileSchema = z.object({
   provider: AgentRuntimeProviderSchema,
   model: z.string().trim().min(1),
   credentialRef: CredentialReferenceSchema.nullable(),
+  fallbacks: z
+    .array(
+      z.object({
+        provider: z.string().trim().min(1),
+        model: z.string().trim().min(1),
+        credentialRef: CredentialReferenceSchema.nullable(),
+      }),
+    )
+    .optional()
+    .default([]),
+  modelTierFloor: ModelTierFloorSchema.optional().default("any"),
   localEndpointUrl: z.string().trim().min(1).nullable(),
   localHelperRegistered: z.boolean(),
   updatedAt: z.string().nullable(),
@@ -166,11 +179,21 @@ export const AgentRuntimeProfileUpdateRequestSchema = z.object({
   provider: AgentRuntimeProviderSchema,
   model: z.string().trim().min(1),
   credentialRef: CredentialReferenceSchema.nullable().optional(),
+  fallbacks: z
+    .array(
+      z.object({
+        provider: z.string().trim().min(1),
+        model: z.string().trim().min(1),
+        credentialRef: CredentialReferenceSchema.nullable(),
+      }),
+    )
+    .default([]),
+  modelTierFloor: ModelTierFloorSchema.default("any"),
   localEndpointUrl: z.string().trim().min(1).nullable().optional(),
 });
 
 export type AgentRuntimeProfile = z.infer<typeof AgentRuntimeProfileSchema>;
-export type AgentRuntimeProfileUpdateRequest = z.infer<
+export type AgentRuntimeProfileUpdateRequest = z.input<
   typeof AgentRuntimeProfileUpdateRequestSchema
 >;
 

@@ -11,6 +11,14 @@ defmodule SymphonyElixir.ScheduledTask.NextRunTest do
              )
   end
 
+  test "seeds one-shot schedules from v1 at schedules" do
+    assert {:ok, ~U[2026-05-14 12:00:00Z]} =
+             NextRun.first_after(
+               %{"kind" => "at", "runAt" => "2026-05-14T12:00:00Z"},
+               ~U[2026-05-14 11:00:00Z]
+             )
+  end
+
   test "rejects non-string one-shot at timestamps" do
     schedule = %{"at" => nil}
 
@@ -64,6 +72,12 @@ defmodule SymphonyElixir.ScheduledTask.NextRunTest do
   test "one-shot at schedules do not produce another next run" do
     assert {:ok, nil} =
              NextRun.next_after(%{"at" => "2026-05-14T12:00:00Z"}, ~U[2026-05-14 12:00:00Z])
+
+    assert {:ok, nil} =
+             NextRun.next_after(
+               %{"kind" => "at", "runAt" => "2026-05-14T12:00:00Z"},
+               ~U[2026-05-14 12:00:00Z]
+             )
   end
 
   test "rejects unsupported schedule shapes" do

@@ -126,5 +126,5 @@ runner-kind list lives in `platform/contracts/runner-kinds.ts`.
 
 - `../platform` — TypeScript API + React frontend
 - `../runtime` — Elixir orchestrator/launcher
-- `harper-server` — private repo owning historical pre-OpenMacaw Supabase
-  migrations
+- Historical `harper-server` schemas are provenance only. Current OpenMacaw
+  database changes belong in `platform/supabase/migrations/`.

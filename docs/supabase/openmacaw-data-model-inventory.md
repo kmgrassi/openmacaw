@@ -1,13 +1,17 @@
 # OpenMacaw Supabase Data Model Inventory
 
-This inventory scopes the database surface that should move out of the reused
-Harper Supabase project and into a dedicated OpenMacaw Supabase project.
+This inventory scopes the database surface that moved out of the reused Harper
+Supabase project and into a dedicated OpenMacaw Supabase project.
 
 The companion SQL bootstrap is
 [`openmacaw-schema.sql`](openmacaw-schema.sql). It is intended for a new
 Supabase project and recreates the OpenMacaw-owned tables, helpers, indexes,
 and minimal RLS policies. See [README.md](README.md) for the Supabase project
 creation and migration workflow.
+
+Current OpenMacaw migrations belong in `platform/supabase/migrations/`.
+Harper Server is historical provenance only and is not the owner for new
+OpenMacaw database changes.
 
 ## Sources Reviewed
 

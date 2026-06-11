@@ -28,6 +28,7 @@ const workspaceId = "22222222-2222-4222-8222-222222222222";
 const planningAgentId = "44444444-4444-4444-8444-444444444444";
 const codingAgentId = "55555555-5555-4555-8555-555555555555";
 const managerAgentId = "66666666-6666-4666-8666-666666666666";
+const routerAgentId = "77777777-7777-4777-8777-777777777777";
 
 type Row = Record<string, unknown>;
 
@@ -64,6 +65,7 @@ function setupSupabaseMock(input?: {
   credentialAgentIds?: string[];
   scopedCredentials?: Row[];
   gatewayConfigAgentIds?: string[];
+  scheduledTasks?: Row[];
 }) {
   const state = {
     workspaces: [...(input?.workspaces ?? [])],
@@ -73,6 +75,7 @@ function setupSupabaseMock(input?: {
     credentialAgentIds: new Set(input?.credentialAgentIds ?? []),
     scopedCredentials: input?.scopedCredentials ? [...input.scopedCredentials] : null,
     gatewayConfigAgentIds: new Set(input?.gatewayConfigAgentIds ?? []),
+    scheduledTasks: [...(input?.scheduledTasks ?? [])],
   };
 
   const supabaseTables = {
@@ -103,6 +106,7 @@ function setupSupabaseMock(input?: {
       updated_at: "2026-04-25T00:00:00.000Z",
       updated_by: userId,
     })),
+    scheduled_task: state.scheduledTasks,
   };
   const supabaseClient = createMockSupabaseClient(supabaseTables);
   vi.mocked(getServiceRoleSupabase).mockReturnValue(supabaseClient as never);
@@ -117,7 +121,7 @@ beforeEach(() => {
 });
 
 describe("default-agent auth bootstrap", () => {
-  it("creates a workspace, default agents, manager agent, and assignments without duplicating on repeat calls", async () => {
+  it("creates a workspace, default agents, manager agent, router agent, and assignments without duplicating on repeat calls", async () => {
     const state = setupSupabaseMock();
 
     const first = await listSetupAuthState("access-token", userId);
@@ -125,11 +129,14 @@ describe("default-agent auth bootstrap", () => {
     const createdPlanningAgent = state.agents.find((row) => row.type === "planning");
     const createdCodingAgent = state.agents.find((row) => row.type === "coding");
     const createdManagerAgent = state.agents.find((row) => row.type === "manager");
+    const createdRouterAgent = state.agents.find((row) => row.type === "router");
+    const routerTask = state.scheduledTasks.find((row) => row.metadata && typeof row.metadata === "object");
 
     expect(first.workspaceId).toBe(state.workspaces[0]?.id);
     expect(first.defaultAgents.planning?.agentId).toBe(createdPlanningAgent?.id);
     expect(first.defaultAgents.coding?.agentId).toBe(createdCodingAgent?.id);
     expect(first.managerAgent.agentId).toBe(createdManagerAgent?.id);
+    expect(first.agents.find((row) => row.id === createdRouterAgent?.id)?.type).toBe("router");
     expect(first.managerAgent).toMatchObject({
       configured: false,
       missing: ["credential", "gateway_config", "runner"],
@@ -151,12 +158,68 @@ describe("default-agent auth bootstrap", () => {
     });
     expect(second.defaultAgents.coding?.agentId).toBe(createdCodingAgent?.id);
     expect(second.managerAgent.agentId).toBe(createdManagerAgent?.id);
-    expect(state.agents).toHaveLength(3);
+    expect(state.agents).toHaveLength(4);
     expect(state.assignments).toHaveLength(2);
     expect(state.assignments.map((row) => row.role)).toEqual(["planning", "coding"]);
     expect(state.workspaces[0]?.id).toBe("workspaces-1");
     expect(state.workspaces[0]?.id).not.toBe(userId);
-    expect(state.agents.map((row) => row.id)).toHaveLength(3);
+    expect(state.agents.map((row) => row.id)).toHaveLength(4);
+    expect(state.scheduledTasks).toHaveLength(1);
+    expect(routerTask).toMatchObject({
+      workspace_id: state.workspaces[0]?.id,
+      agent_id: createdRouterAgent?.id,
+      title: "Router optimization",
+      enabled: true,
+      schedule: { kind: "every", interval: 12, unit: "hour" },
+      delivery: {
+        kind: "scheduled_agent_message",
+        sessionStrategy: "scheduled_task",
+        metadata: { kind: "router_optimization" },
+      },
+      metadata: { kind: "router_optimization" },
+    });
+  });
+
+  it("preserves user-edited router optimization task instructions on repeat bootstrap", async () => {
+    const state = setupSupabaseMock({
+      workspaces: [workspace()],
+      memberships: [
+        { workspace_id: workspaceId, user_id: userId, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
+      ],
+      agents: [agent({ id: routerAgentId, type: "router", name: "Router Agent" })],
+      scheduledTasks: [
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          workspace_id: workspaceId,
+          agent_id: routerAgentId,
+          source_work_item_id: null,
+          created_by_user_id: userId,
+          title: "Router optimization",
+          instructions: "Prefer local models only after checking reliability.",
+          enabled: true,
+          schedule: { kind: "every", interval: 6, unit: "hour" },
+          timezone: "Etc/UTC",
+          next_run_at: "2026-04-25T12:00:00.000Z",
+          last_run_at: null,
+          last_run_status: null,
+          last_error: null,
+          delivery: { kind: "scheduled_agent_message", sessionStrategy: "scheduled_task" },
+          metadata: { kind: "router_optimization" },
+          created_at: "2026-04-25T00:00:00.000Z",
+          updated_at: "2026-04-25T00:00:00.000Z",
+        },
+      ],
+    });
+
+    await listSetupAuthState("access-token", userId);
+    await listSetupAuthState("access-token", userId);
+
+    expect(state.scheduledTasks).toHaveLength(1);
+    expect(state.scheduledTasks[0]).toMatchObject({
+      instructions: "Prefer local models only after checking reliability.",
+      schedule: { kind: "every", interval: 6, unit: "hour" },
+      metadata: { kind: "router_optimization" },
+    });
   });
 
   it("resolves a configured existing agent before incomplete bootstrapped defaults", async () => {
@@ -202,8 +265,9 @@ describe("default-agent auth bootstrap", () => {
     expect(authState.defaultAgents.coding?.agentId).toBe(state.agents.find((row) => row.type === "coding")?.id);
     expect(authState.managerAgent.agentId).toBe(state.agents.find((row) => row.type === "manager")?.id);
     expect(new Set(state.workspaces.map((row) => row.id)).size).toBe(1);
-    expect(new Set(state.agents.map((row) => row.id)).size).toBe(3);
+    expect(new Set(state.agents.map((row) => row.id)).size).toBe(4);
     expect(state.assignments).toHaveLength(2);
+    expect(state.scheduledTasks).toHaveLength(1);
   });
 
   it("claims existing matching planning, coding, and manager agents instead of creating duplicates", async () => {
@@ -216,7 +280,8 @@ describe("default-agent auth bootstrap", () => {
         agent({ id: planningAgentId, type: "planning" }),
         agent({ id: codingAgentId, type: "coding" }),
         agent({ id: managerAgentId, type: "manager", model_settings: {} }),
-        agent({ id: "77777777-7777-4777-8777-777777777777", type: "legacy-type" }),
+        agent({ id: routerAgentId, type: "router" }),
+        agent({ id: "99999999-9999-4999-8999-999999999999", type: "legacy-type" }),
       ],
     });
 
@@ -226,13 +291,15 @@ describe("default-agent auth bootstrap", () => {
     expect(authState.defaultAgents.coding?.agentId).toBe(codingAgentId);
     expect(authState.managerAgent.agentId).toBe(managerAgentId);
     expect(authState.managerAgent.missing).toEqual(["credential", "gateway_config", "runner"]);
-    expect(authState.agents.find((row) => row.id === "77777777-7777-4777-8777-777777777777")?.type).toBe("coding");
+    expect(authState.agents.find((row) => row.id === routerAgentId)?.type).toBe("router");
+    expect(authState.agents.find((row) => row.id === "99999999-9999-4999-8999-999999999999")?.type).toBe("coding");
     expect(state.assignments).toMatchObject([
       { role: "planning", agent_id: planningAgentId, provisioning_source: "claimed_existing" },
       { role: "coding", agent_id: codingAgentId, provisioning_source: "claimed_existing" },
     ]);
     expect(state.assignments).toHaveLength(2);
-    expect(state.agents).toHaveLength(4);
+    expect(state.agents).toHaveLength(5);
+    expect(state.scheduledTasks).toHaveLength(1);
   });
 
   it("creates only the missing default when one assignment already exists", async () => {
@@ -262,7 +329,9 @@ describe("default-agent auth bootstrap", () => {
       planningAgentId,
       authState.defaultAgents.coding?.agentId,
       authState.managerAgent.agentId,
+      state.agents.find((row) => row.type === "router")?.id,
     ]);
+    expect(state.scheduledTasks).toHaveLength(1);
   });
 
   it("does not resolve the manager agent as the login-selected chat agent", async () => {

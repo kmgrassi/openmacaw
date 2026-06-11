@@ -143,10 +143,12 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
 
       assert payload["workspace_id"] == "ws-1"
       assert payload["agent_id"] == "agent-7"
+      assert payload["title"] == "Learning reflection"
+      assert payload["instructions"] == "Reflect on the completed agent run and extract durable workspace memory."
       assert payload["enabled"] == true
       assert payload["timezone"] == "Etc/UTC"
       assert payload["next_run_at"] == "2026-05-18T12:00:00Z"
-      assert payload["schedule"] == %{"at" => "2026-05-18T12:00:00Z"}
+      assert payload["schedule"] == %{"kind" => "at", "runAt" => "2026-05-18T12:00:00Z"}
       assert payload["source_work_item_id"] == "work-item-42"
 
       assert payload["delivery"] == %{

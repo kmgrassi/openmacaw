@@ -135,6 +135,10 @@ defmodule SymphonyElixir.Runner.LocalRelayTest do
     helper = start_timeout_helper()
     Registry.register(%{workspace_id: "workspace-1", machine_id: "machine-1", pid: helper, runners: ["openai_compatible"]})
     assert {:error, {:retryable, :local_runner_timeout}} = LocalRelay.run_turn(session, "prompt", build_work_item())
+
+    helper = start_error_helper("provider_rate_limited", true)
+    Registry.register(%{workspace_id: "workspace-1", machine_id: "machine-1", pid: helper, runners: ["openai_compatible"]})
+    assert {:error, {:retryable, :provider_rate_limited}} = LocalRelay.run_turn(session, "prompt", build_work_item())
   end
 
   test "returns typed model and capability errors before dispatch" do

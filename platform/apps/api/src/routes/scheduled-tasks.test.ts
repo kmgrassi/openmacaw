@@ -165,6 +165,77 @@ describe("scheduled task routes", () => {
     });
   });
 
+  it("normalizes legacy one-shot schedules in list responses", async () => {
+    tables.scheduled_task[0] = scheduledTaskRow({
+      schedule: { at: "2026-05-14T13:30:00.000Z" },
+    });
+
+    const response = await requestJson("GET", `/api/workspaces/${workspaceId}/scheduled-tasks`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      scheduledTasks: [
+        {
+          id: scheduledTaskId,
+          schedule: { kind: "at", runAt: "2026-05-14T13:30:00.000Z" },
+        },
+      ],
+    });
+  });
+
+  it("preserves legacy scheduled-message rows with empty delivery JSON", async () => {
+    tables.scheduled_task[0] = scheduledTaskRow({
+      delivery: {},
+    });
+
+    const response = await requestJson("GET", `/api/workspaces/${workspaceId}/scheduled-tasks`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      scheduledTasks: [
+        {
+          id: scheduledTaskId,
+          delivery: { kind: "scheduled_agent_message", sessionStrategy: "scheduled_task" },
+        },
+      ],
+    });
+  });
+
+  it("omits completed one-shot scheduled messages from list responses", async () => {
+    tables.scheduled_task[0] = scheduledTaskRow({
+      schedule: { at: "2026-05-14T13:30:00.000Z" },
+      next_run_at: null,
+    });
+
+    const response = await requestJson("GET", `/api/workspaces/${workspaceId}/scheduled-tasks`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ scheduledTasks: [] });
+  });
+
+  it("omits internal learning scheduled tasks from user-facing list responses", async () => {
+    tables.scheduled_task.unshift(
+      scheduledTaskRow({
+        id: "88888888-8888-4888-8888-888888888888",
+        title: null,
+        instructions: null,
+        schedule: { at: "2026-05-14T13:00:00.000Z" },
+        delivery: { kind: "learning_reflection", sourceRunId: "run-123" },
+        next_run_at: null,
+      }),
+    );
+
+    const response = await requestJson("GET", `/api/workspaces/${workspaceId}/scheduled-tasks`);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.scheduledTasks).toHaveLength(1);
+    expect(body.scheduledTasks[0]).toMatchObject({
+      id: scheduledTaskId,
+      delivery: { kind: "scheduled_agent_message" },
+    });
+  });
+
   it("creates a scheduled task and computes nextRunAt server-side", async () => {
     tables.scheduled_task = [];
 
@@ -210,7 +281,7 @@ describe("scheduled task routes", () => {
     expect(tables.scheduled_task[0]?.enabled).toBe(false);
   });
 
-  it("rejects schedules for agents outside the manager-agent first pass", async () => {
+  it("rejects schedules for agents outside the scheduled-task agent set", async () => {
     const response = await requestJson("POST", `/api/workspaces/${workspaceId}/scheduled-tasks`, {
       agentId: codingAgentId,
       title: "Coding schedule",
@@ -220,7 +291,7 @@ describe("scheduled task routes", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
-      error: { code: "manager_agent_not_found" },
+      error: { code: "scheduled_task_agent_not_found" },
     });
   });
 

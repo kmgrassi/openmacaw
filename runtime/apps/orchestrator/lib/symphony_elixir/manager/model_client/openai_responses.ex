@@ -26,12 +26,27 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
 
     case Req.post(req, json: request) do
       {:ok, %Req.Response{status: status, body: body} = response} when status in 200..299 ->
-        Observability.log_model_call_completed(context, duration_since(started_at),
-          status_code: status,
-          provider_request_id: Observability.provider_request_id(response)
-        )
+        if Observability.provider_content_refusal?(body) do
+          classification =
+            Observability.provider_content_refusal_failure(
+              body,
+              context,
+              duration_since(started_at)
+            )
+            |> Map.put(:status_code, status)
+            |> Map.put(:provider_status, status)
+            |> Map.put(:provider_request_id, Observability.provider_request_id(response))
+            |> Observability.log_provider_failure()
 
-        {:ok, body}
+          {:error, {:retryable, classification}}
+        else
+          Observability.log_model_call_completed(context, duration_since(started_at),
+            status_code: status,
+            provider_request_id: Observability.provider_request_id(response)
+          )
+
+          {:ok, body}
+        end
 
       {:ok, %Req.Response{status: status, body: body} = response} ->
         classification =

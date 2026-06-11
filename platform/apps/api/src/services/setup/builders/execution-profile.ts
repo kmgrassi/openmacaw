@@ -17,6 +17,13 @@ export type ResolvedExecutionProfileBlock = {
   tool_profile: string;
   credential_id?: string;
   credential_alias?: string;
+  fallbacks: Array<{
+    provider: string;
+    model: string;
+    credential_id?: string;
+    credential_alias?: string;
+  }>;
+  model_tier_floor: string;
   adapter_config?: Record<string, unknown>;
   source_metadata?: Record<string, unknown>;
 };
@@ -41,6 +48,13 @@ export function buildExecutionProfileBlock(
     provider: profile.provider,
     model: profile.model,
     tool_profile: profile.toolProfile,
+    fallbacks: profile.fallbacks.map((fallback) => ({
+      provider: fallback.provider,
+      model: fallback.model,
+      ...(fallback.credentialRef?.type === "credential_id" ? { credential_id: fallback.credentialRef.value } : {}),
+      ...(fallback.credentialRef?.type === "alias" ? { credential_alias: fallback.credentialRef.value } : {}),
+    })),
+    model_tier_floor: profile.modelTierFloor,
   };
 
   if (profile.credentialRef?.type === "credential_id") {

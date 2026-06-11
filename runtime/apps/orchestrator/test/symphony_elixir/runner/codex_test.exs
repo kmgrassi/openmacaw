@@ -46,4 +46,45 @@ defmodule SymphonyElixir.Runner.CodexTest do
       assert :ok = Codex.stop_session(%{port: port})
     end
   end
+
+  describe "classify_error/1" do
+    test "maps 429-equivalent RPC errors to rate limits" do
+      assert %{error_code: "provider_rate_limited", retryable: true, status_code: 429} =
+               Codex.classify_error({:rpc_error, %{"code" => 429, "message" => "rate limited"}})
+    end
+
+    test "maps 5xx-equivalent RPC errors to overloaded" do
+      assert %{error_code: "provider_overloaded", retryable: true, status_code: 503} =
+               Codex.classify_error(%{"status" => 503, "message" => "unavailable"})
+    end
+  end
+
+  describe "run_turn/3 cutover" do
+    test "walks fallback chain after provider failure" do
+      session = %{
+        app_server_module: SymphonyElixir.Runner.CodexTest.FakeAppServer,
+        model: "primary-model",
+        model_provider: "openai_codex",
+        workspace_id: "workspace-1",
+        fallbacks: [
+          %{"model" => "fallback-model", "provider" => "openai_codex"}
+        ]
+      }
+
+      assert {:ok, %{model: "fallback-model"}} = Codex.run_turn(session, "do work", %{id: "work-1"})
+    end
+  end
+end
+
+defmodule SymphonyElixir.Runner.CodexTest.FakeAppServer do
+  @moduledoc false
+
+  @spec run_turn(map(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def run_turn(%{model: "primary-model"}, _prompt, _work_item, _opts) do
+    {:error, {:rpc_error, %{"code" => 429, "message" => "rate limited"}}}
+  end
+
+  def run_turn(%{model: "fallback-model"}, _prompt, _work_item, _opts) do
+    {:ok, %{model: "fallback-model"}}
+  end
 end

@@ -198,7 +198,7 @@ table that records *cutover decisions* — "agent X tried model A, hit a
 
 `contracts/model-tiers.ts` — new file, parallel structure to
 `contracts/runner-kinds.ts`. Single source of truth, mirrored into
-the harper-server check constraints by the same enum drift check.
+the OpenMacaw Supabase CHECK constraints by the same enum drift check.
 
 The registry's `provider` field is the **broader set of known providers**
 from `contracts/provider-registry.ts` (`PROVIDER_REGISTRY` keys), not
@@ -439,10 +439,11 @@ The platform routing-rule resolver
 `routing_rule_fallback` ordered by `position` to emit the
 `ExecutionProfile.fallbacks` array.
 
-The harper-server migrations scope at
-[`vision-gaps-migrations-scope.md`](https://github.com/harper-hq/harper-server/blob/main/docs/vision-gaps-migrations-scope.md)
-M6 also drops the unused `routing_rule.next_fallback_rule_id`
-linked-list column (replaced by the join table).
+The OpenMacaw migration for this scope lives in
+`platform/supabase/migrations/` and should update the reference schema at
+`docs/supabase/openmacaw-schema.sql`. It also drops the unused
+`routing_rule.next_fallback_rule_id` linked-list column (replaced by the
+join table).
 
 ### Cutover trigger codes
 
@@ -485,7 +486,7 @@ Floor `any` accepts everything.
 
 ### Audit table
 
-New table in harper-server:
+New OpenMacaw-owned table:
 
 ```sql
 CREATE TABLE provider_cutover (
@@ -589,9 +590,11 @@ runtime scope doc rather than a third file.
 
 ## DB migrations
 
-Harper-server changes for this scope are enumerated in
-[`harper-server/docs/vision-gaps-migrations-scope.md`](https://github.com/harper-hq/harper-server/blob/main/docs/vision-gaps-migrations-scope.md)
-(M5, M6, M7).
+OpenMacaw owns the database model for this scope. Add current schema changes
+under `platform/supabase/migrations/` and keep the reference SQL in
+`docs/supabase/openmacaw-schema.sql` in sync. Do not create new
+OpenMacaw migrations in `harper-server`; that repository is only historical
+provenance for pre-OpenMacaw schema work.
 
 ## PR-level decomposition
 
@@ -632,9 +635,10 @@ No DB change. No behavior change. Purely a registry.
 
 ### Phase 3 — Execution profile + routing rule schema changes
 
-- Migration in harper-server: add `routing_rule.fallbacks` (jsonb,
-  default `[]`) and `routing_rule.model_tier_floor` (text, default
-  `'any'`) with check constraint.
+- Migration in `platform/supabase/migrations/`: add the
+  `routing_rule_fallback` join table and `routing_rule.model_tier_floor`
+  (text, default `'any'`) with check constraint; update
+  `docs/supabase/openmacaw-schema.sql` to match.
 - Update `contracts/execution-profile.ts` with the two new fields.
 - Update the resolver
   (`apps/api/src/repositories/routing-rules.ts`) to read both columns and

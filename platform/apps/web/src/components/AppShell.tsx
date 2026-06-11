@@ -66,10 +66,10 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
             }}
             className="min-w-0 text-left"
           >
-            <div className="truncate text-sm font-semibold text-slate-100">
+            <div className="truncate text-[0.9375rem] font-semibold text-slate-100">
               Harper Parallel Agent
             </div>
-            <div className="truncate text-xs text-slate-500">Workspace</div>
+            <div className="truncate text-xs text-slate-400">Workspace</div>
           </button>
         ) : (
           <IconButton
@@ -98,7 +98,7 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
         <div className="space-y-5">
           <div className="space-y-1">
             {showLabels && (
-              <div className="px-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <div className="px-2 text-[0.8125rem] font-medium uppercase tracking-wide text-slate-400">
                 Navigation
               </div>
             )}
@@ -157,7 +157,7 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
               {SETTINGS_GROUPS.map((group) => (
                 <div key={group.label} className="space-y-0.5">
                   {!collapsed && (
-                    <div className="px-2.5 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-600">
+                    <div className="px-2.5 pb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
                       {group.label}
                     </div>
                   )}
@@ -182,11 +182,11 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
           type="button"
           onClick={toggleDebugMode}
           className={cn(
-            "flex min-h-9 w-full items-center rounded-md px-2.5 py-2 text-sm transition-colors",
+            "flex min-h-9 w-full items-center rounded-md px-2.5 py-2 text-[0.9375rem] transition-colors",
             collapsed ? "justify-center" : "justify-between gap-3",
             debugMode
               ? "bg-blue-950/50 text-blue-200"
-              : "text-slate-400 hover:bg-surface-raised hover:text-slate-200",
+              : "text-slate-300 hover:bg-surface-raised hover:text-slate-100",
           )}
           aria-pressed={debugMode}
           title="Toggle debug mode"
@@ -202,7 +202,7 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
           type="button"
           onClick={() => void signOut()}
           className={cn(
-            "flex min-h-9 w-full items-center rounded-md px-2.5 py-2 text-sm text-slate-500 transition-colors hover:bg-surface-raised hover:text-slate-200",
+            "flex min-h-9 w-full items-center rounded-md px-2.5 py-2 text-[0.9375rem] text-slate-400 transition-colors hover:bg-surface-raised hover:text-slate-100",
             collapsed ? "justify-center" : "justify-start",
           )}
         >

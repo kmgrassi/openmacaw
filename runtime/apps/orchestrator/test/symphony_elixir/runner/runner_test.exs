@@ -57,6 +57,14 @@ defmodule SymphonyElixir.RunnerTest do
       assert Runner.resolve(work_item, %{"default" => "manager"}) == SymphonyElixir.Runner.LlmToolRunner
     end
 
+    test "resolves router and llm_tool_runner through the tool-calling runner" do
+      work_item = build_work_item(labels: ["runner:router"])
+      assert Runner.resolve(work_item, %{"default" => "codex"}) == SymphonyElixir.Runner.LlmToolRunner
+
+      work_item = build_work_item()
+      assert Runner.resolve(work_item, %{"default" => "llm_tool_runner"}) == SymphonyElixir.Runner.LlmToolRunner
+    end
+
     test "resolves openclaw from label" do
       work_item = build_work_item(labels: ["runner:openclaw"])
       assert Runner.resolve(work_item, %{}) == SymphonyElixir.Runner.OpenClaw

@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResolvedSavedCredential } from "../saved-credentials.js";
-import {
-  createStoredCredentialLaunch,
-  validateLaunchableStoredCredential,
-} from "./activation.js";
+import { createStoredCredentialLaunch, validateLaunchableStoredCredential } from "./activation.js";
 import { validateOpenAiCredential } from "../../provider-validation.js";
 import { resolveStoredCredentialSecret } from "../stored-credentials.js";
 
@@ -69,10 +66,7 @@ describe("stored agent credential activation", () => {
     });
 
     expect(resolveStoredCredentialSecret).toHaveBeenCalledWith(oauthCredential);
-    expect(validateOpenAiCredential).toHaveBeenCalledWith(
-      "fresh-oauth-access-token",
-      "openai_codex/gpt-5.3-codex",
-    );
+    expect(validateOpenAiCredential).toHaveBeenCalledWith("fresh-oauth-access-token", "openai_codex/gpt-5.3-codex");
     expect(result.secretValue).toBe("fresh-oauth-access-token");
     expect(result.credential).toMatchObject({
       provider: "openai_codex",

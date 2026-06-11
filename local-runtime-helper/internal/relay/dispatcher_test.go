@@ -71,6 +71,65 @@ func TestDispatcherUnknownRunnerEmitsTypedError(t *testing.T) {
 	}
 }
 
+func TestDispatcherEmitsCanonicalProviderErrorCode(t *testing.T) {
+	sender := &recordingSender{}
+	fake := fakeRunner{
+		kind: "openai_compatible",
+		dispatch: func(ctx context.Context, input any, emit func(any) error) error {
+			return &runner.Error{
+				Kind:       runner.ErrorKindProvider,
+				Message:    "ollama rate limit exceeded",
+				StatusCode: 429,
+			}
+		},
+	}
+
+	dispatcher := newTestDispatcher(t, sender, 1, 0, fake)
+	if err := dispatcher.StartDispatch(context.Background(), dispatch("c1", "openai_compatible")); err != nil {
+		t.Fatalf("start dispatch: %v", err)
+	}
+	dispatcher.Wait()
+
+	frame := sender.only(t).(*protocol.ErrorFrame)
+	if frame.Code != "provider_error" {
+		t.Fatalf("code = %q, want provider_error", frame.Code)
+	}
+	if frame.ErrorCode != "provider_rate_limited" {
+		t.Fatalf("error_code = %q, want provider_rate_limited", frame.ErrorCode)
+	}
+	if !frame.Retryable {
+		t.Fatal("retryable = false, want true")
+	}
+}
+
+func TestDispatcherPreservesModelNotFoundErrorCode(t *testing.T) {
+	sender := &recordingSender{}
+	fake := fakeRunner{
+		kind: "openai_compatible",
+		dispatch: func(ctx context.Context, input any, emit func(any) error) error {
+			return &runner.Error{
+				Kind:       runner.ErrorKindModelNotFound,
+				Message:    "model qwen is missing",
+				StatusCode: 404,
+			}
+		},
+	}
+
+	dispatcher := newTestDispatcher(t, sender, 1, 0, fake)
+	if err := dispatcher.StartDispatch(context.Background(), dispatch("c1", "openai_compatible")); err != nil {
+		t.Fatalf("start dispatch: %v", err)
+	}
+	dispatcher.Wait()
+
+	frame := sender.only(t).(*protocol.ErrorFrame)
+	if frame.Code != "model_not_found" {
+		t.Fatalf("code = %q, want model_not_found", frame.Code)
+	}
+	if frame.ErrorCode != "" {
+		t.Fatalf("error_code = %q, want empty", frame.ErrorCode)
+	}
+}
+
 func TestDispatcherRoutesLocalRelayDispatchToTargetRunnerKind(t *testing.T) {
 	sender := &recordingSender{}
 	gotPayload := make(chan any, 1)

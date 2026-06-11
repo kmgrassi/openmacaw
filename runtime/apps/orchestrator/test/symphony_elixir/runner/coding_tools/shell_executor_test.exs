@@ -229,6 +229,19 @@ defmodule SymphonyElixir.Runner.CodingTools.ShellExecutorTest do
     assert_receive {:event, %{event: :approval_requested, payload: %{"reason" => ":manual_review"}}}
   end
 
+  test "rejects command ids with path traversal characters before touching temp paths", %{workspace: workspace} do
+    assert {:error, {:invalid_command_id, :unsafe_characters}} =
+             ShellExecutor.run(
+               %{"argv" => ["pwd"]},
+               %{workspace_root: workspace, command_id: "../escape"}
+             )
+  end
+
+  test "rejects cancellation requests with unsafe command ids" do
+    assert {:error, {:invalid_command_id, :unsafe_characters}} =
+             ShellExecutor.cancel("../escape")
+  end
+
   defp eventually(fun) do
     Enum.reduce_while(1..20, false, fn _attempt, _acc ->
       if fun.() do

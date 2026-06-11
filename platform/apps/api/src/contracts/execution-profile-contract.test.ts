@@ -7,6 +7,7 @@ import {
   RuntimeDispatchContextSchema,
   resolveExecutionProvider,
 } from "../../../../contracts/execution-profile.js";
+import { modelTier } from "../../../../contracts/model-tiers.js";
 import {
   RUNNER_KINDS,
   RUNNER_REGISTRY,
@@ -34,6 +35,12 @@ const planningAgentId = "33333333-3333-4333-8333-333333333333";
 const codingAgentId = "44444444-4444-4444-8444-444444444444";
 
 describe("execution profile contract", () => {
+  it("classifies model tiers with exact and wildcard provider entries", () => {
+    expect(modelTier("anthropic", "claude-opus-4-7")).toBe("frontier");
+    expect(modelTier("openai_compatible", "qwen-2.5")).toBe("local");
+    expect(modelTier("anthropic", "unknown-claude")).toBeNull();
+  });
+
   it("maps every runner kind into explicit routing dimensions", () => {
     expect(RUNNER_KINDS).toEqual(Object.keys(RUNNER_REGISTRY));
     expect(RUNNER_KINDS.map((kind) => [kind, dimensionsForRunnerKind(kind)])).toEqual([
@@ -171,6 +178,8 @@ describe("execution profile contract", () => {
     expect(parsed.provider).toBe("anthropic");
     expect(parsed.toolProfile).toBe("planning");
     expect(parsed.capabilities.workspaceWrite).toBe(false);
+    expect(parsed.fallbacks).toEqual([]);
+    expect(parsed.modelTierFloor).toBe("any");
   });
 
   it("parses a coding agent profile backed by Codex", () => {

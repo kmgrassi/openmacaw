@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { type PlanRecord, type WorkItemProjection } from "../api/plans";
+import type { ProviderCutover } from "../api/provider-cutovers";
 import {
   useDeletePlanMutation,
   useDeleteWorkItemMutation,
   usePlansQuery,
   useWorkItemsQuery,
+  useWorkspaceRecentCutoversQuery,
 } from "../api/query-hooks";
 import { AppShell } from "../components/AppShell";
 import { Alert } from "../components/ui/Alert";
@@ -28,6 +30,10 @@ export function WorkspaceItems() {
   const [error, setError] = useState<string | null>(null);
   const plansQuery = usePlansQuery(workspaceId);
   const workItemsQuery = useWorkItemsQuery(workspaceId);
+  const cutoversQuery = useWorkspaceRecentCutoversQuery(workspaceId, {
+    enabled: Boolean(workspaceId && (mode === "work-items" || selectedPlanId)),
+    limit: 500,
+  });
   const deletePlanMutation = useDeletePlanMutation(workspaceId);
   const deleteWorkItemMutation = useDeleteWorkItemMutation(workspaceId);
   const plans = plansQuery.data ?? [];
@@ -46,7 +52,8 @@ export function WorkspaceItems() {
         ? deleteWorkItemMutation.variables
         : null;
 
-  const queryError = plansQuery.error ?? workItemsQuery.error;
+  const queryError =
+    plansQuery.error ?? workItemsQuery.error ?? cutoversQuery.error;
 
   useEffect(() => {
     setSelectedPlanId(null);
@@ -64,6 +71,20 @@ export function WorkspaceItems() {
     }
     return map;
   }, [workItems]);
+
+  const cutoversByWorkItemId = useMemo(() => {
+    const map = new Map<string, ProviderCutover[]>();
+    for (const cutover of cutoversQuery.data ?? []) {
+      if (!cutover.workItemId) continue;
+      const existing = map.get(cutover.workItemId);
+      if (existing) {
+        existing.push(cutover);
+      } else {
+        map.set(cutover.workItemId, [cutover]);
+      }
+    }
+    return map;
+  }, [cutoversQuery.data]);
 
   const selectedPlan = useMemo(
     () =>
@@ -195,6 +216,7 @@ export function WorkspaceItems() {
             workspaceId={workspaceId}
             plans={plans}
             workItems={sortedWorkItems}
+            cutoversByWorkItemId={cutoversByWorkItemId}
             loading={loading}
             deletingId={deletingId}
             onDeleteWorkItem={(workItem) => void handleDeleteWorkItem(workItem)}
@@ -209,6 +231,7 @@ export function WorkspaceItems() {
           workspaceId={workspaceId}
           plan={selectedPlan}
           workItems={selectedPlanWorkItems}
+          cutoversByWorkItemId={cutoversByWorkItemId}
           deletingId={deletingId}
           onClose={() => setSelectedPlanId(null)}
           onDeleteWorkItem={(workItem) => void handleDeleteWorkItem(workItem)}

@@ -29,6 +29,7 @@ defmodule SymphonyElixir.Runner.OpenClaw do
 
   @behaviour SymphonyElixir.Runner
 
+  alias SymphonyElixir.Cutover
   alias SymphonyElixir.Runner.HttpClient
   alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.Runner.Poller
@@ -57,6 +58,7 @@ defmodule SymphonyElixir.Runner.OpenClaw do
          workspace_id: Map.get(config, "workspace_id"),
          agent_id: Map.get(config, "agent_id"),
          trace_id: Map.get(config, "trace_id") || Process.get(:symphony_trace_id),
+         fallbacks: Map.get(config, "fallbacks") || Map.get(config, :fallbacks) || [],
          poll_interval_ms: Map.get(config, "poll_interval_ms", @default_poll_interval_ms),
          timeout_ms: Map.get(config, "timeout_ms", @default_timeout_ms)
        }}
@@ -68,6 +70,12 @@ defmodule SymphonyElixir.Runner.OpenClaw do
 
   @impl true
   def run_turn(session, prompt, work_item) do
+    Cutover.walk_session(session, :openclaw, fn link_session, attempt ->
+      run_turn_link(link_session, prompt, work_item, attempt)
+    end)
+  end
+
+  defp run_turn_link(session, prompt, work_item, attempt) do
     body =
       %{
         prompt: prompt,
@@ -83,26 +91,28 @@ defmodule SymphonyElixir.Runner.OpenClaw do
       |> maybe_put(:model, session.model)
 
     started_at = System.monotonic_time(:millisecond)
-    context = provider_context(session, Map.get(work_item, :id))
+    context = provider_context(session, Map.get(work_item, :id), attempt)
     Observability.log_model_call_started(context)
 
     {result, failure_logged?} =
       case post(session, "/v1/runs", body) do
         {:ok, %{status: status, body: %{"id" => run_id}}} when status in 200..299 ->
           session_with_run = Map.put(session, :run_id, run_id)
-          {poll_until_complete(session_with_run, run_id), false}
+          classify_poll_result_for_cutover(poll_until_complete(session_with_run, run_id), context, started_at)
 
         {:ok, %{status: status, body: body}} ->
-          Observability.provider_status_failure(status, body, nil, context, elapsed_ms(started_at))
-          |> Observability.log_provider_failure()
+          failure =
+            Observability.provider_status_failure(status, body, nil, context, elapsed_ms(started_at))
+            |> Observability.log_provider_failure()
 
-          {{:error, {:retryable, {:api_error, status, body}}}, true}
+          {Cutover.classified_failure(failure, {:retryable, {:api_error, status, body}}), true}
 
         {:error, reason} ->
-          Observability.provider_request_failure(reason, context, elapsed_ms(started_at))
-          |> Observability.log_provider_failure()
+          failure =
+            Observability.provider_request_failure(reason, context, elapsed_ms(started_at))
+            |> Observability.log_provider_failure()
 
-          {{:error, {:retryable, reason}}, true}
+          {Cutover.classified_failure(failure, {:retryable, reason}), true}
       end
 
     case {result, failure_logged?} do
@@ -177,6 +187,24 @@ defmodule SymphonyElixir.Runner.OpenClaw do
 
   defp classify_poll_result({:error, reason}), do: {:error, {:retryable, reason}}
 
+  defp classify_poll_result_for_cutover({:error, {:retryable, {:api_error, status, body}}}, context, started_at) do
+    failure =
+      Observability.provider_status_failure(status, body, nil, context, elapsed_ms(started_at))
+      |> Observability.log_provider_failure()
+
+    {Cutover.classified_failure(failure, {:retryable, {:api_error, status, body}}), true}
+  end
+
+  defp classify_poll_result_for_cutover({:error, {:retryable, reason}}, context, started_at) do
+    failure =
+      Observability.provider_request_failure(reason, context, elapsed_ms(started_at))
+      |> Observability.log_provider_failure()
+
+    {Cutover.classified_failure(failure, {:retryable, reason}), true}
+  end
+
+  defp classify_poll_result_for_cutover(result, _context, _started_at), do: {result, false}
+
   # --- HTTP helpers ---
 
   defp get(session, path) do
@@ -190,7 +218,7 @@ defmodule SymphonyElixir.Runner.OpenClaw do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp provider_context(session, run_id) do
+  defp provider_context(session, run_id, attempt) do
     %{
       provider: Map.get(session, :provider) || "openclaw",
       model: Map.get(session, :model),
@@ -201,7 +229,7 @@ defmodule SymphonyElixir.Runner.OpenClaw do
       agent_id: Map.get(session, :agent_id),
       trace_id: Map.get(session, :trace_id),
       run_id: run_id,
-      attempt: 1
+      attempt: attempt
     }
   end
 

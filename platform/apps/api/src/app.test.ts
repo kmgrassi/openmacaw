@@ -68,6 +68,12 @@ describe("API auth routing", () => {
   it("requires JWT auth for app API routes but not signed webhook ingress", async () => {
     expect(shouldRequireJwtAuth({ path: "/work-items" } as never)).toBe(true);
     expect(shouldRequireJwtAuth({ method: "POST", path: "/memory/items" } as never)).toBe(false);
+    expect(
+      shouldRequireJwtAuth({
+        method: "POST",
+        path: "/work-items/33333333-3333-4333-8333-333333333333/cutovers",
+      } as never),
+    ).toBe(false);
     expect(shouldRequireJwtAuth({ path: "/webhooks/github" } as never)).toBe(false);
     expect(shouldRequireJwtAuth({ path: "/webhooks/linear" } as never)).toBe(false);
     expect(

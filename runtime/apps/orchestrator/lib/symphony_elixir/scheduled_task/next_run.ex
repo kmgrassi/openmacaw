@@ -19,6 +19,9 @@ defmodule SymphonyElixir.ScheduledTask.NextRun do
       Map.has_key?(schedule, "at") and not Map.has_key?(schedule, "every") ->
         one_shot_at(schedule)
 
+      Map.get(schedule, "kind") == "at" ->
+        one_shot_at(schedule)
+
       Map.has_key?(schedule, "at") ->
         with {:ok, unit} when unit in ["day", "week"] <- every_unit(schedule),
              {:ok, time} <- optional_time(schedule) do
@@ -42,6 +45,9 @@ defmodule SymphonyElixir.ScheduledTask.NextRun do
   def next_after(%{} = schedule, %DateTime{} = scheduled_for, timezone) do
     cond do
       Map.has_key?(schedule, "at") and not Map.has_key?(schedule, "every") ->
+        with {:ok, _datetime} <- one_shot_at(schedule), do: {:ok, nil}
+
+      Map.get(schedule, "kind") == "at" ->
         with {:ok, _datetime} <- one_shot_at(schedule), do: {:ok, nil}
 
       true ->
@@ -96,7 +102,15 @@ defmodule SymphonyElixir.ScheduledTask.NextRun do
     end
   end
 
+  defp one_shot_at(%{"kind" => "at", "runAt" => value}) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> {:ok, datetime}
+      {:error, _reason} -> {:error, {:invalid_schedule_datetime, value}}
+    end
+  end
+
   defp one_shot_at(%{"at" => value}), do: {:error, {:invalid_schedule_datetime, value}}
+  defp one_shot_at(%{"kind" => "at", "runAt" => value}), do: {:error, {:invalid_schedule_datetime, value}}
 
   defp next_daily(schedule, scheduled_for, timezone) do
     with {:ok, time} <- optional_time(schedule) do

@@ -103,6 +103,7 @@ func TestFrameRoundTrip(t *testing.T) {
 					CorrelationID: "dispatch_123",
 				},
 				Code:      "runner_unavailable",
+				ErrorCode: "provider_overloaded",
 				Message:   "local endpoint refused connection",
 				Retryable: true,
 				Detail: &ErrorDetail{

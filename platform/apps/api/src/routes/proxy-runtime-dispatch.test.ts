@@ -94,6 +94,8 @@ function localCodingProfile(): ExecutionProfileResolution {
       provider: "openai_compatible",
       model: "qwen2.5-coder:latest",
       credentialRef: { type: "credential_id", value: credentialId },
+      fallbacks: [],
+      modelTierFloor: "any",
       toolProfile: "coding",
       capabilities: {
         streaming: true,
@@ -124,6 +126,8 @@ function plannerLocalProfile(): ExecutionProfileResolution {
       provider: "local",
       model: "qwen2.5-coder:7b",
       credentialRef: null,
+      fallbacks: [],
+      modelTierFloor: "any",
       toolProfile: "planning",
       capabilities: {
         streaming: true,

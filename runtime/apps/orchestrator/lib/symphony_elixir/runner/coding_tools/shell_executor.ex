@@ -15,6 +15,7 @@ defmodule SymphonyElixir.Runner.CodingTools.ShellExecutor do
   @default_output_limit_bytes 64_000
   @default_env_allowlist ["CI", "HOME", "LANG", "LC_ALL", "PATH", "TERM"]
   @env_name_regex ~r/^[A-Za-z_][A-Za-z0-9_]*$/
+  @command_id_regex ~r/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 
   @type input :: %{
           optional(String.t()) => term(),
@@ -40,9 +41,8 @@ defmodule SymphonyElixir.Runner.CodingTools.ShellExecutor do
   """
   @spec run(input(), options()) :: {:ok, result()} | {:error, term()}
   def run(input, opts) when is_map(input) and is_map(opts) do
-    command_id = command_id(input, opts)
-
-    with {:ok, argv} <- argv(input),
+    with {:ok, command_id} <- command_id(input, opts),
+         {:ok, argv} <- argv(input),
          {:ok, workspace_root} <- workspace_root(opts),
          {:ok, cwd} <- cwd(input, workspace_root),
          {:ok, executable} <- resolve_executable(argv, cwd, workspace_root),
@@ -60,11 +60,13 @@ defmodule SymphonyElixir.Runner.CodingTools.ShellExecutor do
   """
   @spec cancel(String.t()) :: :ok | {:error, term()}
   def cancel(command_id) when is_binary(command_id) do
-    pidfile = pidfile_path(command_id)
-    File.write(cancel_marker_path(command_id), "cancelled")
+    with {:ok, safe_command_id} <- normalize_command_id(command_id) do
+      pidfile = pidfile_path(safe_command_id)
+      File.write(cancel_marker_path(safe_command_id), "cancelled")
 
-    with {:ok, pid} <- read_child_pid(pidfile) do
-      kill_child(pid)
+      with {:ok, pid} <- read_child_pid(pidfile) do
+        kill_child(pid)
+      end
     end
   end
 
@@ -468,8 +470,31 @@ defmodule SymphonyElixir.Runner.CodingTools.ShellExecutor do
   defp valid_env_name?(_name), do: false
 
   defp command_id(input, opts) do
-    map_value(opts, :command_id) || map_value(input, :id) || Ecto.UUID.generate()
+    case map_value(opts, :command_id) || map_value(input, :id) do
+      nil -> {:ok, Ecto.UUID.generate()}
+      value -> normalize_command_id(value)
+    end
   end
+
+  defp normalize_command_id(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    cond do
+      trimmed == "" ->
+        {:error, {:invalid_command_id, :empty}}
+
+      String.contains?(trimmed, ["/", "\\", <<0>>, "\n", "\r"]) ->
+        {:error, {:invalid_command_id, :unsafe_characters}}
+
+      Regex.match?(@command_id_regex, trimmed) ->
+        {:ok, trimmed}
+
+      true ->
+        {:error, {:invalid_command_id, :invalid_format}}
+    end
+  end
+
+  defp normalize_command_id(_value), do: {:error, {:invalid_command_id, :not_binary}}
 
   defp emit(opts, event, payload) do
     message = %{event: event, payload: payload}

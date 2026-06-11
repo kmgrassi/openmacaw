@@ -42,6 +42,11 @@ export function buildCredentialReferenceResponse(input: {
   workspaceId: string;
   state: CredentialReferenceState;
   rule: CredentialReferenceRule;
+  fallbacks?: Array<{
+    provider: string;
+    model: string;
+    credentialRef: ReturnType<typeof credentialRefFromRoutingRule>;
+  }>;
   localEndpointUrl: string | null;
   runnerKind: string | null | undefined;
   provider: string | null | undefined;
@@ -63,6 +68,8 @@ export function buildCredentialReferenceResponse(input: {
         deriveProviderFromModel(input.agent.model),
       model: input.rule?.model ?? input.model ?? input.agent.model,
       credentialRef,
+      fallbacks: input.fallbacks ?? [],
+      modelTierFloor: input.rule?.model_tier_floor ?? "any",
       localEndpointUrl: input.localEndpointUrl,
       credential: selectedCredential,
       updatedAt: input.rule?.updated_at ?? null,
