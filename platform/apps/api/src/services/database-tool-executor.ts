@@ -258,18 +258,19 @@ async function readRoutingRule(routingRuleId: string, workspaceId: string): Prom
 }
 
 async function isActorRule(routingRuleId: string, workspaceId: string, agentId: string): Promise<boolean> {
-  const matches = await executeRouterRows<{ id: string }>(
+  const matches = await executeRouterRows<{ kind: string | null; key: string | null; value: string | null }>(
     "routing_rule_match query",
     untypedFrom("routing_rule_match")
-      .select("id")
+      .select("kind,key,value")
       .eq("workspace_id", workspaceId)
       .eq("rule_id", routingRuleId)
-      .eq("kind", "agent")
-      .eq("key", "id")
-      .eq("value", agentId)
-      .limit(1),
+      .eq("value", agentId),
   );
-  return matches.length > 0;
+  return matches.some(
+    (match) =>
+      (match.kind === "agent" && match.key === "id") ||
+      (match.kind === "agent_id" && (match.key === "id" || match.key === "agent_id")),
+  );
 }
 
 async function insertRoutingRuleChange(input: {
@@ -657,11 +658,8 @@ export async function executeDatabaseTool(
 
       const provider = stringArg(args, "provider");
       const model = stringArg(args, "model");
-      const hasPrimaryUpdate =
-        provider.length > 0 ||
-        model.length > 0 ||
-        args.credentialRef !== undefined ||
-        args.credential_ref !== undefined;
+      const hasCredentialUpdate = args.credentialRef !== undefined || args.credential_ref !== undefined;
+      const hasPrimaryUpdate = provider.length > 0 || model.length > 0 || hasCredentialUpdate;
       const fallbacks = fallbackArgs(args.fallbacks);
       const nextProvider = provider || existing.provider || "";
       const nextModel = model || existing.model || "";
@@ -683,8 +681,10 @@ export async function executeDatabaseTool(
       if (hasPrimaryUpdate) {
         update.provider = nextProvider;
         update.model = nextModel;
-        update.credential_id = credentialRef?.type === "credential_id" ? credentialRef.value : null;
-        update.credential_alias = credentialRef?.type === "alias" ? credentialRef.value : null;
+        if (hasCredentialUpdate) {
+          update.credential_id = credentialRef?.type === "credential_id" ? credentialRef.value : null;
+          update.credential_alias = credentialRef?.type === "alias" ? credentialRef.value : null;
+        }
       }
       if (requestedEnabled !== null) update.enabled = requestedEnabled;
 

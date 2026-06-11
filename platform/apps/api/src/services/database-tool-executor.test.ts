@@ -382,6 +382,61 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
+  it("rejects self-brick routing updates for agent_id match rows", async () => {
+    tables.routing_rule_match = [
+      {
+        id: "routing-rule-match-1",
+        workspace_id: workspaceId,
+        rule_id: "routing-rule-1",
+        kind: "agent_id",
+        key: "id",
+        value: agentId,
+      },
+    ];
+
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("routing_rule.update"),
+        {
+          routingRuleId: "routing-rule-1",
+          enabled: false,
+          reason: "Disable myself.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "self_brick_update",
+    });
+  });
+
+  it("preserves credentials when updating only the primary model", async () => {
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("routing_rule.update"),
+      {
+        routingRuleId: "routing-rule-1",
+        model: "gpt-4.1-mini",
+        reason: "Use a cheaper OpenAI model.",
+      },
+      { workspaceId, agentId },
+    );
+
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.output)).toMatchObject({
+      routingRule: {
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        credentialRef: { type: "alias", value: "openai-default" },
+      },
+    });
+    expect(tables.routing_rule?.[0]).toMatchObject({
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      credential_id: null,
+      credential_alias: "openai-default",
+    });
+  });
+
   it("accepts a self-reroute to a valid primary and fallback chain and writes audit rows", async () => {
     const result = await executeDatabaseTool(
       scheduledTaskTool("routing_rule.update"),
