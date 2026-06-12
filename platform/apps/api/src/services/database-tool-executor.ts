@@ -1,6 +1,7 @@
 import type { Json, TablesInsert, TablesUpdate } from "@kmgrassi/supabase-schema";
 
 import { ApiRouteError } from "../http.js";
+import { narrowSupabase, type NarrowSupabaseQuery } from "../lib/narrow-supabase.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
 import { ROUTING_RULE_PROVIDER_ALLOWED } from "../repositories/routing-rules.js";
 import { deletePlanForWorkspace } from "./workspace-plans.js";
@@ -23,20 +24,6 @@ const ROUTING_RULE_FALLBACK_SELECT =
   "id,workspace_id,routing_rule_id,position,provider,model,credential_id,credential_alias,created_at,updated_at" as const;
 const ROUTING_RULE_CHANGE_SELECT =
   "id,workspace_id,routing_rule_id,actor_agent_id,change_kind,old_provider,old_model,new_provider,new_model,reason,created_at" as const;
-
-type UntypedSupabaseQuery = PromiseLike<{ data: unknown; error: null }> & {
-  select(columns: string): UntypedSupabaseQuery;
-  eq(column: string, value: unknown): UntypedSupabaseQuery;
-  in(column: string, values: unknown[]): UntypedSupabaseQuery;
-  is(column: string, value: unknown): UntypedSupabaseQuery;
-  order(column: string, options?: { ascending?: boolean }): UntypedSupabaseQuery;
-  limit(count: number): UntypedSupabaseQuery;
-  insert(body: unknown): UntypedSupabaseQuery & { single(): Promise<{ data: unknown; error: null }> };
-  update(body: unknown): UntypedSupabaseQuery;
-  delete(): UntypedSupabaseQuery;
-  maybeSingle(): Promise<{ data: unknown; error: null }>;
-  single(): Promise<{ data: unknown; error: null }>;
-};
 
 type RoutingRuleToolRow = {
   id: string;
@@ -97,8 +84,8 @@ function booleanArg(args: Record<string, unknown>, key: string): boolean | null 
   return typeof value === "boolean" ? value : null;
 }
 
-function untypedFrom(table: string): UntypedSupabaseQuery {
-  return getServiceRoleSupabase().from(table as never) as unknown as UntypedSupabaseQuery;
+function queryFrom<Row = Record<string, unknown>>(table: string): NarrowSupabaseQuery<Row> {
+  return narrowSupabase(getServiceRoleSupabase()).from<Row>(table);
 }
 
 function missingSchema(error: unknown): boolean {
@@ -235,7 +222,7 @@ async function listRoutingRuleFallbacks(ruleIds: string[], workspaceId: string):
   if (ruleIds.length === 0) return [];
   return executeRouterRows<RoutingRuleFallbackRow>(
     "routing_rule_fallback query",
-    untypedFrom("routing_rule_fallback")
+    queryFrom("routing_rule_fallback")
       .select(ROUTING_RULE_FALLBACK_SELECT)
       .eq("workspace_id", workspaceId)
       .in("routing_rule_id", ruleIds)
@@ -246,7 +233,7 @@ async function listRoutingRuleFallbacks(ruleIds: string[], workspaceId: string):
 async function readRoutingRule(routingRuleId: string, workspaceId: string): Promise<RoutingRuleToolRow> {
   const rows = await executeRouterRows<RoutingRuleToolRow>(
     "routing_rule query",
-    untypedFrom("routing_rule")
+    queryFrom("routing_rule")
       .select(ROUTING_RULE_SELECT)
       .eq("workspace_id", workspaceId)
       .eq("id", routingRuleId)
@@ -260,7 +247,7 @@ async function readRoutingRule(routingRuleId: string, workspaceId: string): Prom
 async function isActorRule(routingRuleId: string, workspaceId: string, agentId: string): Promise<boolean> {
   const matches = await executeRouterRows<{ kind: string | null; key: string | null; value: string | null }>(
     "routing_rule_match query",
-    untypedFrom("routing_rule_match")
+    queryFrom("routing_rule_match")
       .select("kind,key,value")
       .eq("workspace_id", workspaceId)
       .eq("rule_id", routingRuleId)
@@ -286,7 +273,7 @@ async function insertRoutingRuleChange(input: {
 }) {
   await executeRouterRows(
     "routing_rule_change insert",
-    untypedFrom("routing_rule_change")
+    queryFrom("routing_rule_change")
       .insert({
         workspace_id: input.workspaceId,
         routing_rule_id: input.routingRuleId,
@@ -309,7 +296,7 @@ async function replaceRoutingRuleFallbacks(input: {
 }) {
   await executeRouterRows(
     "routing_rule_fallback delete",
-    untypedFrom("routing_rule_fallback")
+    queryFrom("routing_rule_fallback")
       .delete()
       .eq("workspace_id", input.workspaceId)
       .eq("routing_rule_id", input.routingRuleId),
@@ -317,7 +304,7 @@ async function replaceRoutingRuleFallbacks(input: {
   if (input.fallbacks.length === 0) return;
   await executeRouterRows(
     "routing_rule_fallback insert",
-    untypedFrom("routing_rule_fallback")
+    queryFrom("routing_rule_fallback")
       .insert(
         input.fallbacks.map((fallback, position) => ({
           workspace_id: input.workspaceId,
@@ -601,7 +588,7 @@ export async function executeDatabaseTool(
       const limit = optionalPositiveInteger(args, "limit", 50, 200);
       const rules = await executeRouterRows<RoutingRuleToolRow>(
         "routing_rule query",
-        untypedFrom("routing_rule")
+        queryFrom("routing_rule")
           .select(ROUTING_RULE_SELECT)
           .eq("workspace_id", workspaceId)
           .order("priority", { ascending: true })
@@ -692,7 +679,7 @@ export async function executeDatabaseTool(
         Object.keys(update).length > 1
           ? await executeRouterRows<RoutingRuleToolRow>(
               "routing_rule update",
-              untypedFrom("routing_rule")
+              queryFrom("routing_rule")
                 .update(update)
                 .eq("id", routingRuleId)
                 .eq("workspace_id", workspaceId)
@@ -755,7 +742,7 @@ export async function executeDatabaseTool(
     case "local_model.list": {
       const machines = await executeRouterRows<Record<string, unknown>>(
         "local_runtime_machine query",
-        untypedFrom("local_runtime_machine")
+        queryFrom("local_runtime_machine")
           .select(
             "id,workspace_id,display_name,helper_version,runner_kinds,advertised_runner_kinds,last_seen_at,revoked_at,updated_at",
           )
@@ -768,7 +755,7 @@ export async function executeDatabaseTool(
         machineIds.length > 0
           ? await executeRouterRows<Record<string, unknown>>(
               "local_runtime_model query",
-              untypedFrom("local_runtime_model")
+              queryFrom("local_runtime_model")
                 .select("id,machine_id,runner_kind,model,metadata,created_at,updated_at")
                 .in("machine_id", machineIds)
                 .order("updated_at", { ascending: false }),
@@ -781,7 +768,7 @@ export async function executeDatabaseTool(
       const limit = optionalPositiveInteger(args, "limit", 25, 100);
       const cutovers = await executeRouterRows<Record<string, unknown>>(
         "provider_cutover query",
-        untypedFrom("provider_cutover")
+        queryFrom("provider_cutover")
           .select("*")
           .eq("workspace_id", workspaceId)
           .order("triggered_at", { ascending: false })
@@ -794,7 +781,7 @@ export async function executeDatabaseTool(
       const limit = optionalPositiveInteger(args, "limit", 25, 100);
       const failures = await executeRouterRows<Record<string, unknown>>(
         "provider_failure query",
-        untypedFrom("provider_failure")
+        queryFrom("provider_failure")
           .select("*")
           .eq("workspace_id", workspaceId)
           .order("created_at", { ascending: false })
