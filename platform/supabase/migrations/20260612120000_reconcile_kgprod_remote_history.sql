@@ -1,0 +1,10 @@
+-- Reconcile KG production migration history.
+--
+-- The KG production Supabase project has migration version 20260612120000
+-- recorded remotely, but no migration with that version exists in the
+-- OpenMacaw repository history. Supabase blocks `db push --include-all` when a
+-- remote-applied version is missing locally, even if there are no pending SQL
+-- changes for that version.
+--
+-- Keep this migration intentionally empty so local migration history matches
+-- the KG production project without changing the live schema.
