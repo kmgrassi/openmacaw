@@ -645,6 +645,13 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   if (serviceRoleKey) headers.authorization = `Bearer ${serviceRoleKey}`;
 
+  // /api/v1/local-runtime/* sits behind RequireServiceRoleBearer.
+  const serviceRoleKey = (process.env.LAUNCHER_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const headers = { accept: "application/json" };
+  if (serviceRoleKey) {
+    headers.authorization = `Bearer ${serviceRoleKey}`;
+  }
+
   try {
     const response = await fetch(url, { headers, signal: controller.signal });
     const payload = await response.json().catch(() => ({}));
