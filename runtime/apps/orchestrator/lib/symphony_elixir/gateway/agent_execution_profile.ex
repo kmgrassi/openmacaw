@@ -55,7 +55,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     with {:ok, config} <- resolve_config(),
          {:ok, agent} <- validate_agent_workspace(agent_id, workspace_id, agent_inventory),
          {:ok, rule_ids} <- match_rule_ids(config, agent_id, workspace_id),
-         {:ok, rule} <- pick_rule(config, rule_ids, workspace_id),
+         {:ok, rule} <- pick_rule(config, rule_ids, workspace_id, agent),
          {:ok, profile} <- profile_from_rule(rule, agent_id, workspace_id, agent),
          :ok <- validate_profile_policy(profile),
          {:ok, profile} <- attach_credential(profile, rule, workspace_id, agent_inventory, secret_resolver),
@@ -93,9 +93,9 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     end
   end
 
-  defp pick_rule(_config, [], _workspace_id), do: {:error, :not_found}
+  defp pick_rule(_config, [], _workspace_id, _agent), do: {:error, :not_found}
 
-  defp pick_rule(config, rule_ids, workspace_id) do
+  defp pick_rule(config, rule_ids, workspace_id, agent) do
     query = %{
       "select" => "id,priority,runner_kind,provider,model,credential_id,credential_alias,enabled,workspace_id",
       "id" => "in.(#{Enum.join(rule_ids, ",")})",
@@ -104,20 +104,56 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
       "order" => "priority.desc.nullslast"
     }
 
-    case PostgRESTClient.get(client(config), @rule_table, query,
+    with {:ok, rule_matches} <- rule_matches(config, rule_ids, workspace_id),
+         {:ok, rows} <-
+           PostgRESTClient.get(client(config), @rule_table, query,
+             log_metadata:
+               log_metadata("agent_execution_profile.pick_rule", @rule_table,
+                 workspace_id: workspace_id,
+                 rule_ids: rule_ids
+               )
+           ) do
+      case rows do
+        rows when is_list(rows) ->
+          matches_by_rule = Enum.group_by(rule_matches, &Map.get(&1, "rule_id"))
+
+          rules =
+            rows
+            |> Enum.with_index()
+            |> Enum.filter(fn {rule, _index} ->
+              is_binary(Map.get(rule, "runner_kind")) and
+                rule_matches?(Map.get(matches_by_rule, Map.get(rule, "id"), []), agent)
+            end)
+
+          case rules do
+            [] -> {:error, :not_found}
+            rules -> {:ok, select_rule(rules, matches_by_rule)}
+          end
+
+        body ->
+          {:error, {:invalid_response, body}}
+      end
+    else
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp rule_matches(config, rule_ids, workspace_id) do
+    query = %{
+      "select" => "rule_id,kind,key,value",
+      "rule_id" => "in.(#{Enum.join(rule_ids, ",")})",
+      "workspace_id" => "eq.#{workspace_id}"
+    }
+
+    case PostgRESTClient.get(client(config), @match_table, query,
            log_metadata:
-             log_metadata("agent_execution_profile.pick_rule", @rule_table,
+             log_metadata("agent_execution_profile.rule_matches", @match_table,
                workspace_id: workspace_id,
                rule_ids: rule_ids
              )
          ) do
       {:ok, rows} when is_list(rows) ->
-        rules = Enum.filter(rows, &is_binary(Map.get(&1, "runner_kind")))
-
-        case rules do
-          [] -> {:error, :not_found}
-          rules -> {:ok, select_rule(rules)}
-        end
+        {:ok, rows}
 
       {:ok, body} ->
         {:error, {:invalid_response, body}}
@@ -129,26 +165,74 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
 
   # Mirror the platform's canonical resolver (`selectRoutingRule` in
   # platform/apps/api/src/services/execution-profile-resolver/routing-rules.ts):
-  # the highest priority wins, and `local_model_coding` is preferred only
-  # among rules tied at that top priority, falling back to PostgREST's
-  # returned order. The platform additionally breaks priority ties on
-  # predicate-match specificity, but this resolver only loads `agent_id`
-  # matches (it has no role/intent context), so every candidate here has
-  # the same specificity and that tie-break is a no-op.
-  defp select_rule([top | _rest] = rules) do
-    top_priority = Map.get(top, "priority")
-
+  # filter to rules whose predicates all match, then sort by priority,
+  # predicate specificity, local_model_coding tie-break, and returned order.
+  defp select_rule(rules, matches_by_rule) do
     rules
-    |> Enum.take_while(&(Map.get(&1, "priority") == top_priority))
-    |> prefer_local_model_coding()
+    |> Enum.sort_by(fn {rule, index} ->
+      predicate_count =
+        matches_by_rule
+        |> Map.get(Map.get(rule, "id"), [])
+        |> Enum.reject(&routing_metadata_match?/1)
+        |> length()
+
+      {-numeric_priority(Map.get(rule, "priority")), -predicate_count, -local_model_coding_score(rule), index}
+    end)
+    |> List.first()
+    |> elem(0)
   end
 
-  # Coding agents commonly have both an agent-scoped `local_model_coding`
-  # rule and a broader `local_runtime` rule at the same priority; the
-  # coding-tool-aware runner is the right pick within that tie.
-  defp prefer_local_model_coding(rules) do
-    Enum.find(rules, &(Map.get(&1, "runner_kind") == "local_model_coding")) || hd(rules)
+  defp rule_matches?(matches, agent) when is_list(matches) do
+    Enum.all?(matches, &match_value?(&1, agent))
   end
+
+  defp match_value?(match, agent) do
+    kind = match |> Map.get("kind") |> normalized_key_string()
+    key = match |> Map.get("key") |> normalized_optional_key_string()
+    value = match |> Map.get("value") |> trimmed_string()
+
+    cond do
+      routing_metadata_match?(match) ->
+        true
+
+      kind == "agent_id" ->
+        key in [nil, "id", "agent_id"] and value == agent.id
+
+      kind in ["agent_type", "role"] ->
+        key in [nil, "type"] and value == Agent.kind(agent)
+
+      kind == "intent" ->
+        false
+
+      true ->
+        false
+    end
+  end
+
+  defp routing_metadata_match?(match) do
+    match
+    |> Map.get("kind")
+    |> normalized_key_string()
+    |> then(&(&1 in ["local_endpoint", "local_workspace_root", "local_machine"]))
+  end
+
+  defp numeric_priority(priority) when is_number(priority), do: priority
+  defp numeric_priority(_priority), do: -1.0e308
+
+  defp local_model_coding_score(rule), do: if(Map.get(rule, "runner_kind") == "local_model_coding", do: 1, else: 0)
+
+  defp normalized_optional_key_string(value) do
+    case normalized_key_string(value) do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp normalized_key_string(value) when is_binary(value), do: value |> String.trim() |> String.downcase()
+  defp normalized_key_string(_value), do: ""
+
+  defp trimmed_string(value) when is_binary(value), do: String.trim(value)
+  defp trimmed_string(_value), do: ""
 
   defp profile_from_rule(rule, agent_id, workspace_id, agent) do
     profile =

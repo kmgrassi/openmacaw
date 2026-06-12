@@ -62,13 +62,21 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
 
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
-          assert params["kind"] == "eq.agent_id"
-          assert params["value"] == "eq.agent-1"
           assert params["workspace_id"] == "eq.workspace-1"
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-runtime"}, %{"rule_id" => "rule-coding"}]))
+          rows =
+            case params do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-runtime"}, %{"rule_id" => "rule-coding"}]
+
+              %{"rule_id" => "in.(rule-runtime,rule-coding)"} ->
+                [
+                  %{"rule_id" => "rule-runtime", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"},
+                  %{"rule_id" => "rule-coding", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"}
+                ]
+            end
+
+          json(conn, rows)
 
         conn.request_path == "/rest/v1/routing_rule" ->
           assert params["id"] == "in.(rule-runtime,rule-coding)"
@@ -121,9 +129,19 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
 
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-relay"}, %{"rule_id" => "rule-coding"}]))
+          rows =
+            case params do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-relay"}, %{"rule_id" => "rule-coding"}]
+
+              %{"rule_id" => "in.(rule-relay,rule-coding)"} ->
+                [
+                  %{"rule_id" => "rule-relay", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"},
+                  %{"rule_id" => "rule-coding", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"}
+                ]
+            end
+
+          json(conn, rows)
 
         conn.request_path == "/rest/v1/routing_rule" ->
           assert params["order"] == "priority.desc.nullslast"
@@ -164,15 +182,76 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
              AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
   end
 
+  test "rejects higher-priority rules with unmet non-metadata predicates" do
+    Req.Test.stub(AgentExecutionProfile, fn conn ->
+      params = URI.decode_query(conn.query_string)
+
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          rows =
+            case params do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-intent"}, %{"rule_id" => "rule-coding"}]
+
+              %{"rule_id" => "in.(rule-intent,rule-coding)"} ->
+                [
+                  %{"rule_id" => "rule-intent", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"},
+                  %{"rule_id" => "rule-intent", "kind" => "intent", "key" => nil, "value" => "draft_plan"},
+                  %{"rule_id" => "rule-coding", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"}
+                ]
+            end
+
+          json(conn, rows)
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          assert params["order"] == "priority.desc.nullslast"
+
+          json(conn, [
+            %{
+              "id" => "rule-intent",
+              "priority" => 1000,
+              "runner_kind" => "local_relay",
+              "provider" => "local",
+              "model" => "qwen3-coder:30b",
+              "enabled" => true,
+              "workspace_id" => "workspace-1"
+            },
+            %{
+              "id" => "rule-coding",
+              "priority" => 10,
+              "runner_kind" => "local_model_coding",
+              "provider" => "openai_compatible",
+              "model" => "qwen3-coder:30b",
+              "enabled" => true,
+              "workspace_id" => "workspace-1"
+            }
+          ])
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+
+    assert {:ok, %{runner_kind: "local_model_coding", provider: "openai_compatible", model: "qwen3-coder:30b"}} =
+             AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
+  end
+
   test "resolves routing-rule credentials into runnable profile fields" do
     Req.Test.stub(AgentExecutionProfile, fn conn ->
       params = URI.decode_query(conn.query_string)
 
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-manager"}]))
+          rows =
+            case params do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-manager"}]
+
+              %{"rule_id" => "in.(rule-manager)"} ->
+                [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"}]
+            end
+
+          json(conn, rows)
 
         conn.request_path == "/rest/v1/routing_rule" ->
           assert params["id"] == "in.(rule-manager)"
@@ -222,9 +301,16 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
     Req.Test.stub(AgentExecutionProfile, fn conn ->
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-manager"}]))
+          rows =
+            case URI.decode_query(conn.query_string) do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-manager"}]
+
+              %{"rule_id" => "in.(rule-manager)"} ->
+                [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"}]
+            end
+
+          json(conn, rows)
 
         conn.request_path == "/rest/v1/routing_rule" ->
           conn
@@ -257,9 +343,23 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
     Req.Test.stub(AgentExecutionProfile, fn conn ->
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-manager-codex"}]))
+          rows =
+            case URI.decode_query(conn.query_string) do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-manager-codex"}]
+
+              %{"rule_id" => "in.(rule-manager-codex)"} ->
+                [
+                  %{
+                    "rule_id" => "rule-manager-codex",
+                    "kind" => "agent_id",
+                    "key" => "agent_id",
+                    "value" => "agent-1"
+                  }
+                ]
+            end
+
+          json(conn, rows)
 
         conn.request_path == "/rest/v1/routing_rule" ->
           conn
@@ -300,5 +400,11 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
 
     assert {:error, :not_found} =
              AgentExecutionProfile.resolve("agent-orphan", "workspace-1", agent_inventory: AgentInventory)
+  end
+
+  defp json(conn, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(200, Jason.encode!(body))
   end
 end
