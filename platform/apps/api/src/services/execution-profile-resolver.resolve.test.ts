@@ -451,7 +451,7 @@ describe("resolveExecutionProfile", () => {
           workspace_id: workspaceId,
           priority: 100,
           enabled: true,
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           provider: "openai_compatible",
           model: "qwen2.5-coder:latest",
           credential_id: null,

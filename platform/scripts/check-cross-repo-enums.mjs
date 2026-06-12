@@ -42,10 +42,7 @@ const RUNTIME_AGENT_PROBE =
 const RUNTIME_NORMALIZED_RUNNER_KIND_ALIASES = {
   llm_tool_runner: ["manager", "planner"],
 };
-const RUNTIME_NON_SCHEMA_PLATFORM_RUNNER_KINDS = [
-  "local_runtime",
-  "openclaw_http_sse",
-];
+const RUNTIME_NON_SCHEMA_PLATFORM_RUNNER_KINDS = ["openclaw_http_sse"];
 function headers() {
   return process.env.CROSS_REPO_GITHUB_TOKEN
     ? { Authorization: `Bearer ${process.env.CROSS_REPO_GITHUB_TOKEN}` }

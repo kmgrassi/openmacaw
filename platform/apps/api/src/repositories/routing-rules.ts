@@ -9,20 +9,20 @@ import { missingRepositoryRow, withRepositoryLogging } from "./logging.js";
 import { parseNullableSupabaseRow, parseSupabaseRow, parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 
 /**
- * Mirrors the harper-server migration 20260513150000 allowlists for
- * `routing_rule.runner_kind` and `routing_rule.provider`. The contract
+ * Mirrors the `routing_rule_runner_kind_check` / `routing_rule_provider_check`
+ * DB allowlists (platform/supabase/migrations/, most recently
+ * 20260612120000_drop_local_runtime_runner_kind.sql). The contract
  * test in routing-rules.test.ts asserts every value the platform writes
  * stays inside these sets — drift between platform enums and DB
  * constraints has bitten us twice already (credential.kind, then
  * routing_rule.provider when openai_codex shipped). When the platform
  * adds a runner_kind or execution provider, update these constants and
- * land the matching harper-server migration in the same change.
+ * land the matching migration in the same change.
  */
 export const ROUTING_RULE_RUNNER_KIND_ALLOWED = new Set<string>([
   "codex",
   "claude_code",
   "openclaw",
-  "local_runtime",
   "local_model_coding",
   "llm_tool_runner",
   "planner",

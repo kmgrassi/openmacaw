@@ -139,7 +139,7 @@ describe("registerLocalRuntimeForWorkspace", () => {
     expect(tables.routing_rule).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           provider: "openai_compatible",
           model: "qwen3-coder:30b",
         }),
@@ -260,7 +260,8 @@ describe("registerLocalRuntimeForWorkspace", () => {
         {
           id: "existing-rule",
           workspace_id: workspaceId,
-          runner_kind: "local_runtime",
+          name: "local:qwen",
+          runner_kind: "local_relay",
           enabled: true,
         },
       ],
@@ -320,7 +321,7 @@ describe("deleteLocalRuntimeForWorkspace", () => {
         {
           id: "rule-1",
           workspace_id: workspaceId,
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         },
       ],
       routing_rule_match: [
@@ -378,7 +379,7 @@ describe("deleteLocalRuntimeForWorkspace", () => {
         {
           id: "rule-openai",
           workspace_id: workspaceId,
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         },
         {
           id: "rule-openclaw",
@@ -447,7 +448,7 @@ describe("listLocalRuntimesForWorkspace", () => {
           id: "rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
@@ -499,7 +500,7 @@ describe("listLocalRuntimesForWorkspace", () => {
           id: "rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
@@ -564,9 +565,10 @@ describe("listLocalRuntimesForWorkspace", () => {
 describe("testLocalRuntimeDispatchForWorkspace", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  it("fails before probing when the configured model is no longer advertised", async () => {
+  it("uses the helper-advertised runner kind for runtime diagnostics", async () => {
     const workspaceId = "workspace-1";
     const tables = {
       routing_rule: [
@@ -574,7 +576,7 @@ describe("testLocalRuntimeDispatchForWorkspace", () => {
           id: "rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
@@ -613,7 +615,79 @@ describe("testLocalRuntimeDispatchForWorkspace", () => {
         {
           id: "model-1",
           machine_id: "machine-1",
-          runner_kind: "local_runtime",
+          runner_kind: "openai_compatible",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          capabilities: {},
+          last_advertised_at: new Date().toISOString(),
+        },
+      ],
+      agent: [] as Array<Record<string, unknown>>,
+    };
+    const fetchMock = vi.fn(async (_url: URL, _init?: RequestInit) => {
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(tables) as never);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(testLocalRuntimeDispatchForWorkspace(workspaceId, "machine-1")).resolves.toMatchObject({
+      helperConnected: true,
+      modelAdvertised: true,
+      dispatchSucceeded: true,
+    });
+    expect(fetchMock).toHaveBeenCalled();
+    const diagnosticUrl = fetchMock.mock.calls[0]![0];
+    expect(diagnosticUrl.searchParams.get("target_runner_kind")).toBe("openai_compatible");
+  });
+
+  it("fails before probing when the configured model is no longer advertised", async () => {
+    const workspaceId = "workspace-1";
+    const tables = {
+      routing_rule: [
+        {
+          id: "rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_relay",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "machine-match",
+          workspace_id: workspaceId,
+          rule_id: "rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+        {
+          id: "endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          user_id: "user-1",
+          display_name: "Kevin's MacBook",
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          last_seen_at: new Date().toISOString(),
+          revoked_at: null,
+        },
+      ],
+      local_runtime_model: [
+        {
+          id: "model-1",
+          machine_id: "machine-1",
+          runner_kind: "local_relay",
           model: "llama3.1:8b",
           provider: "openai_compatible",
           capabilities: {},

@@ -71,12 +71,12 @@ function completeResolution(overrides: Partial<ExecutionProfileResolution> = {})
   };
 }
 
-function localRuntimeResolution(): ExecutionProfileResolution {
+function localRelayCodingResolution(): ExecutionProfileResolution {
   return completeResolution({
     agent: { agentId, workspaceId, role: "coding" },
     profile: profile({
       role: "coding",
-      runnerKind: "local_runtime",
+      runnerKind: "local_relay",
       provider: "local",
       model: "llama3",
       credentialRef: null,
@@ -406,10 +406,10 @@ describe("assertRuntimePrepareSupported", () => {
     expect(resolveLocalCodingExecutionTarget).not.toHaveBeenCalled();
   });
 
-  it("local_runtime agent bypasses launcher in development", async () => {
+  it("local_relay coding agent bypasses launcher in development", async () => {
     process.env.NODE_ENV = "development";
 
-    const resolution = localRuntimeResolution();
+    const resolution = localRelayCodingResolution();
     resolveExecutionProfile.mockResolvedValue(resolution);
 
     const result = await assertRuntimePrepareSupported(accessToken, userId, agentId);
@@ -420,19 +420,6 @@ describe("assertRuntimePrepareSupported", () => {
       workspaceId,
       localRuntime: true,
     });
-  });
-
-  it("local_runtime bypass is blocked in production", async () => {
-    process.env.NODE_ENV = "production";
-
-    const resolution = localRuntimeResolution();
-    resolveExecutionProfile.mockResolvedValue(resolution);
-
-    const error = await assertRuntimePrepareSupported(accessToken, userId, agentId).catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ApiRouteError);
-    expect((error as ApiRouteError).status).toBe(422);
-    expect((error as ApiRouteError).code).toBe("local_runtime_not_supported");
   });
 
   it("local_relay agent uses launcher startup in production", async () => {
@@ -451,18 +438,20 @@ describe("assertRuntimePrepareSupported", () => {
     });
   });
 
-  it("local_runtime bypass is blocked when NODE_ENV is not development", async () => {
+  it("local_relay coding agent uses launcher startup outside development", async () => {
     process.env.NODE_ENV = "test";
 
-    const resolution = localRuntimeResolution();
+    const resolution = localRelayCodingResolution();
     resolveExecutionProfile.mockResolvedValue(resolution);
 
-    await expect(assertRuntimePrepareSupported(accessToken, userId, agentId)).rejects.toThrow(
-      expect.objectContaining({
-        status: 422,
-        code: "local_runtime_not_supported",
-      }),
-    );
+    const result = await assertRuntimePrepareSupported(accessToken, userId, agentId);
+
+    expect(result).toEqual({
+      agentId,
+      agentType: "coding",
+      workspaceId,
+      localRuntime: false,
+    });
   });
 
   it("agent with no routing rule and no gateway config returns 422 with all missing requirements", async () => {

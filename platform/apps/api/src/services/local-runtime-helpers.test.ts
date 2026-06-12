@@ -21,7 +21,7 @@ describe("local runtime helper assignments", () => {
           id: "local-rule-1",
           workspace_id: "workspace-1",
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },

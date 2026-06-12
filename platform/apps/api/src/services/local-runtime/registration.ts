@@ -76,7 +76,7 @@ export function runnerSnippetFromDetails(runner: LocalRuntimeRunnerDetails): Run
 export type InsertedRunner = {
   ruleId: string;
   runner: LocalRuntimeRunnerInput;
-  runnerKind: "local_runtime" | "local_relay";
+  runnerKind: "local_relay";
   provider: string;
   toolCallCapability: LocalToolCallCapability | null;
 };
@@ -104,7 +104,7 @@ export async function insertRunnerRoutingRules(input: {
         : {
             workspace_id: input.workspaceId,
             name: `local:${runner.model}`,
-            runner_kind: "local_runtime" as const,
+            runner_kind: "local_relay" as const,
             provider: runner.provider,
             model: runner.model,
             priority: 0,
@@ -171,7 +171,7 @@ export async function insertRunnerRoutingRules(input: {
     inserted.push({
       ruleId: rule.id,
       runner,
-      runnerKind: rule.runner_kind === "local_relay" ? "local_relay" : "local_runtime",
+      runnerKind: "local_relay",
       provider: rule.provider ?? (runner.kind === "openclaw" ? "openclaw" : "openai_compatible"),
       toolCallCapability: runner.kind === "openclaw" ? null : runner.toolCallCapability,
     });

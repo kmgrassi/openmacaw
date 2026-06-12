@@ -64,7 +64,7 @@ describe("agent tool grant contract", () => {
       description: "Read a file within the workspace.",
       parameters: {},
       executionKind: "filesystem_read",
-      runnerKind: "local_runtime",
+      runnerKind: "local_relay",
       enabled: true,
       enabledForAgent: true,
       grant: {

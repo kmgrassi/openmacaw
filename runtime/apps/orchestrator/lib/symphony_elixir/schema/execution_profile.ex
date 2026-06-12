@@ -35,7 +35,6 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   | `openclaw` | `openclaw` |
   | `openclaw_ws` | `openclaw_ws` |
   | `openclaw_http_sse` | unsupported platform-only transport alias |
-  | `local_runtime` | unsupported platform-only direct-connection alias |
   | `local_model_coding` | `local_model_coding` |
   | `local_relay` | `local_relay` |
   | `computer_use` | `computer_use` |
@@ -46,15 +45,15 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   `SymphonyElixir.ExecutionProfile.normalize_family_runner_kind/2`
   (in `lib/symphony_elixir/execution_profile.ex`) maps platform → runtime.
   The platform values that are **not** in `@supported_runner_kinds`
-  (`openclaw_http_sse`, `local_runtime`, `llm_tool_runner`)
+  (`openclaw_http_sse`, `llm_tool_runner`)
   reach this schema in two ways:
 
   1. **Validated path** (`Launcher.AgentStarter` → `normalize_from_config/1`
      in execution_profile.ex). `llm_tool_runner` is mapped to `manager` /
      `planner` by the normalizer before reaching `validate/1`, so it passes.
-     The other two pass through the normalizer unchanged and **would
-     fail** this validation if they reached it via the explicit-profile
-     path. Today they don't — see #2.
+     `openclaw_http_sse` passes through the normalizer unchanged and **would
+     fail** this validation if it reached it via the explicit-profile
+     path. Today it doesn't — see #2.
   2. **Routing-rule path** (`Gateway.AgentExecutionProfile` reading
      `routing_rule` rows). This path now instantiates this schema directly,
      so routing-rule rows must already contain canonical runtime runner kinds

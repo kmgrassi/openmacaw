@@ -22,14 +22,14 @@ const rowContract = {
 const insertContract = {
   workspace_id: "22222222-2222-4222-8222-222222222222",
   execution_kind: "filesystem_read",
-  runner_kind: "local_runtime",
+  runner_kind: "local_relay",
   enabled: true,
 } satisfies ToolInsertContract;
 
 const updateContract = {
   workspace_id: "22222222-2222-4222-8222-222222222222",
   execution_kind: "filesystem_read",
-  runner_kind: "local_runtime",
+  runner_kind: "local_relay",
   enabled: false,
 } satisfies ToolUpdateContract;
 

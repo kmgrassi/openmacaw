@@ -44,7 +44,7 @@ const responseTool = {
   parameters: { type: "object" },
   examples: [],
   executionKind: "filesystem_read",
-  runnerKind: "local_runtime",
+  runnerKind: "local_relay",
   enabled: true,
 };
 const responseResolvedTool = {
@@ -326,7 +326,7 @@ describe("agent tool routes", () => {
         description: "Read a file",
         parameters: { type: "object" },
         executionKind: "filesystem_read",
-        runnerKind: "local_runtime",
+        runnerKind: "local_relay",
       }),
     });
 

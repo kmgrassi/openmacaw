@@ -263,7 +263,7 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
         code: !helperConnected ? "helper_disconnected" : "model_unavailable",
         message: !helperConnected ? "Helper is not connected." : "Model is not advertised by this helper.",
         detail: {
-          rawMessage: `${runner.runnerKind}:${runner.model ?? ""}`,
+          rawMessage: `${runner.diagnosticRunnerKind}:${runner.model ?? ""}`,
         },
       },
     });
@@ -277,6 +277,7 @@ async function runRuntimeDiagnostics(input: {
   machineId: string;
   runner: {
     runnerKind: string;
+    diagnosticRunnerKind: string;
     model: string | null;
   };
 }) {
@@ -284,7 +285,7 @@ async function runRuntimeDiagnostics(input: {
   const url = new URL(`${baseUrl}/api/v1/local-runtime/health`);
   url.searchParams.set("workspace_id", input.workspaceId);
   url.searchParams.set("machine_id", input.machineId);
-  url.searchParams.set("target_runner_kind", input.runner.runnerKind);
+  url.searchParams.set("target_runner_kind", input.runner.diagnosticRunnerKind);
   if (input.runner.model) {
     url.searchParams.set("model", input.runner.model);
   }

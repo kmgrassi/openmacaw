@@ -34,7 +34,7 @@ describe("local runtime route registration", () => {
           id: "local-rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
           machine_id: "machine-1",
@@ -81,7 +81,7 @@ describe("local runtime route registration", () => {
         {
           id: "model-1",
           machine_id: "machine-1",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
           capabilities: {},
@@ -125,7 +125,7 @@ describe("local runtime route registration", () => {
           id: "local-rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
           machine_id: "machine-1",
@@ -335,7 +335,7 @@ describe("local runtime route registration", () => {
     expect(body.runners).toHaveLength(1);
     expect(body.runners[0]).toMatchObject({
       kind: "openai_compatible",
-      runnerKind: "local_runtime",
+      runnerKind: "local_relay",
       provider: "openai_compatible",
       model: "qwen3-coder:30b",
       toolCallCapability: "native_tools",
@@ -353,7 +353,7 @@ describe("local runtime route registration", () => {
     expect(db.routing_rule).toEqual([
       expect.objectContaining({
         workspace_id: workspaceId,
-        runner_kind: "local_runtime",
+        runner_kind: "local_relay",
         provider: "openai_compatible",
         model: "qwen3-coder:30b",
       }),
@@ -479,7 +479,7 @@ describe("local runtime route registration", () => {
     expect(db.routing_rule).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           provider: "openai_compatible",
           model: "qwen3-coder:30b",
         }),

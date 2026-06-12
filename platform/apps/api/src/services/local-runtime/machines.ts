@@ -105,7 +105,8 @@ export async function ensureLocalMachineMatchesForWorkspace(input: {
     .from("routing_rule")
     .select("id")
     .eq("workspace_id", input.workspaceId)
-    .eq("runner_kind", "local_runtime")
+    .eq("runner_kind", "local_relay")
+    .like("name", "local:%")
     .eq("enabled", true);
 
   if (rulesError) {

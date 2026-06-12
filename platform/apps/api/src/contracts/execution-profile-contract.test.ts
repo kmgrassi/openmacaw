@@ -69,14 +69,6 @@ describe("execution profile contract", () => {
         },
       ],
       [
-        "local_runtime",
-        {
-          runnerFamily: "model_chat",
-          executionLocation: "local",
-          transport: "local_direct",
-        },
-      ],
-      [
         "local_model_coding",
         {
           runnerFamily: "workspace_coding",
@@ -136,7 +128,7 @@ describe("execution profile contract", () => {
   });
 
   it("derives runner capabilities and credential policy from the registry", () => {
-    expect(isCredentiallessRunnerKind("local_runtime")).toBe(true);
+    expect(isCredentiallessRunnerKind("local_relay")).toBe(true);
     expect(isCredentiallessRunnerKind("local_model_coding")).toBe(true);
     expect(isLocalCodingRunnerKind("local_model_coding")).toBe(true);
     expect(capabilitiesForRunnerKind("codex", "custom")).toMatchObject({
@@ -489,7 +481,7 @@ describe("execution profile contract", () => {
           parameters: { type: "object", properties: {} },
           examples: [],
           executionKind: "git",
-          runnerKind: "local_runtime",
+          runnerKind: "local_relay",
           enabled: true,
         },
       ],

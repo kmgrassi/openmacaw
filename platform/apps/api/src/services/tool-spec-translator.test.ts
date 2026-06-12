@@ -25,7 +25,7 @@ const tool: ToolDefinition = {
     required: ["path"],
   },
   executionKind: "filesystem",
-  runnerKind: "local_runtime",
+  runnerKind: "local_relay",
   enabled: true,
 };
 

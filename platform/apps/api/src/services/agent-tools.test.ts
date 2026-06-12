@@ -77,7 +77,7 @@ function tool(overrides: Record<string, unknown> = {}) {
     examples: [],
     function_name: "filesystem_read",
     execution_kind: "filesystem_read",
-    runner_kind: "local_runtime",
+    runner_kind: "local_relay",
     enabled: true,
     created_by_user_id: null,
     ...overrides,
@@ -149,7 +149,7 @@ describe("agent tool service", () => {
         slug: "read_file",
         parameters: expect.objectContaining({ type: "object" }),
         executionKind: "filesystem_read",
-        runnerKind: "local_runtime",
+        runnerKind: "local_relay",
       }),
     ]);
   });
@@ -170,7 +170,7 @@ describe("agent tool service", () => {
         description: "Run the test suite",
         parameters: { type: "object", properties: { command: { type: "string" } } },
         executionKind: "shell",
-        runnerKind: "local_runtime",
+        runnerKind: "local_relay",
       },
     });
 
@@ -182,7 +182,7 @@ describe("agent tool service", () => {
           workspace_id: workspaceId,
           created_by_user_id: userId,
           execution_kind: "shell",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         }),
       ]),
     );
@@ -301,7 +301,8 @@ describe("agent tool service", () => {
       {
         id: "rule-1",
         workspace_id: workspaceId,
-        runner_kind: "local_runtime",
+        name: "local:qwen",
+        runner_kind: "local_relay",
         enabled: true,
       },
     ];
@@ -415,7 +416,9 @@ describe("agent tool service", () => {
     });
     tables.agent_tool_grant = [];
     tables.local_runtime_machine = [{ id: "machine-1", workspace_id: workspaceId, revoked_at: null }];
-    tables.routing_rule = [{ id: "rule-1", workspace_id: workspaceId, runner_kind: "local_runtime", enabled: true }];
+    tables.routing_rule = [
+      { id: "rule-1", workspace_id: workspaceId, name: "local:qwen", runner_kind: "local_relay", enabled: true },
+    ];
     tables.routing_rule_match = [
       {
         id: "match-1",
@@ -445,7 +448,9 @@ describe("agent tool service", () => {
       { id: "machine-other", workspace_id: workspaceId, revoked_at: null },
       { id: "machine-target", workspace_id: workspaceId, revoked_at: null },
     ];
-    tables.routing_rule = [{ id: "rule-1", workspace_id: workspaceId, runner_kind: "local_runtime", enabled: true }];
+    tables.routing_rule = [
+      { id: "rule-1", workspace_id: workspaceId, name: "local:qwen", runner_kind: "local_relay", enabled: true },
+    ];
     tables.routing_rule_match = [
       {
         id: "match-1",

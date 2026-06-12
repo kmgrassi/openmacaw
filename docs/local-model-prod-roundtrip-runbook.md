@@ -170,11 +170,12 @@ what your chat test means:**
   orchestrator**. In AWS this fails unless the cloud can reach the endpoint.
 - `local_relay` → chat currently falls back to **codex** (the gap above). A
   successful reply does NOT prove the local model — check the proofs below.
-- `local_runtime` → broken rule. The orchestrator rejects this alias
-  (`{:runner_unsupported, "local_runtime"}` → codex fallback). The platform's
-  registration service has written rules with this kind
-  ([`registration.ts`](../platform/apps/api/src/services/local-runtime/registration.ts));
-  delete/fix the rule before testing.
+
+(Historical note: registration used to write a `local_runtime` alias the
+orchestrator rejected the same way. Migration
+`20260612120000_drop_local_runtime_runner_kind.sql` rewrote those rows to
+`local_relay` and a CHECK constraint now blocks the alias, so it should no
+longer appear here.)
 
 Then open the agent's chat and send:
 `Reply with exactly the word PONG and nothing else. Do not use any tools.`
@@ -263,7 +264,7 @@ curl -s "http://127.0.0.1:<orch-port>/api/v1/local-runtime/health?workspace_id=<
 
 The chat round trip needs the agent's matched `routing_rule` to have
 `runner_kind: "local_model_coding"` (see "two paths" above; `local_relay`
-and the broken `local_runtime` alias both end up at codex for chat). Inspect
+ends up at codex for chat until the gateway gap is closed). Inspect
 via Supabase REST:
 
 ```bash
@@ -272,9 +273,8 @@ curl -s "$SUPABASE_URL/rest/v1/routing_rule?workspace_id=eq.<workspace-uuid>&sel
 ```
 
 Watch out for **multiple enabled rules** for the same workspace — seed/test
-data accumulates `local_runtime`-alias and stale machine-pinned rules that
-win resolution and send chat to codex. Disable everything except the one
-rule you intend to test.
+data accumulates stale machine-pinned rules that win resolution and send
+chat to codex. Disable everything except the one rule you intend to test.
 
 ### 5. Round trip via the gateway (browser-equivalent)
 
@@ -324,7 +324,7 @@ orchestrator (the helper redials with backoff — watch
 | Helper won't connect | `local-runtime-helper doctor`; dial errors in logs | Wrong scheme (`wss://` prod, `ws://` dev), wrong port (orchestrator, not API), or consumed/rotated token |
 | Orchestrator APIs return `service_role_unconfigured` (503) | orchestrator env | `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` not in `runtime/apps/orchestrator/.env`; **a restart only helps if the old beam process actually died — check `lsof -iTCP:<port>`** |
 | Orchestrator APIs return 401 | caller | Send `Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY` |
-| Chat run times out, helper sees nothing | orchestrator log: `resolved_runner_kind` / `runner_unsupported` | Rule has `local_runtime` alias or `local_relay` (codex fallback) — set the rule to `local_model_coding` for chat |
+| Chat run times out, helper sees nothing | orchestrator log: `resolved_runner_kind` / `runner_unsupported` | Rule has `local_relay` (codex fallback for chat) — set the rule to `local_model_coding` for chat |
 | `rate_limited: a chat run is already active` | previous stuck run holds the session | Restart the orchestrator, or use a fresh `--session-key` |
 | Chat replies but Ollama never loaded | `ollama ps`, helper logs | Codex/hosted fallback served it — fix the routing rule (Step/Section 4) |
 | `invalid input syntax for type uuid` | smoke args | agent/workspace ids must be real UUIDs from the `agent` table |
@@ -335,12 +335,15 @@ orchestrator (the helper redials with backoff — watch
 
 1. **Gateway chat ignores `local_relay`** — `ChatRunner` falls back to codex;
    browser chat cannot reach a laptop model through the relay yet.
-2. **Platform writes `runner_kind: "local_runtime"`** rules
-   (`local-runtime/registration.ts` and friends) — an alias the orchestrator
-   rejects, producing silent codex fallback.
-3. **Platform `test-dispatch` calls the orchestrator health API without
+2. **Platform `test-dispatch` calls the orchestrator health API without
    auth** — reports false negatives wherever the service role is configured
    (i.e. production).
+
+(Resolved: the platform used to write `runner_kind: "local_runtime"` rules —
+an alias the orchestrator rejected, producing silent codex fallback. Fixed by
+dropping the alias: registration now writes `local_relay`, and migration
+`20260612120000_drop_local_runtime_runner_kind.sql` rewrote existing rows and
+added a CHECK constraint.)
 
 ## Related material
 

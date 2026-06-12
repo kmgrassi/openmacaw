@@ -65,38 +65,6 @@ export async function assertRuntimePrepareSupported(accessToken: string, request
     };
   }
 
-  // The legacy direct local_runtime transport is dev-only. Production
-  // local_relay agents must continue through launcher startup so Runtime can
-  // create the orchestrator that owns the helper relay session.
-  // Return early so the dashboard shows "Connected" instead of 422.
-  if (initialResolution.profile?.runnerKind === "local_runtime") {
-    if (process.env.NODE_ENV !== "development") {
-      throw new ApiRouteError(
-        422,
-        "local_runtime_not_supported",
-        "Local runtime agents must use the relay transport in production",
-      );
-    }
-
-    const resolution = await resolveExecutionProfile({ accessToken, requesterUserId, agentId });
-
-    if (resolution.missing.length > 0 || !resolution.profile) {
-      throw new ApiRouteError(
-        422,
-        "agent_runtime_unconfigured",
-        "Agent runtime is not fully configured",
-        unconfiguredRuntimeDetails(agentId, resolution),
-      );
-    }
-
-    return {
-      agentId: resolution.profile.agentId,
-      agentType: resolution.profile.role,
-      workspaceId: resolution.profile.workspaceId,
-      localRuntime: true,
-    };
-  }
-
   if (
     initialResolution.profile &&
     isLocalRunnerKind(initialResolution.profile.runnerKind) &&

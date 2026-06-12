@@ -215,15 +215,14 @@ create table if not exists public.provider_failure (
       'codex',
       'claude_code',
       'openclaw',
-      'local_runtime',
       'local_model_coding',
       'llm_tool_runner',
       'planner',
+      'manager',
       'openclaw_ws',
       'openclaw_http_sse',
       'computer_use',
-      'local_relay',
-      'manager'
+      'local_relay'
     )
   ),
   provider text not null check (
@@ -478,7 +477,21 @@ create table if not exists public.routing_rule (
   priority integer,
   provider text,
   runner_family text,
-  runner_kind text not null,
+  runner_kind text not null check (
+    runner_kind in (
+      'codex',
+      'claude_code',
+      'openclaw',
+      'local_model_coding',
+      'llm_tool_runner',
+      'planner',
+      'manager',
+      'openclaw_ws',
+      'openclaw_http_sse',
+      'computer_use',
+      'local_relay'
+    )
+  ),
   transport text,
   updated_at timestamptz default now(),
   updated_by text,

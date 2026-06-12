@@ -69,7 +69,7 @@ export function registerLocalModelProxyRoutes(app: Express) {
         throw new ApiRouteError(
           400,
           "not_local_runtime",
-          "This endpoint only supports agents with a local_runtime or local_model_coding execution profile",
+          "This endpoint only supports agents with a local_relay or local_model_coding execution profile",
           { runner_kind: resolution.profile.runnerKind },
         );
       }
