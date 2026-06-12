@@ -629,7 +629,7 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   // /api/v1/local-runtime/* sits behind RequireServiceRoleBearer.
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const serviceRoleKey = (process.env.LAUNCHER_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   const headers = { accept: "application/json" };
   if (serviceRoleKey) {
     headers.authorization = `Bearer ${serviceRoleKey}`;
