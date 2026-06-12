@@ -19,6 +19,11 @@ From the repo root: `./openmacaw run` starts the platform API (3100), web
 (5173), runtime orchestrator (4000), and launcher (4100). Also
 `./openmacaw doctor | status | stop`. See `README.md`.
 
+## Pull requests
+
+Do not create any draft PRs. Always create open PRs so they can get reviewed.
+Any work that's done should have an open PR created with the work.
+
 ## Production deployment (a reusable two-repo pattern)
 
 OpenMacaw separates **application code** from **deployment infrastructure** so
