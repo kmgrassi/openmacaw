@@ -627,9 +627,12 @@ function removeUndefined(value) {
 async function fetchJsonWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = { accept: "application/json" };
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (serviceRoleKey) headers.authorization = `Bearer ${serviceRoleKey}`;
 
   try {
-    const response = await fetch(url, { headers: { accept: "application/json" }, signal: controller.signal });
+    const response = await fetch(url, { headers, signal: controller.signal });
     const payload = await response.json().catch(() => ({}));
     return { response, payload };
   } catch (error) {
