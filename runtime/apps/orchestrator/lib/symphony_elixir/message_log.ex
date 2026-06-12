@@ -17,6 +17,7 @@ defmodule SymphonyElixir.MessageLog do
   @session_table "session_thread"
   @message_table "message"
   @tool_call_table "tool_call"
+  @agent_tool_call_event_table "agent_tool_call_event"
   @user_table "user"
 
   @message_select_fields "id,role,content,created_at,metadata,run_id,session_id,user_id,agent_id,workspace_id,message_type,model,provider"
@@ -253,6 +254,7 @@ defmodule SymphonyElixir.MessageLog do
          ) do
       {:ok, [%{"id" => message_id} | _]} when is_binary(message_id) ->
         record_tool_calls(config, scope, session_thread_id, message_id, Keyword.get(opts, :run_id), tool_calls)
+        record_agent_tool_call_events(config, scope, session_thread_id, message_id, Keyword.get(opts, :run_id), tool_calls)
         :ok
 
       {:ok, body} ->
@@ -288,6 +290,69 @@ defmodule SymphonyElixir.MessageLog do
       end
     end
   end
+
+  defp record_agent_tool_call_events(config, scope, session_thread_id, message_id, run_id, tool_calls) do
+    rows =
+      tool_calls
+      |> Enum.with_index()
+      |> Enum.map(fn {call, index} -> agent_tool_call_event_row(scope, message_id, run_id, call, index) end)
+      |> Enum.reject(&is_nil/1)
+
+    if rows != [] do
+      case PostgRESTClient.post(client(config), @agent_tool_call_event_table, rows,
+             prefer: "return=minimal",
+             log_metadata:
+               scope_log_metadata(scope, "message_log.record_agent_tool_call_events", @agent_tool_call_event_table,
+                 session_thread_id: session_thread_id,
+                 run_id: run_id,
+                 message_id: message_id
+               )
+           ) do
+        {:ok, _body} ->
+          :ok
+
+        {:error, reason} ->
+          log_tool_call_persistence_failed(scope, reason, session_thread_id, run_id, message_id)
+          :ok
+      end
+    end
+  end
+
+  defp agent_tool_call_event_row(scope, _message_id, run_id, call, index)
+       when is_map(scope) and is_binary(run_id) and is_map(call) do
+    tool_name = map_value(call, :tool_name)
+    call_id = map_value(call, :call_id)
+    run_uuid = uuid_or_nil(run_id)
+    output = map_value(call, :output) || %{}
+    status = map_value(call, :status) || "ok"
+    completed_at = DateTime.utc_now() |> DateTime.to_iso8601()
+
+    %{
+      "workspace_id" => Map.get(scope, :workspace_id) || Map.get(scope, "workspace_id"),
+      "agent_id" => Map.get(scope, :agent_id) || Map.get(scope, "agent_id"),
+      "run_id" => run_uuid,
+      "tool_call_id" => uuid_or_nil(call_id),
+      "correlation_id" => call_id,
+      "sequence" => index,
+      "event_type" => if(status == "ok", do: "tool_call_completed", else: "tool_call_failed"),
+      "message_kind" => "assistant_tool_call",
+      "tool_slug" => tool_name,
+      "status" => status,
+      "arguments" => tool_arguments(call),
+      "result" => json_map(output),
+      "output_summary" => output_summary(output),
+      "error_code" => map_value(call, :error_code),
+      "error_message" => error_message(output),
+      "completed_at" => completed_at
+    }
+    |> MapUtils.drop_nil_values()
+    |> case do
+      %{"workspace_id" => _, "agent_id" => _, "run_id" => _, "tool_slug" => _} = row -> row
+      _row -> nil
+    end
+  end
+
+  defp agent_tool_call_event_row(_scope, _message_id, _run_id, _call, _index), do: nil
 
   defp tool_call_row(message_id, call) when is_map(call) do
     %{
@@ -329,6 +394,48 @@ defmodule SymphonyElixir.MessageLog do
 
     if map_size(data) == 0, do: nil, else: Jason.encode!(data)
   end
+
+  defp tool_arguments(call) do
+    call
+    |> map_value(:input)
+    |> case do
+      %{} = input -> map_value(input, :arguments) || %{}
+      _ -> %{}
+    end
+    |> json_map()
+  end
+
+  defp json_map(%{} = value), do: value
+  defp json_map(_value), do: %{}
+
+  defp output_summary(%{} = output) do
+    case map_value(output, :output) || map_value(output, :message) || map_value(output, :result) do
+      value when is_binary(value) -> String.slice(value, 0, 500)
+      value when is_map(value) or is_list(value) -> value |> Jason.encode!() |> String.slice(0, 500)
+      value when not is_nil(value) -> value |> to_string() |> String.slice(0, 500)
+      _ -> nil
+    end
+  end
+
+  defp output_summary(_output), do: nil
+
+  defp error_message(%{} = output) do
+    case map_value(output, :error_message) || map_value(output, :message) do
+      value when is_binary(value) -> value
+      _ -> nil
+    end
+  end
+
+  defp error_message(_output), do: nil
+
+  defp uuid_or_nil(value) when is_binary(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, uuid} -> uuid
+      :error -> nil
+    end
+  end
+
+  defp uuid_or_nil(_value), do: nil
 
   defp log_tool_call_persistence_failed(scope, reason, session_thread_id, run_id, message_id) do
     RuntimeLog.log(
