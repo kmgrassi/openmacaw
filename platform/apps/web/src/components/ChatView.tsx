@@ -102,7 +102,6 @@ export function ChatView({
     error,
     errorCode,
     sendMessage,
-    abort,
     loadOlderMessages,
   } = useChat(agentId, sessionKey, { historyOnly: readOnly });
   const [composerText, setComposerText] = useState("");
@@ -416,9 +415,8 @@ export function ChatView({
             text={composerText}
             onTextChange={setComposerText}
             onSend={sendMessage}
-            onAbort={abort}
             disabled={composerDisabled}
-            streaming={streamText !== null || sending}
+            submitting={streamText !== null || sending}
             focusToken={composerFocusToken}
           />
         )}

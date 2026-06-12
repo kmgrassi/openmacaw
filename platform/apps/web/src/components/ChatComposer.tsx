@@ -6,9 +6,8 @@ type Props = {
   text: string;
   onTextChange: (text: string) => void;
   onSend: (text: string) => void;
-  onAbort?: () => void;
   disabled?: boolean;
-  streaming?: boolean;
+  submitting?: boolean;
   focusToken?: number;
 };
 
@@ -16,9 +15,8 @@ export function ChatComposer({
   text,
   onTextChange,
   onSend,
-  onAbort,
   disabled,
-  streaming,
+  submitting,
   focusToken,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -37,7 +35,7 @@ export function ChatComposer({
   }, [focusToken]);
 
   const submit = () => {
-    if (text.trim() && !disabled) {
+    if (text.trim() && !disabled && !submitting) {
       onSend(text);
       onTextChange("");
     }
@@ -64,25 +62,15 @@ export function ChatComposer({
           wrapperClassName="flex-1"
           className="resize-none overflow-hidden rounded-lg placeholder-slate-500 outline-none focus:ring-0"
         />
-        {streaming ? (
-          <Button
-            type="button"
-            onClick={onAbort}
-            variant="danger"
-            className="rounded-lg border-transparent bg-red-600 px-4 text-white hover:bg-red-500"
-          >
-            Stop
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            onClick={submit}
-            disabled={disabled || !text.trim()}
-            className="rounded-lg bg-blue-600 px-4 hover:bg-blue-500"
-          >
-            Send
-          </Button>
-        )}
+        <Button
+          type="button"
+          onClick={submit}
+          disabled={disabled || submitting || !text.trim()}
+          loading={submitting}
+          className="rounded-lg bg-blue-600 px-4 hover:bg-blue-500"
+        >
+          Send
+        </Button>
       </div>
     </div>
   );
