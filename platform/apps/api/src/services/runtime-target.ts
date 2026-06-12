@@ -65,6 +65,27 @@ function orchestratorWsUrl(): string {
   return orchestratorBaseUrl().replace(/^http/i, "ws");
 }
 
+/**
+ * Runtime target for the shared local orchestrator process. Local-runner
+ * agents resolve to this target; callers without an agent in scope (e.g.
+ * machine-level local runtime diagnostics before an agent is assigned) use it
+ * directly so every consumer reads the orchestrator location from one place.
+ */
+export function localOrchestratorRuntimeTarget(init: { agentId?: string; workspaceId?: string } = {}): RuntimeTarget {
+  const baseUrl = orchestratorBaseUrl();
+  const parsedBaseUrl = new URL(baseUrl);
+  return {
+    agentId: init.agentId ?? "unscoped",
+    host: parsedBaseUrl.hostname || "orchestrator",
+    port: Number(parsedBaseUrl.port || (parsedBaseUrl.protocol === "https:" ? 443 : 80)),
+    workspaceId: init.workspaceId ?? "unknown",
+    instanceId: "local-orchestrator",
+    startedAt: new Date(0).toISOString(),
+    baseUrl,
+    wsUrl: `${orchestratorWsUrl()}/ws`,
+  };
+}
+
 async function resolveLocalOrchestratorTarget(agentId: string): Promise<RuntimeTarget | null> {
   let resolution: Awaited<ReturnType<typeof resolveExecutionProfile>>;
   try {
@@ -85,18 +106,10 @@ async function resolveLocalOrchestratorTarget(agentId: string): Promise<RuntimeT
     return null;
   }
 
-  const baseUrl = orchestratorBaseUrl();
-  const parsedBaseUrl = new URL(baseUrl);
-  return {
+  return localOrchestratorRuntimeTarget({
     agentId,
-    host: parsedBaseUrl.hostname || "orchestrator",
-    port: Number(parsedBaseUrl.port || (parsedBaseUrl.protocol === "https:" ? 443 : 80)),
     workspaceId: resolution.profile?.workspaceId ?? "unknown",
-    instanceId: "local-orchestrator",
-    startedAt: new Date(0).toISOString(),
-    baseUrl,
-    wsUrl: `${orchestratorWsUrl()}/ws`,
-  };
+  });
 }
 
 function launcherRuntimeTarget(

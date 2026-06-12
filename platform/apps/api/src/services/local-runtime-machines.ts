@@ -31,7 +31,15 @@ import {
   LocalRuntimeMachineRowSchema,
   LocalRuntimeModelRowSchema,
   RoutingRuleIdRowSchema,
+  RoutingRuleMatchRowSchema,
 } from "./local-runtime/row-schemas.js";
+import {
+  localOrchestratorRuntimeTarget,
+  resolveRuntimeTargetForAgent,
+  RuntimeTargetError,
+  type RuntimeTarget,
+} from "./runtime-target.js";
+import { createUpstreamRequester, type UpstreamResponse } from "./upstream.js";
 import {
   defaultMachineDisplayName,
   type InsertedRunner,
@@ -41,6 +49,8 @@ import {
 import { createMachineToken, rotateMachineToken } from "./local-runtime/tokens.js";
 
 export { probeLocalModel, probeRegisteredLocalRuntimeForWorkspace } from "./local-runtime/probing.js";
+
+export type LauncherRequest = (path: string, init?: RequestInit) => Promise<UpstreamResponse>;
 
 type RegisterLocalRuntimeInput = {
   workspaceId: string;
@@ -208,7 +218,11 @@ export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, ma
   });
 }
 
-export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, machineId: string) {
+export async function testLocalRuntimeDispatchForWorkspace(
+  workspaceId: string,
+  machineId: string,
+  launcherRequest: LauncherRequest,
+) {
   const supabase = getServiceRoleSupabase();
   const details = await getLocalRuntimeMachineDetails(workspaceId, machineId);
   const runner = details.runners.find((candidate) => candidate.kind === "openai_compatible") ?? details.runners[0];
@@ -269,7 +283,60 @@ export async function testLocalRuntimeDispatchForWorkspace(workspaceId: string, 
     });
   }
 
-  return LocalRuntimeTestDispatchResponseSchema.parse(await runRuntimeDiagnostics({ workspaceId, machineId, runner }));
+  return LocalRuntimeTestDispatchResponseSchema.parse(
+    await runRuntimeDiagnostics({
+      workspaceId,
+      machineId,
+      runner,
+      machineRuleIds: details.runners.map((candidate) => candidate.ruleId),
+      launcherRequest,
+    }),
+  );
+}
+
+const RUNTIME_DIAGNOSTICS_TIMEOUT_MS = 5_000;
+const RUNTIME_DIAGNOSTICS_BODY_SNIPPET_LIMIT = 600;
+
+async function agentIdAssignedToMachineRules(workspaceId: string, ruleIds: string[]): Promise<string | null> {
+  if (ruleIds.length === 0) return null;
+  const supabase = getServiceRoleSupabase();
+
+  const { data: matches, error: matchesError } = await supabase
+    .from("routing_rule_match")
+    .select("rule_id, kind, key, value")
+    .eq("workspace_id", workspaceId)
+    .eq("kind", "agent_id")
+    .in("rule_id", ruleIds);
+
+  if (matchesError) {
+    assertSupabaseSuccess("read agent assignments for local runtime machine", matches, matchesError);
+  }
+
+  const parsed = parseSupabaseRows(
+    "read agent assignments for local runtime machine",
+    RoutingRuleMatchRowSchema,
+    matches,
+  );
+  return parsed.map((match) => match.value.trim()).find((value) => value.length > 0) ?? null;
+}
+
+function diagnosticsFailure(machineId: string, code: string, message: string, detail: Record<string, unknown> | null) {
+  return {
+    machineId,
+    helperConnected: true,
+    modelAdvertised: true,
+    dispatchSucceeded: false,
+    error: { code, message, detail },
+  };
+}
+
+function upstreamBodySnippet(body: unknown): string | null {
+  const text = typeof body === "string" ? body : body === undefined ? "" : JSON.stringify(body);
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) return null;
+  return trimmed.length > RUNTIME_DIAGNOSTICS_BODY_SNIPPET_LIMIT
+    ? `${trimmed.slice(0, RUNTIME_DIAGNOSTICS_BODY_SNIPPET_LIMIT)}…`
+    : trimmed;
 }
 
 async function runRuntimeDiagnostics(input: {
@@ -280,60 +347,89 @@ async function runRuntimeDiagnostics(input: {
     diagnosticRunnerKind: string;
     model: string | null;
   };
+  machineRuleIds: string[];
+  launcherRequest: LauncherRequest;
 }) {
-  const baseUrl = (process.env.ORCHESTRATOR_BASE_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
-  const url = new URL(`${baseUrl}/api/v1/local-runtime/health`);
-  url.searchParams.set("workspace_id", input.workspaceId);
-  url.searchParams.set("machine_id", input.machineId);
-  url.searchParams.set("target_runner_kind", input.runner.diagnosticRunnerKind);
+  // The probe must hit the orchestrator that terminates this workspace's
+  // helper relay socket. Resolve it through the same runtime target
+  // resolution chat dispatch uses — agent-scoped when the machine is already
+  // assigned to an agent — so the doctor panel tests the path messages will
+  // actually take.
+  let target: RuntimeTarget;
+  try {
+    const agentId = await agentIdAssignedToMachineRules(input.workspaceId, input.machineRuleIds);
+    target = agentId
+      ? await resolveRuntimeTargetForAgent(agentId, input.launcherRequest)
+      : localOrchestratorRuntimeTarget({ workspaceId: input.workspaceId });
+  } catch (error) {
+    if (error instanceof RuntimeTargetError) {
+      return diagnosticsFailure(input.machineId, error.code, error.message, null);
+    }
+    throw error;
+  }
+
+  const diagnosticsPath = "/api/v1/local-runtime/health";
+  const params = new URLSearchParams({
+    workspace_id: input.workspaceId,
+    machine_id: input.machineId,
+    target_runner_kind: input.runner.diagnosticRunnerKind,
+  });
   if (input.runner.model) {
-    url.searchParams.set("model", input.runner.model);
+    params.set("model", input.runner.model);
   }
 
   // The orchestrator's /api/v1/local-runtime/* endpoints sit behind
-  // RequireServiceRoleBearer; without the bearer they return 401.
+  // RequireServiceRoleBearer; without the bearer they return 401. (The
+  // launcher serves the same path unauthenticated and ignores the header.)
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
   const headers: Record<string, string> = { accept: "application/json" };
   if (serviceRoleKey) {
     headers.authorization = `Bearer ${serviceRoleKey}`;
   }
 
+  const runtimeRequest = createUpstreamRequester(target.baseUrl, RUNTIME_DIAGNOSTICS_TIMEOUT_MS);
+  let response: UpstreamResponse;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5_000);
-    try {
-      const response = await fetch(url, { headers, signal: controller.signal });
-      const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-      const ok = response.ok && body?.ok === true;
-      return {
-        machineId: input.machineId,
-        helperConnected: true,
-        modelAdvertised: true,
-        dispatchSucceeded: ok,
-        error: ok
-          ? null
-          : {
-              code: String(body?.reason ?? body?.status ?? "runtime_diagnostic_failed"),
-              message: "Runtime diagnostics did not report the local runtime path as ready.",
-              detail: body ?? {},
-            },
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
+    response = await runtimeRequest(`${diagnosticsPath}?${params.toString()}`, { method: "GET", headers });
   } catch (error) {
+    return diagnosticsFailure(
+      input.machineId,
+      "runtime_unreachable",
+      "Could not reach the runtime diagnostics endpoint.",
+      {
+        endpoint: `${target.baseUrl}${diagnosticsPath}`,
+        dialError: error instanceof Error ? error.message : String(error),
+      },
+    );
+  }
+
+  const body =
+    typeof response.body === "object" && response.body !== null ? (response.body as Record<string, unknown>) : null;
+  const ok = response.status >= 200 && response.status < 300 && body?.ok === true;
+  if (ok) {
     return {
       machineId: input.machineId,
       helperConnected: true,
       modelAdvertised: true,
-      dispatchSucceeded: false,
-      error: {
-        code: "runtime_unreachable",
-        message: "Could not reach the runtime diagnostics endpoint.",
-        detail: { reason: error instanceof Error ? error.message : String(error) },
-      },
+      dispatchSucceeded: true,
+      error: null,
     };
   }
+
+  const reason = [body?.reason, body?.status].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  const rawMessage = upstreamBodySnippet(response.body);
+  return diagnosticsFailure(
+    input.machineId,
+    reason ?? "runtime_diagnostic_failed",
+    "Runtime diagnostics did not report the local runtime path as ready.",
+    {
+      httpStatus: response.status,
+      endpoint: `${target.baseUrl}${diagnosticsPath}`,
+      ...(rawMessage ? { rawMessage } : {}),
+    },
+  );
 }
 
 export async function deleteLocalRuntimeForWorkspace(workspaceId: string, machineId: string) {

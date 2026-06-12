@@ -29,6 +29,20 @@ function detailValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function testDispatchRemediation(
+  testResult: LocalRuntimeTestDispatchResponse | null,
+): string {
+  if (!testResult?.error) {
+    return "Run the dispatch test to verify the full local model path.";
+  }
+  const { code, message, detail } = testResult.error;
+  const detailEntries = Object.entries(detail ?? {})
+    .map(([key, value]) => [key, detailValue(value)] as const)
+    .filter(([, value]) => value.length > 0)
+    .map(([key, value]) => `${key}: ${value}`);
+  return [message, `code: ${code}`, ...detailEntries].join(" - ");
+}
+
 export function DoctorPanel({
   runtime,
   events,
@@ -93,9 +107,7 @@ export function DoctorPanel({
       label: "Test dispatch",
       passed: Boolean(testResult?.dispatchSucceeded),
       pending: !testResult,
-      remediation:
-        testResult?.error?.message ??
-        "Run the dispatch test to verify the full local model path.",
+      remediation: testDispatchRemediation(testResult),
     },
   ];
 

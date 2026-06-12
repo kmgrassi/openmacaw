@@ -153,11 +153,16 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
 ```
 
 `test-dispatch` validates helper connectivity + advertised model and then
-calls the orchestrator's protected `/api/v1/local-runtime/health` endpoint
-with the platform service-role bearer. A successful result should show
-`helperConnected: true`, `modelAdvertised: true`, and
-`dispatchSucceeded: true`. If it fails, cross-check the events endpoint and
-helper logs to separate service configuration from relay/model issues.
+calls the runtime's `/api/v1/local-runtime/health` endpoint with the platform
+service-role bearer. The orchestrator is resolved through the same runtime
+target resolution chat uses (`resolveRuntimeTargetForAgent` for the machine's
+assigned agent, falling back to the shared local orchestrator target), so the
+probe exercises the path messages will actually take. A successful result
+should show `helperConnected: true`, `modelAdvertised: true`, and
+`dispatchSucceeded: true`. On failure, `error.detail` carries the probed
+`endpoint` plus the upstream `httpStatus` and a `rawMessage` body snippet (or
+`dialError` when unreachable) — cross-check those with the events endpoint
+and helper logs to separate service configuration from relay/model issues.
 
 ### Step 6 — Bind the agent and send a message
 

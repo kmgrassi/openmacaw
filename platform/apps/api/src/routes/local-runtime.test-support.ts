@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 
 import express from "express";
 
+import type { LauncherRequest } from "../services/local-runtime-machines.js";
 import { registerLocalRuntimeRoutes } from "./local-runtime.js";
 
 export const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -35,7 +36,9 @@ function closeServer(server: Server | undefined) {
   return new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
-export async function createLocalRuntimeTestServer() {
+export async function createLocalRuntimeTestServer(
+  launcherRequest: LauncherRequest = () => Promise.reject(new Error("launcherRequest is not stubbed in this test")),
+) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -44,7 +47,7 @@ export async function createLocalRuntimeTestServer() {
     }
     next();
   });
-  registerLocalRuntimeRoutes(app);
+  registerLocalRuntimeRoutes(app, launcherRequest);
 
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
