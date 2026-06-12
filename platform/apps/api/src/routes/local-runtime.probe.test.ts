@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
-import { createLocalRuntimeTestServer, workspaceId } from "./local-runtime.test-support.js";
+import { createLocalRuntimeTestServer, userId, withOwnedWorkspace, workspaceId } from "./local-runtime.test-support.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
@@ -24,7 +24,36 @@ describe("local runtime route probes", () => {
     await closeServer();
   });
 
+  it("rejects probe requests for workspaces the caller does not belong to", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient({ workspaces: [] }) as never);
+
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        endpoint: "http://127.0.0.1:11434/v1",
+        model: "qwen3-coder:30b",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "workspace_forbidden",
+      },
+    });
+  });
+
   it("rejects probe requests for non-loopback endpoints", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        workspaces: [{ id: workspaceId, owner_user_id: userId }],
+      }) as never,
+    );
+
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
       method: "POST",
       headers: {
@@ -47,6 +76,12 @@ describe("local runtime route probes", () => {
   });
 
   it("accepts probe requests for bracketed IPv6 loopback endpoints", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        workspaces: [{ id: workspaceId, owner_user_id: userId }],
+      }) as never,
+    );
+
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
       method: "POST",
       headers: {
@@ -63,7 +98,7 @@ describe("local runtime route probes", () => {
   });
 
   it("probes a registered local runner from relay liveness instead of server-side localhost", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       routing_rule: [
         {
           id: "local-rule-1",
@@ -103,7 +138,7 @@ describe("local runtime route probes", () => {
           advertised_runner_kinds: ["openai_compatible"],
         },
       ],
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(
@@ -127,7 +162,7 @@ describe("local runtime route probes", () => {
   });
 
   it("does not report registered local runner reachable from stale registration-time runner kinds", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       routing_rule: [
         {
           id: "local-rule-1",
@@ -167,7 +202,7 @@ describe("local runtime route probes", () => {
           advertised_runner_kinds: [],
         },
       ],
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(

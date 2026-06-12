@@ -19,6 +19,7 @@ import {
   rotateLocalRuntimeTokenForWorkspace,
   testLocalRuntimeDispatchForWorkspace,
 } from "../services/local-runtime-machines.js";
+import { getServiceRoleSupabase } from "../supabase-client.js";
 
 function requireWorkspaceId(req: Request) {
   const workspaceId = requestWorkspaceId(req);
@@ -26,6 +27,39 @@ function requireWorkspaceId(req: Request) {
     throw new ApiRouteError(400, "invalid_request", "workspaceId is required");
   }
   return workspaceId;
+}
+
+async function requireWorkspaceAccess(userId: string, workspaceId: string) {
+  const supabase = getServiceRoleSupabase();
+  const { data: memberRows, error: memberError } = await supabase
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .limit(1);
+  if (memberError) {
+    throw memberError;
+  }
+
+  if ((memberRows ?? []).length > 0) return;
+
+  const { data: ownedRows, error: ownedError } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("id", workspaceId)
+    .eq("owner_user_id", userId)
+    .limit(1);
+  if (ownedError) {
+    throw ownedError;
+  }
+
+  if ((ownedRows ?? []).length === 0) {
+    throw new ApiRouteError(
+      403,
+      "workspace_forbidden",
+      "Authenticated user is not authorized for the requested workspace",
+    );
+  }
 }
 
 export function registerLocalRuntimeRoutes(app: Express) {
@@ -45,8 +79,10 @@ export function registerLocalRuntimeRoutes(app: Express) {
           throw new ApiRouteError(400, "invalid_request", "Body agentId must match route agentId");
         }
 
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         const response = await assignLocalModelToAgent({
-          workspaceId: requireWorkspaceId(req),
+          workspaceId,
           machineId: body.machineId,
           localRuntimeId: body.localRuntimeId,
           agentId,
@@ -74,8 +110,10 @@ export function registerLocalRuntimeRoutes(app: Express) {
           throw new ApiRouteError(401, "unauthorized", "User ID is required");
         }
 
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         const response = await registerLocalRuntimeForWorkspace({
-          workspaceId: requireWorkspaceId(req),
+          workspaceId,
           userId,
           request: body,
         });
@@ -94,8 +132,10 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.collection,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
-        return res.status(200).json(await listLocalRuntimesForWorkspace(requireWorkspaceId(req)));
+      async handler({ req, res, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
+        return res.status(200).json(await listLocalRuntimesForWorkspace(workspaceId));
       },
       onError: (res, error) =>
         handleApiRouteError(res, error, {
@@ -112,7 +152,9 @@ export function registerLocalRuntimeRoutes(app: Express) {
       requireAuth: true,
       bodySchema: LocalModelProbeRequestSchema,
       invalidBodyMessage: "Local runtime probe request is invalid",
-      async handler({ res, body }) {
+      async handler({ req, res, body, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res.status(200).json(await probeLocalModel(body));
       },
       onError: (res, error) =>
@@ -128,10 +170,12 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.config,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
+      async handler({ req, res, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res
           .status(200)
-          .json(await getLocalRuntimeConfigForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "machineId")));
+          .json(await getLocalRuntimeConfigForWorkspace(workspaceId, requireRouteParam(req, "machineId")));
       },
       onError: (res, error) =>
         handleApiRouteError(res, error, {
@@ -146,13 +190,15 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.events,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
+      async handler({ req, res, userId }) {
         const rawLimit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 50;
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res
           .status(200)
           .json(
             await listLocalRuntimeEventsForWorkspace(
-              requireWorkspaceId(req),
+              workspaceId,
               requireRouteParam(req, "machineId"),
               Number.isFinite(rawLimit) ? rawLimit : 50,
             ),
@@ -171,12 +217,12 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.testDispatch,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
+      async handler({ req, res, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res
           .status(200)
-          .json(
-            await testLocalRuntimeDispatchForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "machineId")),
-          );
+          .json(await testLocalRuntimeDispatchForWorkspace(workspaceId, requireRouteParam(req, "machineId")));
       },
       onError: (res, error) =>
         handleApiRouteError(res, error, {
@@ -191,12 +237,12 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.rotateToken,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
+      async handler({ req, res, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res
           .status(201)
-          .json(
-            await rotateLocalRuntimeTokenForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "machineId")),
-          );
+          .json(await rotateLocalRuntimeTokenForWorkspace(workspaceId, requireRouteParam(req, "machineId")));
       },
       onError: (res, error) =>
         handleApiRouteError(res, error, {
@@ -213,12 +259,12 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.runnerProbe,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
+      async handler({ req, res, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res
           .status(200)
-          .json(
-            await probeRegisteredLocalRuntimeForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "runnerId")),
-          );
+          .json(await probeRegisteredLocalRuntimeForWorkspace(workspaceId, requireRouteParam(req, "runnerId")));
       },
       onError: (res, error) =>
         handleApiRouteError(res, error, {
@@ -233,8 +279,10 @@ export function registerLocalRuntimeRoutes(app: Express) {
     LocalRuntimeRouteTemplates.item,
     apiRoute({
       requireAuth: true,
-      async handler({ req, res }) {
-        await deleteLocalRuntimeForWorkspace(requireWorkspaceId(req), requireRouteParam(req, "machineId"));
+      async handler({ req, res, userId }) {
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
+        await deleteLocalRuntimeForWorkspace(workspaceId, requireRouteParam(req, "machineId"));
         return res.status(204).end();
       },
       onError: (res, error) =>
@@ -260,8 +308,10 @@ export function registerLocalRuntimeRoutes(app: Express) {
           throw new ApiRouteError(400, "invalid_request", "agentId is required");
         }
 
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         const response = await assignLocalModelToAgent({
-          workspaceId: requireWorkspaceId(req),
+          workspaceId,
           localRuntimeId: requireRouteParam(req, "runnerId"),
           agentId,
           auth: { accessToken, userId },
@@ -286,8 +336,10 @@ export function registerLocalRuntimeRoutes(app: Express) {
           throw new ApiRouteError(401, "unauthorized", "User ID is required");
         }
 
+        const workspaceId = requireWorkspaceId(req);
+        await requireWorkspaceAccess(userId, workspaceId);
         await unassignLocalModelFromAgent({
-          workspaceId: requireWorkspaceId(req),
+          workspaceId,
           ruleId: requireRouteParam(req, "runnerId"),
           agentId: requireRouteParam(req, "agentId"),
           userId,

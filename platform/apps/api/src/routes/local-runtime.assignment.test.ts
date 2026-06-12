@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getServiceRoleSupabase, getUserScopedSupabase } from "../supabase-client.js";
-import { createLocalRuntimeTestServer, userId, workspaceId } from "./local-runtime.test-support.js";
+import { createLocalRuntimeTestServer, userId, withOwnedWorkspace, workspaceId } from "./local-runtime.test-support.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
@@ -12,8 +12,10 @@ vi.mock("../supabase-client.js", () => ({
 type MockTables = Parameters<typeof createMockSupabaseClient>[0];
 
 function mockSupabase(serviceRoleDb: MockTables, userScopedDb: MockTables = serviceRoleDb) {
-  vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(serviceRoleDb) as never);
-  vi.mocked(getUserScopedSupabase).mockReturnValue(createMockSupabaseClient(userScopedDb) as never);
+  vi.mocked(getServiceRoleSupabase).mockReturnValue(
+    createMockSupabaseClient(withOwnedWorkspace(serviceRoleDb)) as never,
+  );
+  vi.mocked(getUserScopedSupabase).mockReturnValue(createMockSupabaseClient(withOwnedWorkspace(userScopedDb)) as never);
 }
 
 describe("local runtime route assignments", () => {
@@ -74,7 +76,7 @@ describe("local runtime route assignments", () => {
       gateway_config: [] as Array<Record<string, unknown>>,
       gateway_config_versions: [] as Array<Record<string, unknown>>,
     };
-    const supabase = createMockSupabaseClient(db) as never;
+    const supabase = createMockSupabaseClient(withOwnedWorkspace(db)) as never;
     vi.mocked(getServiceRoleSupabase).mockReturnValue(supabase);
     vi.mocked(getUserScopedSupabase).mockReturnValue(supabase);
 
