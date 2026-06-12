@@ -41,6 +41,7 @@ export type LocalRuntimeRunnerDetails = {
   ruleId: string;
   kind: LocalRuntimeRegistrationRunnerKind;
   runnerKind: "local_relay";
+  diagnosticRunnerKind: LocalRuntimeRegistrationRunnerKind;
   endpoint: string;
   model: string | null;
   provider: string;
@@ -150,6 +151,7 @@ export async function getLocalRuntimeMachineDetails(
       ruleId: rule.id,
       kind: registrationKind,
       runnerKind: "local_relay",
+      diagnosticRunnerKind: registrationKind,
       endpoint,
       model: rule.model ?? null,
       provider: rule.provider ?? (registrationKind === "openclaw" ? "openclaw" : "openai_compatible"),
