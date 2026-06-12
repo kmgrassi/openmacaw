@@ -140,23 +140,13 @@ describe("normalizeRuntimeEvent", () => {
     });
   });
 
-  it("treats message completion events as terminal events", () => {
+  it("does not treat message completion events as terminal events", () => {
     const completed = normalizeRuntimeEvent(
       frame("message.completed", { text: "done" }),
       sessionKey,
     );
 
-    expect(completed).toMatchObject({
-      assistantDelta: null,
-      final: true,
-      aborted: false,
-      error: null,
-    });
-    expect(completed?.timelineEvent).toMatchObject({
-      kind: "turn_completed",
-      label: "Turn completed",
-      status: "success",
-    });
+    expect(completed).toBeNull();
   });
 
   it("treats chat aborts as cancellation events without surfacing an error", () => {

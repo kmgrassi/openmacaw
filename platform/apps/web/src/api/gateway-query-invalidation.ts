@@ -30,8 +30,6 @@ const TOOL_EVENT_NAMES = new Set([
 const TURN_OR_RUN_FINAL_EVENTS = new Set([
   "turn.completed",
   "turn.completion",
-  "message.completed",
-  "message.completion",
   "run.completed",
   "run.completion",
   "turn.failed",

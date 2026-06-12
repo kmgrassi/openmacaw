@@ -320,8 +320,6 @@ export function normalizeRuntimeEvent(
   if (
     eventName === "turn.completed" ||
     eventName === "turn.completion" ||
-    eventName === "message.completed" ||
-    eventName === "message.completion" ||
     eventName === "run.completed" ||
     eventName === "run.completion"
   ) {

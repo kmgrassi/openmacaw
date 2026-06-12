@@ -74,6 +74,19 @@ describe("invalidationForGatewayEvent", () => {
     );
   });
 
+  it("does not invalidate persisted chat surfaces on message completion boundaries", () => {
+    expect(
+      keysFor({
+        type: "event",
+        event: "message.completed",
+        payload: {
+          runId: "run-1",
+          sessionKey: scope.sessionKey,
+        } as RuntimeEventPayload,
+      }),
+    ).toEqual([]);
+  });
+
   it("maps snake_case runtime payloads to scoped dashboard invalidation", () => {
     const result = invalidationForGatewayEvent(
       {
