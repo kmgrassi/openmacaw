@@ -90,13 +90,15 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     assertSupabaseSuccess("list local runtime machines", machines, machinesError);
   }
   const parsedMachines = parseSupabaseRows("list local runtime machines", LocalRuntimeMachineRowSchema, machines);
+  const machinesById = new Map(parsedMachines.map((machine) => [machine.id, machine]));
+  const activeMachineIds = Array.from(machinesById.keys());
 
   const { data: liveModels, error: liveModelsError } =
-    machineIds.length > 0
+    activeMachineIds.length > 0
       ? await supabase
           .from("local_runtime_model" as never)
           .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
-          .in("machine_id", machineIds)
+          .in("machine_id", activeMachineIds)
       : { data: [], error: null };
 
   if (liveModelsError) {
@@ -117,7 +119,6 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   }
   const parsedAgents = parseSupabaseRows("list assigned local runtime agents", LocalRuntimeAgentRowSchema, agents);
 
-  const machinesById = new Map(parsedMachines.map((machine) => [machine.id, machine]));
   const agentsById = new Map(parsedAgents.map((agent) => [agent.id, agent]));
   const liveModelsByMachine = new Map<string, typeof parsedLiveModels>();
   for (const model of parsedLiveModels) {
@@ -132,6 +133,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   for (const rule of parsedRules) {
     const machineId = rule.machine_id ?? machineIdsFromRules.get(rule.id);
     if (!machineId) continue;
+    if (!machinesById.has(machineId)) continue;
     const ruleMatchesForRule = matchesByRule.get(rule.id) ?? [];
     const endpoint = matchValue(ruleMatchesForRule, "local_endpoint", "url");
     if (!endpoint) continue;

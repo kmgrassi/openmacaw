@@ -118,6 +118,76 @@ describe("local runtime route registration", () => {
     });
   });
 
+  it("does not list revoked local runtime machines even when routing rules remain", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "revoked-rule-1",
+          workspace_id: workspaceId,
+          name: "local:revoked-model",
+          runner_kind: "local_relay",
+          model: "revoked-model",
+          provider: "openai_compatible",
+          machine_id: "revoked-machine-1",
+          last_error: null,
+          last_error_at: null,
+        },
+      ],
+      routing_rule_match: [
+        {
+          rule_id: "revoked-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "revoked-machine-1",
+          workspace_id: workspaceId,
+        },
+        {
+          rule_id: "revoked-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+          workspace_id: workspaceId,
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "revoked-machine-1",
+          workspace_id: workspaceId,
+          display_name: "Old revoked helper",
+          last_seen_at: new Date().toISOString(),
+          revoked_at: new Date().toISOString(),
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          status: "offline",
+        },
+      ],
+      local_runtime_model: [
+        {
+          id: "revoked-model-1",
+          machine_id: "revoked-machine-1",
+          runner_kind: "local_relay",
+          model: "revoked-model",
+          provider: "openai_compatible",
+          capabilities: {},
+          last_advertised_at: new Date().toISOString(),
+        },
+      ],
+      agent: [],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
+      headers: {
+        authorization: "Bearer test-token",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      runtimes: [],
+    });
+  });
+
   it("test-dispatch treats a fresh heartbeat as connected before status write-through lands", async () => {
     const db = {
       routing_rule: [
@@ -194,7 +264,7 @@ describe("local runtime route registration", () => {
           id: "local-rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
           machine_id: "machine-1",
@@ -234,7 +304,7 @@ describe("local runtime route registration", () => {
         {
           id: "model-1",
           machine_id: "machine-1",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
           capabilities: {},
