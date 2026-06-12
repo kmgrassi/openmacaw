@@ -24,6 +24,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 platform_dir="${repo_root}/platform"
 
+exec_from_platform() {
+  cd "${platform_dir}"
+  exec "$@"
+}
+
 project_ref=""
 check_only=0
 
@@ -80,7 +85,7 @@ if [[ "${is_prod_ref}" != "1" ]]; then
   if [[ "${check_only}" == "1" || $# -eq 0 ]]; then
     exit 0
   fi
-  exec "$@"
+  exec_from_platform "$@"
 fi
 
 branch="$(git -C "${repo_root}" branch --show-current)"
@@ -136,5 +141,4 @@ if [[ "${check_only}" == "1" || $# -eq 0 ]]; then
   exit 0
 fi
 
-cd "${platform_dir}"
-exec "$@"
+exec_from_platform "$@"
