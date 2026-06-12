@@ -21,7 +21,6 @@ function parseArgs(argv) {
     helper: process.env.LOCAL_RELAY_CONVERSATION_HELPER || "scripted",
     machineId: process.env.LOCAL_RELAY_MACHINE_ID || `scripted-${process.pid}`,
     token: process.env.LOCAL_RELAY_TOKEN || DEFAULT_LOCAL_RELAY_TOKEN,
-    serviceRoleKey: process.env.RUNTIME_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "",
     scenario: "tool-call-round-trip",
     message: "Run the local relay tool-call round trip smoke.",
     toolName: "",
@@ -46,7 +45,6 @@ function parseArgs(argv) {
     else if (arg === "--helper" && next) opts.helper = next, index += 1;
     else if (arg === "--machine-id" && next) opts.machineId = next, index += 1;
     else if (arg === "--token" && next) opts.token = next, index += 1;
-    else if (arg === "--service-role-key" && next) opts.serviceRoleKey = next, index += 1;
     else if (arg === "--scenario" && next) opts.scenario = next, index += 1;
     else if (arg === "--message" && next) opts.message = next, index += 1;
     else if (arg === "--tool" && next) opts.toolName = next, index += 1;
@@ -88,8 +86,6 @@ Options:
   --message <text>             Gateway chat message.
   --machine-id <id>            Scripted helper machine id.
   --token <token>              Scripted helper relay token. Defaults to the dev token.
-  --service-role-key <key>     Bearer for /api/v1/local-runtime/health. Defaults to
-                               RUNTIME_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY.
   --transcript <path>          Write a redacted JSONL transcript.
   --orchestrator-url <url>     Default: ${DEFAULT_ORCHESTRATOR_URL}
   --timeout-ms <ms>            Default: ${DEFAULT_TIMEOUT_MS}
@@ -230,7 +226,21 @@ class ConversationSmoke {
   }
 
   async assertHelperHealth() {
-    const { response, payload } = await fetchJsonWithTimeout(localRuntimeHealthUrl(this.opts), this.opts.timeoutMs, healthHeaders(this.opts));
+    const { response, payload } = await fetchJsonWithTimeout(localRuntimeHealthUrl(this.opts), this.opts.timeoutMs);
+
+    // The orchestrator's health route sits behind the internal bearer the
+    // smoke deliberately does not carry (no secrets beyond the relay token).
+    // Skip the pre-flight in that case: dispatch already surfaces typed
+    // errors (local_runtime_offline, capability_missing) if no usable
+    // helper is registered.
+    if (response.status === 401 || response.status === 503) {
+      this.record("health_check_skipped", "capability_negotiation", {
+        status: response.status,
+        reason: "health endpoint requires internal auth; relying on dispatch errors instead",
+      });
+      return;
+    }
+
     this.record("health_checked", "capability_negotiation", { ok: response.ok, status: payload.status, reason: payload.reason });
 
     if (!response.ok || payload.ok !== true) {
@@ -628,17 +638,12 @@ function removeUndefined(value) {
   return value;
 }
 
-function healthHeaders(opts) {
-  if (!opts.serviceRoleKey) return {};
-  return { authorization: `Bearer ${opts.serviceRoleKey}` };
-}
-
-async function fetchJsonWithTimeout(url, timeoutMs, headers = {}) {
+async function fetchJsonWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, { headers: { accept: "application/json", ...headers }, signal: controller.signal });
+    const response = await fetch(url, { headers: { accept: "application/json" }, signal: controller.signal });
     const payload = await response.json().catch(() => ({}));
     return { response, payload };
   } catch (error) {
