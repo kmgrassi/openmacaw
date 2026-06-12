@@ -118,6 +118,37 @@ describe("normalizeRuntimeEvent", () => {
     });
   });
 
+  it("treats local model completion method payloads as terminal events", () => {
+    const completed = normalizeRuntimeEvent(
+      frame("chat", {
+        method: "run.completed",
+        params: { output: "done" },
+      }),
+      sessionKey,
+    );
+
+    expect(completed).toMatchObject({
+      assistantDelta: null,
+      final: true,
+      aborted: false,
+      error: null,
+    });
+    expect(completed?.timelineEvent).toMatchObject({
+      kind: "turn_completed",
+      label: "Run completed",
+      status: "success",
+    });
+  });
+
+  it("does not treat message completion events as terminal events", () => {
+    const completed = normalizeRuntimeEvent(
+      frame("message.completed", { text: "done" }),
+      sessionKey,
+    );
+
+    expect(completed).toBeNull();
+  });
+
   it("treats chat aborts as cancellation events without surfacing an error", () => {
     const aborted = normalizeRuntimeEvent(
       frame("chat", { state: "aborted", message: "user canceled" }),

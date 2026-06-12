@@ -83,8 +83,9 @@ function normalizedEventName(
   payload: Record<string, unknown> | null,
 ): string {
   const raw =
-    stringField(payload, "kind", "event", "type", "phase") ?? frame.event;
-  return raw.trim().toLowerCase().replace(/[_-]+/g, ".");
+    stringField(payload, "kind", "event", "type", "phase", "method") ??
+    frame.event;
+  return raw.trim().toLowerCase().replace(/[\/_-]+/g, ".");
 }
 
 function sessionMatches(

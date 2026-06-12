@@ -77,6 +77,8 @@ export type RuntimeGatewayEventName =
   | "message.delta"
   | "assistant.delta"
   | "assistant.delta.text"
+  | "message.completed"
+  | "message.completion"
   | "tool.started"
   | "tool.start"
   | "tool.call.started"

@@ -73,8 +73,9 @@ function stringField(
 function normalizeEventName(frame: GatewayEventFrame): string {
   const payload = record(frame.payload);
   const raw =
-    stringField(payload, "kind", "event", "type", "phase") ?? frame.event;
-  return raw.toLowerCase().replace(/[_-]+/g, ".").trim();
+    stringField(payload, "kind", "event", "type", "phase", "method") ??
+    frame.event;
+  return raw.toLowerCase().replace(/[\/_-]+/g, ".").trim();
 }
 
 function scopeFromEvent(
