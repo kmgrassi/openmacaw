@@ -27,7 +27,12 @@ export function matchValue(
 
 export function isRoutingMetadataMatch(match: Pick<RoutingRuleMatchRow, "kind">) {
   const kind = match.kind.trim().toLowerCase();
-  return kind === "local_endpoint" || kind === "local_workspace_root" || kind === "local_machine";
+  return (
+    kind === "local_endpoint" ||
+    kind === "local_workspace_root" ||
+    kind === "local_machine" ||
+    kind === "local_model_capability"
+  );
 }
 
 export function selectRoutingRule(input: {

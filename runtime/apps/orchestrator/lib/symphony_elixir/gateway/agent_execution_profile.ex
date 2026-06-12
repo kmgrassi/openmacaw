@@ -213,7 +213,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     match
     |> Map.get("kind")
     |> normalized_key_string()
-    |> then(&(&1 in ["local_endpoint", "local_workspace_root", "local_machine"]))
+    |> then(&(&1 in ["local_endpoint", "local_workspace_root", "local_machine", "local_model_capability"]))
   end
 
   defp numeric_priority(priority) when is_number(priority), do: priority
