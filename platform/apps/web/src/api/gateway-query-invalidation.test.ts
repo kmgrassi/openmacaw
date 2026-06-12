@@ -52,6 +52,28 @@ describe("invalidationForGatewayEvent", () => {
     ).toEqual([]);
   });
 
+  it("invalidates persisted chat surfaces on local model completion method payloads", () => {
+    expect(
+      keysFor({
+        type: "event",
+        event: "chat",
+        payload: {
+          runId: "run-1",
+          sessionKey: scope.sessionKey,
+          method: "run.completed",
+        } as RuntimeEventPayload,
+      } as GatewayEventFrame),
+    ).toEqual(
+      expect.arrayContaining([
+        queryKeys.messages.history(scope.agentId, scope.sessionKey),
+        queryKeys.sessions.orchestrator(scope.workspaceId),
+        queryKeys.sessions.worker(),
+        queryKeys.agentDashboard.latestRun(scope.agentId),
+        queryKeys.setup.byAgent(scope.agentId),
+      ]),
+    );
+  });
+
   it("maps snake_case runtime payloads to scoped dashboard invalidation", () => {
     const result = invalidationForGatewayEvent(
       {
