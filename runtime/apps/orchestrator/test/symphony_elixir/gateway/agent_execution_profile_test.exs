@@ -236,6 +236,58 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
              AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
   end
 
+  test "treats local_model_capability matches as routing metadata" do
+    # Registered local runtimes write a `local_model_capability` match row
+    # next to the relay rule's endpoint/machine metadata. It describes the
+    # advertised model, not an agent predicate, so it must not block rule
+    # selection.
+    Req.Test.stub(AgentExecutionProfile, fn conn ->
+      params = URI.decode_query(conn.query_string)
+
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          rows =
+            case params do
+              %{"kind" => "eq.agent_id", "value" => "eq.agent-1"} ->
+                [%{"rule_id" => "rule-relay"}]
+
+              %{"rule_id" => "in.(rule-relay)"} ->
+                [
+                  %{"rule_id" => "rule-relay", "kind" => "agent_id", "key" => "agent_id", "value" => "agent-1"},
+                  %{
+                    "rule_id" => "rule-relay",
+                    "kind" => "local_model_capability",
+                    "key" => "tool_call",
+                    "value" => "native_tools"
+                  },
+                  %{"rule_id" => "rule-relay", "kind" => "local_machine", "key" => "id", "value" => "machine-1"}
+                ]
+            end
+
+          json(conn, rows)
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          json(conn, [
+            %{
+              "id" => "rule-relay",
+              "priority" => 0,
+              "runner_kind" => "local_relay",
+              "provider" => "local",
+              "model" => "qwen3-coder:30b",
+              "enabled" => true,
+              "workspace_id" => "workspace-1"
+            }
+          ])
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+
+    assert {:ok, %{runner_kind: "local_relay", provider: "local", model: "qwen3-coder:30b"}} =
+             AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
+  end
+
   test "resolves routing-rule credentials into runnable profile fields" do
     Req.Test.stub(AgentExecutionProfile, fn conn ->
       params = URI.decode_query(conn.query_string)

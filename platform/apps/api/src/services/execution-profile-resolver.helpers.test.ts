@@ -67,6 +67,16 @@ describe("matchValue", () => {
     };
     expect(matchValue(input, match)).toBe(true);
   });
+
+  it('skips kind: "local_model_capability" (returns true, does not block)', () => {
+    const match = {
+      rule_id: "r1",
+      kind: "local_model_capability",
+      key: "tool_call",
+      value: "native_tools",
+    };
+    expect(matchValue(input, match)).toBe(true);
+  });
 });
 
 describe("firstGatewayRunner", () => {
