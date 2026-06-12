@@ -74,7 +74,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
           assert params["id"] == "in.(rule-runtime,rule-coding)"
           assert params["workspace_id"] == "eq.workspace-1"
           assert params["enabled"] == "eq.true"
-          assert params["order"] == "priority.asc.nullslast"
+          assert params["order"] == "priority.desc.nullslast"
 
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
@@ -109,6 +109,58 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
     end)
 
     assert {:ok, %{runner_kind: "local_model_coding", provider: "openai_compatible", model: "qwen3-coder:30b"}} =
+             AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
+  end
+
+  test "highest-priority rule wins over a lower-priority local_model_coding rule" do
+    # Mirrors the platform's `selectRoutingRule`: priority descending wins
+    # outright; the local_model_coding preference only breaks ties within
+    # the same priority bucket, never across buckets.
+    Req.Test.stub(AgentExecutionProfile, fn conn ->
+      params = URI.decode_query(conn.query_string)
+
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-relay"}, %{"rule_id" => "rule-coding"}]))
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          assert params["order"] == "priority.desc.nullslast"
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            200,
+            Jason.encode!([
+              # PostgREST returns rows priority-descending
+              %{
+                "id" => "rule-relay",
+                "priority" => 1000,
+                "runner_kind" => "local_relay",
+                "provider" => "local",
+                "model" => "qwen3-coder:30b",
+                "enabled" => true,
+                "workspace_id" => "workspace-1"
+              },
+              %{
+                "id" => "rule-coding",
+                "priority" => 10,
+                "runner_kind" => "local_model_coding",
+                "provider" => "openai_compatible",
+                "model" => "qwen3-coder:30b",
+                "enabled" => true,
+                "workspace_id" => "workspace-1"
+              }
+            ])
+          )
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+
+    assert {:ok, %{runner_kind: "local_relay", provider: "local", model: "qwen3-coder:30b"}} =
              AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
   end
 

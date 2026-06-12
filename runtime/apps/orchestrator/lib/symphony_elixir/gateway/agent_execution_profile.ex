@@ -101,7 +101,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
       "id" => "in.(#{Enum.join(rule_ids, ",")})",
       "workspace_id" => "eq.#{workspace_id}",
       "enabled" => "eq.true",
-      "order" => "priority.asc.nullslast"
+      "order" => "priority.desc.nullslast"
     }
 
     case PostgRESTClient.get(client(config), @rule_table, query,
@@ -116,7 +116,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
 
         case rules do
           [] -> {:error, :not_found}
-          rules -> {:ok, prefer_local_model_coding(rules)}
+          rules -> {:ok, select_rule(rules)}
         end
 
       {:ok, body} ->
@@ -127,11 +127,25 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     end
   end
 
-  # Mirror the platform's resolver: when multiple rules tie at the same
-  # priority and one of them is `local_model_coding`, prefer it. Coding
-  # agents commonly have both an agent-scoped `local_model_coding` rule
-  # and a broader `local_runtime` rule at the same priority; the
-  # coding-tool-aware runner is the right pick.
+  # Mirror the platform's canonical resolver (`selectRoutingRule` in
+  # platform/apps/api/src/services/execution-profile-resolver/routing-rules.ts):
+  # the highest priority wins, and `local_model_coding` is preferred only
+  # among rules tied at that top priority, falling back to PostgREST's
+  # returned order. The platform additionally breaks priority ties on
+  # predicate-match specificity, but this resolver only loads `agent_id`
+  # matches (it has no role/intent context), so every candidate here has
+  # the same specificity and that tie-break is a no-op.
+  defp select_rule([top | _rest] = rules) do
+    top_priority = Map.get(top, "priority")
+
+    rules
+    |> Enum.take_while(&(Map.get(&1, "priority") == top_priority))
+    |> prefer_local_model_coding()
+  end
+
+  # Coding agents commonly have both an agent-scoped `local_model_coding`
+  # rule and a broader `local_runtime` rule at the same priority; the
+  # coding-tool-aware runner is the right pick within that tie.
   defp prefer_local_model_coding(rules) do
     Enum.find(rules, &(Map.get(&1, "runner_kind") == "local_model_coding")) || hd(rules)
   end
