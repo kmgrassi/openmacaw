@@ -12,7 +12,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
   require Logger
 
-  alias SymphonyElixir.{AgentInventory, AgentInventory.Agent, Codex.AppServer, Runner, ToolRegistry, WorkItem, Workspace}
+  alias SymphonyElixir.{AgentInventory, AgentInventory.Agent, Codex.AppServer, ExecutionProfile, Runner, ToolRegistry, WorkItem, Workspace}
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Gateway.AgentExecutionProfile
   alias SymphonyElixir.WorkerBridge.SecretResolver
@@ -465,6 +465,10 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "session_id" => scope.session_key,
       "provider" => Map.get(profile, :provider) || "local",
       "model" => Map.get(profile, :model),
+      # A provider naming a helper-advertisable runtime (openclaw et al.)
+      # selects which registered helper runner serves the dispatch; nil
+      # falls back to Runner.LocalRelay's "openai_compatible" default.
+      "target_runner_kind" => ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
       "credential_ref" => Map.get(profile, :credential_ref),
       "tool_definitions" => ToolRegistry.definitions(ToolRegistry.bundle(:universal)),
       "tool_calling_mode" => "cloud_managed",

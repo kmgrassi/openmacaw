@@ -41,6 +41,23 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
        ]}
     end
 
+    def list_credentials("relay-1") do
+      {:ok,
+       [
+         %StoredCredential{
+           id: "cred-relay:OPENAI_API_KEY",
+           agent_id: "relay-1",
+           workspace_id: "workspace-1",
+           provider: "openclaw",
+           label: "OpenClaw",
+           env_var: "OPENAI_API_KEY",
+           has_secret: true,
+           secret_value: "test-relay-key",
+           aliases: []
+         }
+       ]}
+    end
+
     def list_credentials(_agent_id), do: {:ok, []}
   end
 
@@ -269,6 +286,39 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
   end
 
+  test "local_relay agents thread a helper-runtime provider into the relay target runner kind" do
+    setup_local_relay_routing(%{"provider" => "openclaw", "model" => nil, "credential_id" => "cred-relay"})
+
+    test_pid = self()
+
+    helper =
+      spawn_link(fn ->
+        receive do
+          {:local_relay_dispatch, frame} ->
+            send(test_pid, {:relay_dispatch_frame, frame})
+            Registry.complete(frame["correlation_id"], %{"output_text" => "openclaw response"})
+        end
+      end)
+
+    Registry.register(%{
+      workspace_id: "workspace-1",
+      machine_id: "machine-openclaw",
+      pid: helper,
+      runners: [%{runner_kind: "openclaw", provider: "openclaw", capabilities: %{tool_calls: true}}]
+    })
+
+    assert :ok = ChatRunner.run(relay_agent(), relay_scope(), "hello openclaw", "run-openclaw", self())
+
+    assert_receive {:relay_dispatch_frame, frame}
+    assert frame["target_runner_kind"] == "openclaw"
+    assert frame["provider"] == "openclaw"
+
+    assert_receive {:gateway_runner_complete, "agent:relay-1:main", "run-openclaw", {:ok, result}}
+    assert result["output_text"] == "openclaw response"
+
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
+  end
+
   test "local_relay agents fail the gateway run with a typed error when no helper is online" do
     setup_local_relay_routing()
 
@@ -278,7 +328,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     refute_received {:gateway_runner_complete, _session_key, _run_id, _result}
   end
 
-  defp setup_local_relay_routing do
+  defp setup_local_relay_routing(rule_overrides \\ %{}) do
     Registry.reset!()
     on_exit(fn -> Registry.reset!() end)
 
@@ -290,6 +340,20 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
     ])
 
+    rule =
+      Map.merge(
+        %{
+          "id" => "rule-relay",
+          "priority" => 1,
+          "runner_kind" => "local_relay",
+          "provider" => "local",
+          "model" => "qwen-chat",
+          "enabled" => true,
+          "workspace_id" => "workspace-1"
+        },
+        rule_overrides
+      )
+
     Req.Test.stub(__MODULE__, fn conn ->
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
@@ -300,20 +364,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
         conn.request_path == "/rest/v1/routing_rule" ->
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(
-            200,
-            Jason.encode!([
-              %{
-                "id" => "rule-relay",
-                "priority" => 1,
-                "runner_kind" => "local_relay",
-                "provider" => "local",
-                "model" => "qwen-chat",
-                "enabled" => true,
-                "workspace_id" => "workspace-1"
-              }
-            ])
-          )
+          |> Plug.Conn.send_resp(200, Jason.encode!([rule]))
 
         true ->
           Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
