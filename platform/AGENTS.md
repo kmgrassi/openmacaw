@@ -81,7 +81,7 @@ All enum-like values use **snake_case** (underscores, never hyphens):
 
 - Runner kinds: see `contracts/runner-kinds.ts` (`RUNNER_REGISTRY`) — that
   file is the canonical list. Today it contains `codex`, `claude_code`,
-  `openclaw`, `local_runtime`, `local_relay`, `local_model_coding`,
+  `openclaw`, `local_relay`, `local_model_coding`,
   `llm_tool_runner`, `planner`, `openclaw_ws`, `openclaw_http_sse`,
   `computer_use`. The OpenMacaw `routing_rule.runner_kind` CHECK constraint
   lives in `platform/supabase/migrations/` and must remain a superset; the
@@ -195,11 +195,12 @@ Examples of what NOT to do:
 - `body.provider.replace(/-/g, "_")` — instead, fix the source to send the right value
 - Re-exporting a renamed function under the old name "for compatibility"
 
-Note: `local_relay` and `local_runtime` are distinct runner kinds, not a
-naming drift. `local_runtime` = registered local-machine identity (direct
-transport, has its own table and routes). `local_relay` = helper-daemon
-websocket transport (runtime's `SymphonyElixir.LocalRelay`). See the
-JSDoc on each entry in `contracts/runner-kinds.ts`.
+Note: the `local_runtime_machine` table and `local-runtime` routes name the
+registered local-machine identity, not a runner kind. The matching
+`local_runtime` routing_rule.runner_kind alias was removed (migration
+`20260612120000_drop_local_runtime_runner_kind.sql`) because the runtime
+never supported it; registered local models route via `local_relay`, the
+helper-daemon websocket transport (runtime's `SymphonyElixir.LocalRelay`).
 
 When you encounter inconsistency, fix it at the source. Refactor through
 the entire codebase rather than adding a compatibility layer.

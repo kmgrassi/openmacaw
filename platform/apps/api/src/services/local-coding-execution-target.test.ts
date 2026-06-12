@@ -38,7 +38,7 @@ describe("assertLocalCodingToolsUseRuntimeTarget", () => {
           id: "tool-2",
           slug: "repo.search",
           executionKind: "filesystem",
-          runnerKind: "local_runtime",
+          runnerKind: "local_relay",
         },
       ]),
     ).not.toThrow();

@@ -19,7 +19,7 @@ vi.mock("../execution-profile-resolver.js", () => ({
   resolveExecutionProfile: vi.fn(async () => ({
     missing: [],
     profile: {
-      runnerKind: "local_runtime",
+      runnerKind: "local_relay",
       provider: "openai_compatible",
       model: "qwen3-coder:30b",
       credentialRef: null,

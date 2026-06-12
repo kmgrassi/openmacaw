@@ -19,11 +19,11 @@ export type RoutingRuleMatchRow = RoutingRuleMatchRowRecord;
 
 /**
  * Runner kinds that the registration flow writes to `routing_rule.runner_kind`.
- * `local_runtime` is used for openai_compatible registrations; `local_relay`
- * is used for openclaw (and other relay-dispatched runtimes), with the
- * runtime family stored in `routing_rule.provider`.
+ * Every registered runner dispatches through the helper-daemon relay, so the
+ * flow only writes `local_relay`, with the runtime family stored in
+ * `routing_rule.provider` (`openclaw` vs. an openai_compatible provider).
  */
-export const REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS = ["local_runtime", "local_relay"] as const;
+export const REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS = ["local_relay"] as const;
 
 /**
  * Routing-rule name prefix used exclusively by the local-runtime registration
@@ -40,7 +40,7 @@ export function isLocalRuntimeRegistrationRuleName(name: string | null | undefin
 export type LocalRuntimeRunnerDetails = {
   ruleId: string;
   kind: LocalRuntimeRegistrationRunnerKind;
-  runnerKind: "local_runtime" | "local_relay";
+  runnerKind: "local_relay";
   endpoint: string;
   model: string | null;
   provider: string;
@@ -149,7 +149,7 @@ export async function getLocalRuntimeMachineDetails(
     runners.push({
       ruleId: rule.id,
       kind: registrationKind,
-      runnerKind: rule.runner_kind === "local_relay" ? "local_relay" : "local_runtime",
+      runnerKind: "local_relay",
       endpoint,
       model: rule.model ?? null,
       provider: rule.provider ?? (registrationKind === "openclaw" ? "openclaw" : "openai_compatible"),
@@ -198,7 +198,7 @@ export function registrationKindForRule(rule: {
   runner_kind: string;
   provider: string | null;
 }): LocalRuntimeRegistrationRunnerKind {
-  return rule.runner_kind === "local_relay" && rule.provider === "openclaw" ? "openclaw" : "openai_compatible";
+  return rule.provider === "openclaw" ? "openclaw" : "openai_compatible";
 }
 
 export async function getLocalRuntimeRuleDetails(

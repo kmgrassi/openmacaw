@@ -47,7 +47,7 @@ describe("local chat agent tools", () => {
           id: "tool-read",
           slug: "plan.create",
           function_name: "plan_create",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         }),
         tool({ id: "tool-search", slug: "repo.search", function_name: "repo_search" }),
         tool({
@@ -84,7 +84,7 @@ describe("local chat agent tools", () => {
           id: "tool-read",
           slug: "plan.create",
           function_name: "plan_create",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         }),
         tool({
           id: "tool-apply-patch",

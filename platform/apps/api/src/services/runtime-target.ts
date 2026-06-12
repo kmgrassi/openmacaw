@@ -217,7 +217,7 @@ async function resolveRuntimeTargetForAgentImpl(
   agentId: string,
   launcherRequest: (path: string, init?: RequestInit) => Promise<UpstreamResponse>,
 ): Promise<RuntimeTarget> {
-  // Local-runner agents (local_runtime / local_relay / local_model_coding)
+  // Local-runner agents (local_relay / local_model_coding)
   // do not run as launcher-managed per-agent instances. They share the main
   // orchestrator process and dispatch via the local-relay socket / helper.
   // Route their websocket directly to the orchestrator's gateway endpoint.

@@ -1,8 +1,5 @@
-import { Link } from "react-router-dom";
-
 import type { PrepareError } from "../../api/ws-types";
-import { runtimeErrorFix } from "../../lib/runtime-error-fix";
-import { Button, buttonClassName } from "../ui/Button";
+import { Button } from "../ui/Button";
 import { StatusBanner } from "../ui/StatusBanner";
 
 type LauncherConfigErrorBannerProps = {
@@ -18,7 +15,6 @@ export function LauncherConfigErrorBanner({
   error,
   onDismiss,
 }: LauncherConfigErrorBannerProps) {
-  const fix = runtimeErrorFix(error.code, error.launcherErrorCode);
   return (
     <StatusBanner
       tone="warning"
@@ -50,14 +46,6 @@ export function LauncherConfigErrorBanner({
           )}
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
-          {fix && (
-            <Link
-              to={fix.to}
-              className={buttonClassName({ variant: "primary", size: "sm" })}
-            >
-              {fix.label}
-            </Link>
-          )}
           <Button
             type="button"
             size="sm"

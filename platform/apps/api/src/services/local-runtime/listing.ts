@@ -41,20 +41,14 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     rules,
   );
 
-  const candidateRules = parsedRules.filter((rule) => {
-    if (rule.runner_kind === "local_runtime") return true;
-    if (rule.runner_kind === "local_relay" && rule.provider === "openclaw") return true;
-    return false;
-  });
-
-  if (candidateRules.length === 0) {
+  if (parsedRules.length === 0) {
     return LocalRuntimeListResponseSchema.parse({
       runtimes: [],
       heartbeatIntervalMs: LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS,
     });
   }
 
-  const ruleIds = candidateRules.map((rule) => rule.id);
+  const ruleIds = parsedRules.map((rule) => rule.id);
   const { data: matches, error: matchesError } = await supabase
     .from("routing_rule_match")
     .select("rule_id, kind, key, value")
@@ -74,7 +68,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   }
 
   const machineIdsFromRules = new Map<string, string>();
-  for (const rule of candidateRules) {
+  for (const rule of parsedRules) {
     const machineId = rule.machine_id ?? matchValue(matchesByRule.get(rule.id) ?? [], "local_machine", "id");
     if (machineId) {
       machineIdsFromRules.set(rule.id, machineId);
@@ -135,7 +129,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   const runnersByMachine = new Map<string, RunnerRow[]>();
   const workspaceRootByMachine = new Map<string, string>();
   const lastErrorByMachine = new Map<string, { message: string; at: string | null }>();
-  for (const rule of candidateRules) {
+  for (const rule of parsedRules) {
     const machineId = rule.machine_id ?? machineIdsFromRules.get(rule.id);
     if (!machineId) continue;
     const ruleMatchesForRule = matchesByRule.get(rule.id) ?? [];
@@ -169,7 +163,7 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     const runner: RunnerRow = {
       id: rule.id,
       kind: registrationKind,
-      runnerKind: rule.runner_kind === "local_relay" ? "local_relay" : "local_runtime",
+      runnerKind: "local_relay",
       endpoint,
       model: rule.model ?? null,
       provider: rule.provider ?? (registrationKind === "openclaw" ? "openclaw" : "openai_compatible"),

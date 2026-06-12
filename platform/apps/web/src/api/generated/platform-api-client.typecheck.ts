@@ -21,7 +21,7 @@ void createToolDefinition({
   description: "Read a file",
   parameters: { type: "object" },
   executionKind: "filesystem_read",
-  runnerKind: "local_runtime",
+  runnerKind: "local_relay",
 });
 
 // @ts-expect-error workspaceId is required for tool creation.

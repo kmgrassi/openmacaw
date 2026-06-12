@@ -73,25 +73,6 @@ export const RUNNER_REGISTRY = {
     structuredOutput: false,
     interrupt: false,
   },
-  /**
-   * Local model chat reached via a direct connection to a registered
-   * local-machine identity (see local_runtime_machine table +
-   * apps/api/src/routes/local-runtime.ts). Distinct from `local_relay`,
-   * which uses the helper-daemon websocket transport. Both share
-   * runnerFamily/executionLocation; they differ only in `transport`.
-   */
-  local_runtime: {
-    runnerFamily: "model_chat",
-    executionLocation: "local",
-    transport: "local_direct",
-    credentialless: true,
-    localModelRuntime: true,
-    localCodingRuntime: false,
-    workspaceWrite: "never",
-    toolCalls: "never",
-    structuredOutput: false,
-    interrupt: false,
-  },
   local_model_coding: {
     runnerFamily: "workspace_coding",
     executionLocation: "local",
@@ -166,10 +147,12 @@ export const RUNNER_REGISTRY = {
   },
   /**
    * Local model chat reached via the helper-daemon websocket relay
-   * (see runtime's SymphonyElixir.LocalRelay module). Distinct from
-   * `local_runtime`, which uses a direct connection to a registered
-   * machine. The runtime side dispatches this via the relay socket; the
-   * helper daemon connects out and registers its capabilities.
+   * (see runtime's SymphonyElixir.LocalRelay module). The runtime side
+   * dispatches this via the relay socket; the helper daemon connects out
+   * and registers its capabilities. Registered local-machine identities
+   * (local_runtime_machine table + apps/api/src/routes/local-runtime.ts)
+   * route through this kind — the runtime has no direct-connection
+   * transport for local models.
    */
   local_relay: {
     runnerFamily: "model_chat",

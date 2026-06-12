@@ -4,7 +4,7 @@ type Row = Record<string, unknown>;
 type TableMap = Record<string, Row[]>;
 type Filter = {
   column: string;
-  operator: "contains" | "eq" | "in" | "is" | "not" | "like" | "gte" | "lt" | "lte" | "or";
+  operator: "contains" | "eq" | "neq" | "in" | "is" | "not" | "like" | "gte" | "lt" | "lte" | "or";
   negatedOperator?: "is";
   value: unknown;
 };
@@ -27,6 +27,10 @@ class MockSupabaseQueryBuilder {
   select = vi.fn((_columns?: string) => this);
   eq = vi.fn((column: string, value: unknown) => {
     this.filters.push({ column, operator: "eq", value });
+    return this;
+  });
+  neq = vi.fn((column: string, value: unknown) => {
+    this.filters.push({ column, operator: "neq", value });
     return this;
   });
   gte = vi.fn((column: string, value: unknown) => {
@@ -217,6 +221,8 @@ class MockSupabaseQueryBuilder {
   private matches(row: Row): boolean {
     return this.filters.every((filter) => {
       if (filter.operator === "eq") return row[filter.column] === filter.value;
+      // PostgREST `neq` translates to SQL `<>`, which never matches NULL.
+      if (filter.operator === "neq") return row[filter.column] != null && row[filter.column] !== filter.value;
       if (filter.operator === "contains") {
         const candidate = row[filter.column];
         return (

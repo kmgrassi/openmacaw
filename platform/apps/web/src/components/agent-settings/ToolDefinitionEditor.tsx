@@ -135,7 +135,7 @@ const RUNNER_KIND_OPTIONS = [
   { value: "codex", label: "Codex" },
   { value: "planner", label: "Planner" },
   { value: "manager", label: "Manager" },
-  { value: "local_runtime", label: "Local runtime" },
+  { value: "local_relay", label: "Local relay" },
 ];
 
 type Props = {

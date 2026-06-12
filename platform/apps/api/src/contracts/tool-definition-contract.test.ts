@@ -35,7 +35,7 @@ describe("tool definition contract", () => {
       },
       examples: [{ input: { path: "README.md" }, note: "Use repository-relative paths." }],
       executionKind: "filesystem_read",
-      runnerKind: "local_runtime",
+      runnerKind: "local_relay",
       enabled: true,
     });
 
@@ -120,7 +120,7 @@ describe("tool definition contract", () => {
       parameters: {},
       examples: [],
       executionKind: "filesystem_read",
-      runnerKind: "local_runtime",
+      runnerKind: "local_relay",
       enabled: true,
       enabledForAgent: true,
       source: "template",

@@ -224,7 +224,9 @@ export async function resolveLocalModelRoutingRule(input: {
     .select("id,model,provider")
     .eq("id", localModelId)
     .eq("workspace_id", input.workspaceId)
-    .eq("runner_kind", "local_runtime")
+    .eq("runner_kind", "local_relay")
+    .like("name", "local:%")
+    .neq("provider", "openclaw")
     .single();
   if (ruleError || !rule) {
     throw new ApiRouteError(404, "local_model_not_found", "Local model was not found", ruleError);

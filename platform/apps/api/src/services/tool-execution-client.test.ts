@@ -12,7 +12,7 @@ function toolWithParameters(parameters: Record<string, unknown>): ToolDefinition
     description: "List workspace plans.",
     parameters,
     executionKind: "api",
-    runnerKind: "local_runtime",
+    runnerKind: "local_relay",
     enabled: true,
   };
 }
@@ -38,7 +38,7 @@ function legacyHttpTool(): ToolDefinition {
     slug: "legacy.http",
     functionName: "legacy_http",
     executionKind: "api",
-    runnerKind: "local_runtime",
+    runnerKind: "local_relay",
   };
 }
 

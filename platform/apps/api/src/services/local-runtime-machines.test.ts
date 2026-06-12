@@ -139,7 +139,7 @@ describe("registerLocalRuntimeForWorkspace", () => {
     expect(tables.routing_rule).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           provider: "openai_compatible",
           model: "qwen3-coder:30b",
         }),
@@ -260,7 +260,8 @@ describe("registerLocalRuntimeForWorkspace", () => {
         {
           id: "existing-rule",
           workspace_id: workspaceId,
-          runner_kind: "local_runtime",
+          name: "local:qwen",
+          runner_kind: "local_relay",
           enabled: true,
         },
       ],
@@ -320,7 +321,7 @@ describe("deleteLocalRuntimeForWorkspace", () => {
         {
           id: "rule-1",
           workspace_id: workspaceId,
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         },
       ],
       routing_rule_match: [
@@ -378,7 +379,7 @@ describe("deleteLocalRuntimeForWorkspace", () => {
         {
           id: "rule-openai",
           workspace_id: workspaceId,
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
         },
         {
           id: "rule-openclaw",
@@ -447,7 +448,7 @@ describe("listLocalRuntimesForWorkspace", () => {
           id: "rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
@@ -499,7 +500,7 @@ describe("listLocalRuntimesForWorkspace", () => {
           id: "rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
@@ -574,7 +575,7 @@ describe("testLocalRuntimeDispatchForWorkspace", () => {
           id: "rule-1",
           workspace_id: workspaceId,
           name: "local:qwen3-coder:30b",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "qwen3-coder:30b",
           provider: "openai_compatible",
         },
@@ -613,7 +614,7 @@ describe("testLocalRuntimeDispatchForWorkspace", () => {
         {
           id: "model-1",
           machine_id: "machine-1",
-          runner_kind: "local_runtime",
+          runner_kind: "local_relay",
           model: "llama3.1:8b",
           provider: "openai_compatible",
           capabilities: {},

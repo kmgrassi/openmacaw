@@ -44,7 +44,7 @@ async function listen(server: Server) {
   return (server.address() as AddressInfo).port;
 }
 
-function localProfile(runnerKind: "local_runtime" | "local_model_coding"): ExecutionProfileResolution {
+function localProfile(runnerKind: "local_relay" | "local_model_coding"): ExecutionProfileResolution {
   return {
     agent: { agentId, workspaceId, role: "coding" },
     profile: {
@@ -117,7 +117,7 @@ describe("local model proxy", () => {
       );
     });
 
-    serviceMocks.resolveExecutionProfile.mockResolvedValue(localProfile("local_runtime"));
+    serviceMocks.resolveExecutionProfile.mockResolvedValue(localProfile("local_relay"));
     serviceMocks.getLocalChatToolResolutionForAgent.mockResolvedValue({
       tools: [],
       rejectedLocalCodingTools: [],
@@ -222,7 +222,7 @@ describe("local model proxy", () => {
 
   it("rejects stored local runtime endpoints outside loopback before fetching them", async () => {
     serviceMocks.resolveExecutionProfile.mockResolvedValue({
-      ...localProfile("local_runtime"),
+      ...localProfile("local_relay"),
       source: {
         routingRuleId: "rule-unsafe-endpoint",
         credentialAlias: null,

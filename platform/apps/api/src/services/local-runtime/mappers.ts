@@ -38,7 +38,7 @@ export function toLocalRuntimeConfigResponse(input: {
 export type RunnerRow = {
   id: string;
   kind: LocalRuntimeRegistrationRunnerKind;
-  runnerKind: "local_runtime" | "local_relay";
+  runnerKind: "local_relay";
   endpoint: string | null;
   model: string | null;
   provider: string | null;
