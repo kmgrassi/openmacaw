@@ -126,6 +126,10 @@ supabase migration up --local
 
 ## Link And Push To The New Project
 
+Use this section only for non-production hosted projects or first-time project
+bootstrap. Production migrations should normally run from the private
+deployment workflow described below.
+
 Log in to the Supabase CLI:
 
 ```sh
@@ -174,6 +178,32 @@ the target environment. For KG production, the private deployment repo checks
 out `kmgrassi/OpenMacaw` at the selected ref and applies these migrations to the
 KG Supabase project using that private repo's protected GitHub environment
 secrets.
+
+Do not run `supabase db push` or `supabase migration repair` against a
+production Supabase project from a feature branch, agent worktree, or dirty
+checkout. That can record a remote migration version before the matching file is
+merged to `main`, causing later production deploys to fail with
+`Remote migration versions not found in local migrations directory`.
+
+If a manual production migration command is unavoidable, run it through the
+guard from the repository root:
+
+```sh
+platform/scripts/guard-supabase-prod-migration.sh \
+  --project-ref "$SUPABASE_PROJECT_ID" \
+  -- supabase db push
+```
+
+The guard refuses production project refs unless the checkout is a clean `main`
+branch exactly matching `origin/main`. It also refuses common agent worktree
+paths. Configure additional guarded production refs with
+`OPENMACAW_PROD_SUPABASE_PROJECT_REFS`, comma-separated.
+
+To check whether the current checkout is safe without running a Supabase command:
+
+```sh
+pnpm -C platform run db:prod:guard
+```
 
 ## Regenerate OpenMacaw Schema Artifacts
 
