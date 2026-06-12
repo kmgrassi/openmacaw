@@ -1,0 +1,74 @@
+# Builds and publishes local-runtime-helper release binaries.
+#
+# Triggered by pushing a version tag (v0.1.0, v0.2.0, ...). Cross-compiles
+# the helper for macOS/Linux on amd64/arm64, packages each binary as
+# local-runtime-helper_<os>_<arch>.tar.gz, and attaches the archives plus a
+# checksums.txt to a GitHub release for that tag — exactly the asset layout
+# local-runtime-helper/install.sh downloads and verifies.
+
+name: Release local-runtime-helper
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish helper binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: local-runtime-helper
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: local-runtime-helper/go.mod
+          cache-dependency-path: local-runtime-helper/go.sum
+
+      - name: Validate
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Cross-compile and package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          mkdir -p dist
+          for os in darwin linux; do
+            for arch in amd64 arm64; do
+              out="dist/${os}_${arch}"
+              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+                -trimpath \
+                -ldflags "-s -w -X main.version=${version}" \
+                -o "${out}/local-runtime-helper" \
+                ./cmd/local-runtime-helper
+              tar -czf "dist/local-runtime-helper_${os}_${arch}.tar.gz" \
+                -C "$out" local-runtime-helper
+            done
+          done
+          (cd dist && sha256sum local-runtime-helper_*.tar.gz > checksums.txt)
+          cat dist/checksums.txt
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --title "local-runtime-helper $TAG" \
+            --generate-notes \
+            dist/local-runtime-helper_*.tar.gz \
+            dist/checksums.txt

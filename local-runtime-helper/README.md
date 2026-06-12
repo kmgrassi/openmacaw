@@ -42,17 +42,20 @@ go test ./...
 
 ## Installing from a release
 
-Once OpenMacaw publishes helper release binaries, the installer downloads the
-matching binary for macOS or Linux, verifies it against the release's
-`checksums.txt`, and writes it to `~/.local/bin/local-runtime-helper`:
+No Go toolchain or repository clone needed — the installer downloads the
+latest release binary for macOS or Linux (amd64/arm64), verifies it against
+the release's `checksums.txt`, and writes it to
+`~/.local/bin/local-runtime-helper`:
 
 ```sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/kmgrassi/openmacaw/main/local-runtime-helper/install.sh | sh
 ```
 
-Until releases are published from this repository, build from source as shown
-above. See [docs/install.md](docs/install.md) for configuration and launchd
-setup.
+To pin a release, pass `--version v<version>` (or set
+`LOCAL_RUNTIME_HELPER_VERSION`). Releases are published by the
+[release workflow](../.github/workflows/release-local-runtime-helper.yml)
+whenever a `v*` tag is pushed. See [docs/install.md](docs/install.md) for
+configuration and launchd setup.
 
 ## Configuring runners
 
