@@ -8,6 +8,26 @@ import { registerLocalRuntimeRoutes } from "./local-runtime.js";
 export const workspaceId = "22222222-2222-4222-8222-222222222222";
 export const userId = "11111111-1111-4111-8111-111111111111";
 
+export function withOwnedWorkspace<
+  T extends Record<string, unknown[] | undefined> & { workspaces?: Array<Record<string, unknown>> },
+>(
+  tables: T,
+): T & {
+  workspaces: Array<Record<string, unknown>>;
+} {
+  const existing = tables.workspaces ?? [];
+  tables.workspaces = [
+    {
+      id: workspaceId,
+      owner_user_id: userId,
+    },
+    ...existing,
+  ];
+  return tables as T & {
+    workspaces: Array<Record<string, unknown>>;
+  };
+}
+
 function closeServer(server: Server | undefined) {
   if (!server) return Promise.resolve();
   server.closeAllConnections?.();

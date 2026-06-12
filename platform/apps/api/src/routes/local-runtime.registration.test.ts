@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
-import { createLocalRuntimeTestServer, workspaceId } from "./local-runtime.test-support.js";
+import { createLocalRuntimeTestServer, withOwnedWorkspace, workspaceId } from "./local-runtime.test-support.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
@@ -28,7 +28,7 @@ describe("local runtime route registration", () => {
   });
 
   it("lists a freshly heartbeating helper as online when persisted status is still offline", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       routing_rule: [
         {
           id: "local-rule-1",
@@ -89,7 +89,7 @@ describe("local runtime route registration", () => {
         },
       ],
       agent: [],
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
@@ -189,7 +189,7 @@ describe("local runtime route registration", () => {
   });
 
   it("test-dispatch treats a fresh heartbeat as connected before status write-through lands", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       routing_rule: [
         {
           id: "local-rule-1",
@@ -232,7 +232,7 @@ describe("local runtime route registration", () => {
         },
       ],
       local_runtime_model: [],
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(
@@ -258,7 +258,7 @@ describe("local runtime route registration", () => {
   });
 
   it("test-dispatch sends the service-role bearer to the orchestrator diagnostics endpoint", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       routing_rule: [
         {
           id: "local-rule-1",
@@ -311,7 +311,7 @@ describe("local runtime route registration", () => {
           last_advertised_at: new Date().toISOString(),
         },
       ],
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const seenAuthorizationHeaders: Array<string | undefined> = [];
@@ -363,12 +363,12 @@ describe("local runtime route registration", () => {
   });
 
   it("registers a model-only runtime and emits an [runner.openai_compatible] snippet", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       local_runtime_machine: [] as Array<Record<string, unknown>>,
       local_runtime_token: [] as Array<Record<string, unknown>>,
       routing_rule: [] as Array<Record<string, unknown>>,
       routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
@@ -435,12 +435,12 @@ describe("local runtime route registration", () => {
   });
 
   it("registers an openclaw-only runtime and emits an [runner.openclaw] snippet", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       local_runtime_machine: [] as Array<Record<string, unknown>>,
       local_runtime_token: [] as Array<Record<string, unknown>>,
       routing_rule: [] as Array<Record<string, unknown>>,
       routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
@@ -503,12 +503,12 @@ describe("local runtime route registration", () => {
   });
 
   it("registers a multi-kind runtime with both openai_compatible and openclaw runners on one machine", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       local_runtime_machine: [] as Array<Record<string, unknown>>,
       local_runtime_token: [] as Array<Record<string, unknown>>,
       routing_rule: [] as Array<Record<string, unknown>>,
       routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
@@ -568,12 +568,12 @@ describe("local runtime route registration", () => {
   });
 
   it("rejects a registration that omits the runners array", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       local_runtime_machine: [] as Array<Record<string, unknown>>,
       local_runtime_token: [] as Array<Record<string, unknown>>,
       routing_rule: [] as Array<Record<string, unknown>>,
       routing_rule_match: [] as Array<Record<string, unknown>>,
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
