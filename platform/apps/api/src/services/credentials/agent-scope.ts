@@ -6,6 +6,7 @@
 import { deriveProviderFromModel, extractPrimaryModel } from "../../../../../contracts/agent-helpers.js";
 import type { ModelSettings } from "../../../../../contracts/agents.js";
 import { normalizeCredentialProvider } from "../../../../../contracts/credentials.js";
+import { narrowSupabase } from "../../lib/narrow-supabase.js";
 import { executeLoggedSupabaseRows, getSupabaseForAccessToken } from "../../supabase-client.js";
 
 type SupabaseQuery = Parameters<typeof executeLoggedSupabaseRows>[1];
@@ -13,11 +14,6 @@ type CredentialQueryBuilder = SupabaseQuery & {
   eq(column: string, value: unknown): CredentialQueryBuilder;
   limit(count: number): CredentialQueryBuilder;
   or(expression: string): CredentialQueryBuilder;
-};
-type CredentialQueryClient = {
-  from(table: "credential"): {
-    select(columns: "id"): CredentialQueryBuilder;
-  };
 };
 
 export type AgentScopeFields = {
@@ -34,11 +30,11 @@ export async function countCredentialsForAgent(
   const provider = normalizeCredentialProvider(deriveProviderFromModel(extractPrimaryModel(agent.model_settings)));
   if (!provider) return 0;
 
-  let query = (getSupabaseForAccessToken(accessToken) as unknown as CredentialQueryClient)
+  let query = narrowSupabase(getSupabaseForAccessToken(accessToken))
     .from("credential")
     .select("id")
     .eq("provider", provider)
-    .limit(1);
+    .limit(1) as CredentialQueryBuilder;
 
   const userId = requesterUserId.trim();
   const workspaceId = agent.workspace_id?.trim();

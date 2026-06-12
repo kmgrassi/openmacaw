@@ -1,5 +1,6 @@
 import type { Tables } from "@kmgrassi/supabase-schema";
 import type { ToolProfile } from "../../../../contracts/execution-profile.js";
+import { narrowSupabase } from "../lib/narrow-supabase.js";
 import { logEvent } from "../logger.js";
 import { executeSupabaseRows, getServiceRoleSupabase, type ApiSupabaseClient } from "../supabase-client.js";
 import { toolProfileForAgentType, toolSlugsForToolProfile } from "./tool-bundles.js";
@@ -28,25 +29,12 @@ type AgentToolGrantRow = {
   created_by_user_id: string | null;
 };
 type ToolRow = Pick<Tables<"tool">, "id" | "workspace_id" | "slug" | "enabled">;
-type UntypedSupabaseQuery = PromiseLike<{
-  data: unknown;
-  error: null;
-}> & {
-  select(columns: string): UntypedSupabaseQuery;
-  eq(column: string, value: unknown): UntypedSupabaseQuery;
-  in(column: string, values: unknown[]): UntypedSupabaseQuery;
-  upsert(body: unknown, options?: { onConflict?: string }): UntypedSupabaseQuery;
-};
 
 const TOOL_POLICY_TEMPLATE_SELECT = "id,workspace_id,slug,enabled" as const;
 const TOOL_POLICY_TEMPLATE_TOOL_SELECT = "template_id,tool_id" as const;
 const AGENT_TOOL_GRANT_SELECT =
   "id,agent_id,tool_id,workspace_id,mode,source,source_tool_template_id,reason,created_by_user_id" as const;
 const TOOL_SELECT = "id,workspace_id,slug,enabled" as const;
-
-function untypedFrom(supabase: ApiSupabaseClient, table: string): UntypedSupabaseQuery {
-  return supabase.from(table as never) as unknown as UntypedSupabaseQuery;
-}
 
 function defaultTemplateSlugForAgent(input: {
   agentType: string | null | undefined;
@@ -99,9 +87,10 @@ export async function ensureDefaultAgentToolsForAgent(input: {
   }
 
   const supabase = input.supabase ?? getServiceRoleSupabase();
+  const queryClient = narrowSupabase(supabase as ApiSupabaseClient);
   const templates = await executeSupabaseRows<ToolPolicyTemplateRow>(
     "default agent tool template query",
-    untypedFrom(supabase, "tool_policy_template").select(TOOL_POLICY_TEMPLATE_SELECT).eq("slug", templateSlug),
+    queryClient.from("tool_policy_template").select(TOOL_POLICY_TEMPLATE_SELECT).eq("slug", templateSlug),
   );
   const template = preferredTemplate(templates, templateSlug, workspaceId);
   const canonicalToolSlugs = toolSlugsForToolProfile({
@@ -127,7 +116,8 @@ export async function ensureDefaultAgentToolsForAgent(input: {
   const templateTools = template
     ? await executeSupabaseRows<ToolPolicyTemplateToolRow>(
         "default agent tool template membership query",
-        untypedFrom(supabase, "tool_policy_template_tool")
+        queryClient
+          .from("tool_policy_template_tool")
           .select(TOOL_POLICY_TEMPLATE_TOOL_SELECT)
           .eq("template_id", template.id),
       )
@@ -142,14 +132,14 @@ export async function ensureDefaultAgentToolsForAgent(input: {
     templateToolIds.length > 0
       ? await executeSupabaseRows<ToolRow>(
           "default agent tool template tools query",
-          untypedFrom(supabase, "tool").select(TOOL_SELECT).in("id", templateToolIds),
+          queryClient.from("tool").select(TOOL_SELECT).in("id", templateToolIds),
         )
       : [];
   const canonicalTools =
     canonicalToolSlugs.length > 0
       ? await executeSupabaseRows<ToolRow>(
           "default agent canonical tools query",
-          untypedFrom(supabase, "tool").select(TOOL_SELECT).in("slug", canonicalToolSlugs),
+          queryClient.from("tool").select(TOOL_SELECT).in("slug", canonicalToolSlugs),
         )
       : [];
 
@@ -167,7 +157,8 @@ export async function ensureDefaultAgentToolsForAgent(input: {
 
   const existingGrants = await executeSupabaseRows<AgentToolGrantRow>(
     "default agent tool grants query",
-    untypedFrom(supabase, "agent_tool_grant")
+    queryClient
+      .from("agent_tool_grant")
       .select(AGENT_TOOL_GRANT_SELECT)
       .eq("agent_id", input.agentId)
       .eq("workspace_id", workspaceId),
@@ -194,7 +185,8 @@ export async function ensureDefaultAgentToolsForAgent(input: {
 
   await executeSupabaseRows<AgentToolGrantRow>(
     "default agent tool grants upsert",
-    untypedFrom(supabase, "agent_tool_grant")
+    queryClient
+      .from("agent_tool_grant")
       .upsert(rowsToInsert, { onConflict: "agent_id,workspace_id,tool_id" })
       .select(AGENT_TOOL_GRANT_SELECT),
   );

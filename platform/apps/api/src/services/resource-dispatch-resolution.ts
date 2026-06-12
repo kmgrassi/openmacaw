@@ -11,6 +11,7 @@ import {
   type RuntimeRepositoryRef,
 } from "../../../../contracts/execution-profile.js";
 import { ApiRouteError } from "../http.js";
+import { narrowSupabase } from "../lib/narrow-supabase.js";
 import { executeLoggedSupabaseRows, getUserScopedSupabase } from "../supabase-client.js";
 
 const RequestedExecutionResourceSchema = z.object({
@@ -57,13 +58,6 @@ const AgentResourceGrantRowsSchema = z.array(AgentResourceGrantRowSchema);
 
 type RequestedExecutionResource = z.infer<typeof RequestedExecutionResourceSchema>;
 type AgentResourceGrantRow = z.infer<typeof AgentResourceGrantRowSchema>;
-
-type SupabaseQueryBuilder = {
-  from: (table: string) => SupabaseQueryBuilder;
-  select: (columns: string) => SupabaseQueryBuilder;
-  eq: (column: string, value: string) => SupabaseQueryBuilder;
-  is: (column: string, value: null) => SupabaseQueryBuilder;
-} & PromiseLike<{ data: unknown; error: null }>;
 
 const RESOURCE_GRANT_SELECT = `
   id,
@@ -271,7 +265,7 @@ export async function resolveContainerDispatchResources(input: {
   fallbackNetworkPolicy: NetworkPolicy;
 }): Promise<RuntimeExecutionResource[]> {
   const requestedResources = requestedResourcesFromMetadata(input.dispatchMetadata);
-  const supabase = getUserScopedSupabase(input.accessToken) as unknown as SupabaseQueryBuilder;
+  const supabase = narrowSupabase(getUserScopedSupabase(input.accessToken));
   const rows = await executeLoggedSupabaseRows<unknown>(
     {
       operation: "list agent resource grants for container dispatch",
