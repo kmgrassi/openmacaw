@@ -6,12 +6,13 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     * planning agent type   -> `Runner.Planner`
     * manager agent type    -> `Runner.LlmToolRunner`
     * `local_model_coding`  -> `Runner.LocalModelCoding`
+    * `local_relay`         -> `Runner.LocalRelay`
     * everything else       -> `Codex.AppServer`
   """
 
   require Logger
 
-  alias SymphonyElixir.{AgentInventory, AgentInventory.Agent, Codex.AppServer, Runner, WorkItem, Workspace}
+  alias SymphonyElixir.{AgentInventory, AgentInventory.Agent, Codex.AppServer, Runner, ToolRegistry, WorkItem, Workspace}
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Gateway.AgentExecutionProfile
   alias SymphonyElixir.WorkerBridge.SecretResolver
@@ -34,6 +35,9 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         case kind do
           "local_model_coding" ->
             run_local_model_coding(agent, scope, prompt, run_id, owner_pid)
+
+          "local_relay" ->
+            run_local_relay(agent, scope, prompt, run_id, owner_pid)
 
           _ ->
             run_codex(agent, scope, prompt, run_id, owner_pid)
@@ -410,6 +414,62 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
+    }
+  end
+
+  defp run_local_relay(agent, scope, prompt, run_id, owner_pid) do
+    on_message = fn message ->
+      send(owner_pid, {:gateway_runner_event, scope.session_key, run_id, message})
+    end
+
+    work_item = %WorkItem{
+      id: scope.session_key,
+      identifier: agent.slug || agent.id || scope.agent_id,
+      title: agent.name || "Local Relay Session",
+      description: agent.context,
+      source: "gateway",
+      runner_type: "local_relay",
+      # Runner.LocalRelay reads run_id/session_id for the dispatch frame
+      # from work item metadata rather than from the session.
+      metadata: %{"run_id" => run_id, "session_id" => scope.session_key}
+    }
+
+    with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
+         {:ok, session} <- Runner.LocalRelay.start_session(local_relay_config(profile, scope, on_message), nil),
+         {:ok, result} <- Runner.LocalRelay.run_turn(session, prompt, work_item),
+         :ok <- Runner.LocalRelay.stop_session(session) do
+      # Annotate the result with model + provider so the gateway socket
+      # can persist them on the assistant message row.
+      enriched =
+        result
+        |> Map.put_new("model", Map.get(session, :model))
+        |> Map.put_new("provider", Map.get(session, :provider))
+
+      send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+    else
+      {:error, reason} ->
+        send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
+    end
+  end
+
+  defp local_relay_config(profile, scope, on_message) do
+    # The helper owns the model turn; the runtime owns tool execution
+    # (tool_calling_mode "cloud_managed" -> Runner.ToolCallingLoop). The
+    # universal bundle is the default chat tool surface until
+    # agent-grant-driven tool filtering lands (same follow-up as
+    # local_model_coding_config/2 above).
+    %{
+      "workspace_id" => profile.workspace_id,
+      "agent_id" => profile.agent_id,
+      "user_id" => Map.get(profile, :user_id) || Map.get(scope, :user_id),
+      "session_id" => scope.session_key,
+      "provider" => Map.get(profile, :provider) || "local",
+      "model" => Map.get(profile, :model),
+      "credential_ref" => Map.get(profile, :credential_ref),
+      "tool_definitions" => ToolRegistry.definitions(ToolRegistry.bundle(:universal)),
+      "tool_calling_mode" => "cloud_managed",
+      "trace_id" => Process.get(:symphony_trace_id),
+      "on_message" => on_message
     }
   end
 

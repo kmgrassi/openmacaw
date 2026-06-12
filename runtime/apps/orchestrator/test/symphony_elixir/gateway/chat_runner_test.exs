@@ -4,10 +4,24 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Gateway.ChatRunner
+  alias SymphonyElixir.LocalRelay.Registry
   alias SymphonyElixir.WorkItem
 
   defmodule TestAgentInventory do
     def list_agents, do: {:ok, []}
+
+    def get_agent("relay-1") do
+      {:ok,
+       %Agent{
+         id: "relay-1",
+         slug: "relay",
+         name: "Relay",
+         workspace_id: "workspace-1",
+         type: "coding",
+         created_by_user_id: "user-1"
+       }}
+    end
+
     def get_agent(_agent_id), do: {:error, :not_found}
 
     def list_credentials("planner-1") do
@@ -209,6 +223,122 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert_received {:gateway_runner_failed, "agent:manager-1:main", "run-nil", :supabase_unconfigured}
     refute_received {:manager_session_resolved, _workspace_id}
     refute_received {:manager_run_turn, _session, _prompt, _work_item}
+  end
+
+  test "local_relay agents run gateway chat turns through the relay tool-calling loop" do
+    setup_local_relay_routing()
+
+    test_pid = self()
+
+    helper =
+      spawn_link(fn ->
+        receive do
+          {:local_relay_dispatch, frame} ->
+            send(test_pid, {:relay_dispatch_frame, frame})
+            Registry.complete(frame["correlation_id"], %{"output_text" => "local relay response", "usage" => %{"total_tokens" => 7}})
+        end
+      end)
+
+    Registry.register(%{
+      workspace_id: "workspace-1",
+      machine_id: "machine-relay",
+      pid: helper,
+      runners: [%{runner_kind: "openai_compatible", provider: "local", model: "qwen-chat", capabilities: %{tool_calls: true}}]
+    })
+
+    assert :ok = ChatRunner.run(relay_agent(), relay_scope(), "hello relay", "run-relay", self())
+
+    assert_receive {:relay_dispatch_frame, frame}
+    assert frame["runner_kind"] == "local_relay"
+    assert frame["target_runner_kind"] == "openai_compatible"
+    assert frame["tool_calling_mode"] == "cloud_managed"
+    assert frame["workspace_id"] == "workspace-1"
+    assert frame["agent_id"] == "relay-1"
+    assert frame["session_id"] == "agent:relay-1:main"
+    assert frame["run_id"] == "run-relay"
+    assert frame["model"] == "qwen-chat"
+    assert [%{"name" => _name} | _rest] = frame["tool_definitions"]
+
+    assert_receive {:gateway_runner_event, "agent:relay-1:main", "run-relay", %{event: :turn_started}}
+
+    assert_receive {:gateway_runner_complete, "agent:relay-1:main", "run-relay", {:ok, result}}
+    assert result["output_text"] == "local relay response"
+    assert result["model"] == "qwen-chat"
+    assert result["provider"] == "local"
+
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
+  end
+
+  test "local_relay agents fail the gateway run with a typed error when no helper is online" do
+    setup_local_relay_routing()
+
+    assert :ok = ChatRunner.run(relay_agent(), relay_scope(), "hello relay", "run-offline", self())
+
+    assert_receive {:gateway_runner_failed, "agent:relay-1:main", "run-offline", {:retryable, :local_runtime_offline}}
+    refute_received {:gateway_runner_complete, _session_key, _run_id, _result}
+  end
+
+  defp setup_local_relay_routing do
+    Registry.reset!()
+    on_exit(fn -> Registry.reset!() end)
+
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
+
+    put_system_envs([
+      {"SUPABASE_URL", "https://test.supabase.co"},
+      {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
+    ])
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-relay"}]))
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            200,
+            Jason.encode!([
+              %{
+                "id" => "rule-relay",
+                "priority" => 1,
+                "runner_kind" => "local_relay",
+                "provider" => "local",
+                "model" => "qwen-chat",
+                "enabled" => true,
+                "workspace_id" => "workspace-1"
+              }
+            ])
+          )
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+  end
+
+  defp relay_agent do
+    %Agent{
+      id: "relay-1",
+      slug: "relay",
+      name: "Relay",
+      workspace_id: "workspace-1",
+      type: "coding",
+      context: "Chat through the local relay"
+    }
+  end
+
+  defp relay_scope do
+    %{
+      agent_id: "relay-1",
+      workspace_id: "workspace-1",
+      user_id: "user-1",
+      session_key: "agent:relay-1:main"
+    }
   end
 
   defp manager_agent do
