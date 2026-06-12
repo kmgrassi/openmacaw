@@ -103,6 +103,14 @@ export function AgentWorkspacePathPanel({ agentId, visible }: Props) {
     setFeedback(null);
     try {
       const trimmed = draft.trim();
+      if (trimmed !== "") {
+        const validation = await validateDirectory(trimmed);
+        setDraftValidation(validation);
+        if (!validation.ok) {
+          setFeedback(`Save failed: path ${validationReasonLabel(validation.reason)}.`);
+          return;
+        }
+      }
       const result = await saveAgentWorkspacePath(
         agentId,
         trimmed === "" ? null : trimmed,
@@ -234,9 +242,7 @@ export function AgentWorkspacePathPanel({ agentId, visible }: Props) {
         <div className="flex items-center justify-between gap-2">
           <Button
             onClick={() => void onSave()}
-            disabled={
-              busy !== "idle" || !dirty || (draft.trim() !== "" && !draftValid)
-            }
+            disabled={busy !== "idle" || !dirty}
           >
             {busy === "save" ? "Saving…" : "Save"}
           </Button>
