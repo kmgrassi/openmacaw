@@ -433,6 +433,53 @@ defmodule SymphonyElixir.MessageLogTest do
            }
   end
 
+  test "record_assistant_message also writes agent tool call event rows for uuid runs" do
+    parent = self()
+    run_id = "11111111-1111-4111-8111-111111111111"
+
+    Req.Test.stub(MessageLog, fn conn ->
+      case {conn.method, conn.request_path} do
+        {"POST", "/rest/v1/message"} ->
+          json(conn, 201, [%{"id" => "message-1"}])
+
+        {"POST", "/rest/v1/tool_call"} ->
+          Plug.Conn.send_resp(conn, 201, "")
+
+        {"POST", "/rest/v1/agent_tool_call_event"} ->
+          assert Plug.Conn.get_req_header(conn, "prefer") == ["return=minimal"]
+          body = json_body(conn)
+          send(parent, {:agent_tool_call_event_payload, body})
+          Plug.Conn.send_resp(conn, 201, "")
+      end
+    end)
+
+    assert :ok =
+             MessageLog.record_assistant_message(uuid_scope(), "thread-1", "Done", run_id, %{},
+               tool_calls: [
+                 %{
+                   "call_id" => "call-1",
+                   "tool_name" => "task.create",
+                   "status" => "ok",
+                   "input" => %{"arguments" => %{"title" => "Verify"}},
+                   "output" => %{"success" => true, "result" => %{"id" => "task-1"}}
+                 }
+               ]
+             )
+
+    assert_received {:agent_tool_call_event_payload, [row]}
+    assert row["workspace_id"] == "22222222-2222-4222-8222-222222222222"
+    assert row["agent_id"] == "33333333-3333-4333-8333-333333333333"
+    assert row["run_id"] == run_id
+    assert row["correlation_id"] == "call-1"
+    assert row["event_type"] == "tool_call_completed"
+    assert row["message_kind"] == "assistant_tool_call"
+    assert row["tool_slug"] == "task.create"
+    assert row["status"] == "ok"
+    assert row["arguments"] == %{"title" => "Verify"}
+    assert row["result"] == %{"success" => true, "result" => %{"id" => "task-1"}}
+    assert row["output_summary"] == ~s({"id":"task-1"})
+  end
+
   test "record_assistant_message preserves explicit non-retryable tool failures" do
     parent = self()
 
@@ -503,6 +550,15 @@ defmodule SymphonyElixir.MessageLogTest do
       workspace_id: "workspace-1",
       user_id: "user-1",
       session_key: "workspace-1:agent-1"
+    }
+  end
+
+  defp uuid_scope do
+    %{
+      agent_id: "33333333-3333-4333-8333-333333333333",
+      workspace_id: "22222222-2222-4222-8222-222222222222",
+      user_id: "44444444-4444-4444-8444-444444444444",
+      session_key: "22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333"
     }
   end
 

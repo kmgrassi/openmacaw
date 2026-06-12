@@ -69,6 +69,21 @@ type MessageRowWithToolCalls = {
   tool_call?: MessageToolCallRow[] | null;
 };
 
+type AgentToolCallEventForMessageRow = {
+  id: string;
+  run_id: string;
+  correlation_id: string | null;
+  tool_slug: string;
+  status: string;
+  arguments: unknown;
+  result: unknown;
+  output_summary: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  sequence: number;
+};
+
 function isWorkspaceAuthorizationMiss(error: unknown) {
   return error instanceof Error && error.message === "Authenticated user is not authorized for the requested workspace";
 }
@@ -101,6 +116,62 @@ function sortMessageToolCalls(message: MessageRowWithToolCalls): MessageRowWithT
       return left.localeCompare(right);
     }),
   };
+}
+
+function safeJsonStringify(value: unknown): string | null {
+  if (value == null) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function toolCallFromEvent(event: AgentToolCallEventForMessageRow): MessageToolCallRow {
+  return {
+    id: event.id,
+    tool_id: null,
+    input: safeJsonStringify({
+      call_id: event.correlation_id ?? event.id,
+      tool_name: event.tool_slug,
+      input: { arguments: event.arguments ?? {} },
+    }),
+    output: safeJsonStringify({
+      status: event.status,
+      output: event.result ?? {},
+      error_code: event.error_code ?? undefined,
+      error_message: event.error_message ?? undefined,
+      output_summary: event.output_summary ?? undefined,
+    }),
+    created_at: event.created_at,
+  };
+}
+
+function canUseEventToolCalls(message: MessageRowWithToolCalls): boolean {
+  return message.role === "assistant" || message.message_type === "assistant_tool_call";
+}
+
+async function getToolCallsByRunId(runIds: string[]): Promise<Map<string, MessageToolCallRow[]>> {
+  const uniqueRunIds = [...new Set(runIds.filter((runId): runId is string => Boolean(runId)))];
+  if (uniqueRunIds.length === 0) return new Map();
+
+  const { data, error } = await getServiceRoleSupabase()
+    .from("agent_tool_call_event" as never)
+    .select(
+      "id,run_id,correlation_id,tool_slug,status,arguments,result,output_summary,error_code,error_message,created_at,sequence",
+    )
+    .in("run_id", uniqueRunIds)
+    .order("sequence", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) return new Map();
+
+  const grouped = new Map<string, MessageToolCallRow[]>();
+  for (const event of (data ?? []) as unknown as AgentToolCallEventForMessageRow[]) {
+    const toolCalls = grouped.get(event.run_id) ?? [];
+    toolCalls.push(toolCallFromEvent(event));
+    grouped.set(event.run_id, toolCalls);
+  }
+  return grouped;
 }
 
 async function createStructuredAgentMessage(req: Request, res: Response) {
@@ -237,29 +308,40 @@ async function getAgentMessages(req: Request, res: Response) {
     const pageRows = rows.slice(0, MESSAGE_PAGE_LIMIT);
     const hasMore = rows.length > MESSAGE_PAGE_LIMIT;
     const nextCursorSource = hasMore ? pageRows[pageRows.length - 1] : null;
+    const toolCallsByRunId = await getToolCallsByRunId(
+      pageRows
+        .filter(canUseEventToolCalls)
+        .map((message) => message.run_id)
+        .filter((runId): runId is string => Boolean(runId)),
+    );
 
     return res.status(200).json({
-      messages: pageRows.map((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        createdAt: message.created_at,
-        timestamp: message.created_at ? new Date(message.created_at).getTime() : undefined,
-        metadata: message.metadata ?? {},
-        toolCalls: (message.tool_call ?? []).map((toolCall) => ({
-          id: toolCall.id,
-          toolId: toolCall.tool_id,
-          input: toolCall.input,
-          output: toolCall.output,
-          createdAt: toolCall.created_at,
-        })),
-        runId: message.run_id,
-        sessionId: message.session_id,
-        userId: message.user_id,
-        agentId: message.agent_id,
-        workspaceId: message.workspace_id,
-        messageType: message.message_type,
-      })),
+      messages: pageRows.map((message) => {
+        const eventToolCalls =
+          canUseEventToolCalls(message) && message.run_id ? (toolCallsByRunId.get(message.run_id) ?? []) : [];
+        const toolCalls = eventToolCalls.length > 0 ? eventToolCalls : (message.tool_call ?? []);
+        return {
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          createdAt: message.created_at,
+          timestamp: message.created_at ? new Date(message.created_at).getTime() : undefined,
+          metadata: message.metadata ?? {},
+          toolCalls: toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            toolId: toolCall.tool_id,
+            input: toolCall.input,
+            output: toolCall.output,
+            createdAt: toolCall.created_at,
+          })),
+          runId: message.run_id,
+          sessionId: message.session_id,
+          userId: message.user_id,
+          agentId: message.agent_id,
+          workspaceId: message.workspace_id,
+          messageType: message.message_type,
+        };
+      }),
       pageInfo: {
         limit: MESSAGE_PAGE_LIMIT,
         hasMore,

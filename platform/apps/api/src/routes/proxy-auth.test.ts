@@ -338,6 +338,40 @@ describe("agent proxy auth", () => {
               },
             ],
           },
+          {
+            id: "message-0",
+            role: "user",
+            content: "What tasks are due?",
+            created_at: "2026-04-30T11:59:59.000Z",
+            metadata: {},
+            run_id: "run-1",
+            session_id: "session-manager-1",
+            user_id: userId,
+            agent_id: managerAgentId,
+            workspace_id: workspaceId,
+            message_type: "chat",
+            tool_call: [],
+          },
+        ]);
+      }
+
+      if (req.method === "GET" && url.pathname === "/rest/v1/agent_tool_call_event") {
+        expect(url.searchParams.get("run_id")).toBe("in.(run-1)");
+        return json(res, 200, [
+          {
+            id: "event-tool-call-1",
+            run_id: "run-1",
+            correlation_id: "call-1",
+            tool_slug: "work_items.list",
+            status: "ok",
+            arguments: { state: "due" },
+            result: { result: { count: 1 }, success: true },
+            output_summary: "1 due item",
+            error_code: null,
+            error_message: null,
+            created_at: "2026-04-30T12:00:02.000Z",
+            sequence: 0,
+          },
         ]);
       }
 
@@ -383,7 +417,8 @@ describe("agent proxy auth", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       messages: [
         {
           id: "message-1",
@@ -392,7 +427,7 @@ describe("agent proxy auth", () => {
           metadata: { source: "manager_scheduler" },
           toolCalls: [
             {
-              id: "tool-call-1",
+              id: "event-tool-call-1",
               toolId: null,
               input: JSON.stringify({
                 call_id: "call-1",
@@ -401,12 +436,20 @@ describe("agent proxy auth", () => {
               }),
               output: JSON.stringify({
                 status: "ok",
-                output: { result: { count: 1 } },
+                output: { result: { count: 1 }, success: true },
+                output_summary: "1 due item",
               }),
-              createdAt: "2026-04-30T12:00:01.000Z",
+              createdAt: "2026-04-30T12:00:02.000Z",
             },
           ],
           userId: null,
+        },
+        {
+          id: "message-0",
+          role: "user",
+          content: "What tasks are due?",
+          toolCalls: [],
+          userId,
         },
       ],
     });
