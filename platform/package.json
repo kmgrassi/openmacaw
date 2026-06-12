@@ -29,6 +29,7 @@
     "eval:local-tool-calling": "node scripts/manager-tool-call-battery.mjs --suite-slug local-tool-calling",
     "db:schema:check": "node scripts/check-supabase-schema.mjs",
     "db:schema:sync": "node scripts/sync-supabase-schema.mjs",
+    "db:prod:guard": "sh -c './scripts/guard-supabase-prod-migration.sh --project-ref \"${SUPABASE_PROJECT_ID:-smaxrxamqpyvxbgeylko}\" --check-only'",
     "supabase:schema:sync": "pnpm run db:schema:sync",
     "contracts:check-generated-db-types": "./scripts/check-generated-db-types.sh",
     "migrate:workspace-tracker-kind": "node scripts/migrate-workspace-tracker-kind.mjs",
