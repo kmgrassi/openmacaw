@@ -1,3 +1,6 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
@@ -182,6 +185,111 @@ describe("local runtime route registration", () => {
         code: "model_unavailable",
       },
     });
+  });
+
+  it("test-dispatch sends the service-role bearer to the orchestrator diagnostics endpoint", async () => {
+    const db = {
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          machine_id: "machine-1",
+          last_error: null,
+          last_error_at: null,
+        },
+      ],
+      routing_rule_match: [
+        {
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+          workspace_id: workspaceId,
+        },
+        {
+          rule_id: "local-rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: "http://127.0.0.1:11434/v1",
+          workspace_id: workspaceId,
+        },
+      ],
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          display_name: "Kevin's Mac",
+          last_seen_at: new Date().toISOString(),
+          revoked_at: null,
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          status: "online",
+        },
+      ],
+      local_runtime_model: [
+        {
+          id: "model-1",
+          machine_id: "machine-1",
+          runner_kind: "local_runtime",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+          capabilities: {},
+          last_advertised_at: new Date().toISOString(),
+        },
+      ],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const seenAuthorizationHeaders: Array<string | undefined> = [];
+    const orchestrator = createServer((req, res) => {
+      seenAuthorizationHeaders.push(req.headers.authorization);
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise<void>((resolve) => orchestrator.listen(0, resolve));
+
+    const previousOrchestratorBaseUrl = process.env.ORCHESTRATOR_BASE_URL;
+    const previousServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.ORCHESTRATOR_BASE_URL = `http://127.0.0.1:${(orchestrator.address() as AddressInfo).port}`;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/local-runtime/runtimes/machine-1/test-dispatch?workspaceId=${workspaceId}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer test-token",
+          },
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        machineId: "machine-1",
+        helperConnected: true,
+        modelAdvertised: true,
+        dispatchSucceeded: true,
+      });
+      expect(seenAuthorizationHeaders).toEqual(["Bearer test-service-role-key"]);
+    } finally {
+      if (previousOrchestratorBaseUrl === undefined) {
+        delete process.env.ORCHESTRATOR_BASE_URL;
+      } else {
+        process.env.ORCHESTRATOR_BASE_URL = previousOrchestratorBaseUrl;
+      }
+      if (previousServiceRoleKey === undefined) {
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      } else {
+        process.env.SUPABASE_SERVICE_ROLE_KEY = previousServiceRoleKey;
+      }
+      orchestrator.closeAllConnections?.();
+      await new Promise<void>((resolve) => orchestrator.close(() => resolve()));
+    }
   });
 
   it("registers a model-only runtime and emits an [runner.openai_compatible] snippet", async () => {

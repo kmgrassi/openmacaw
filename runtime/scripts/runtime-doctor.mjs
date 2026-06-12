@@ -169,7 +169,7 @@ async function main() {
 
 async function checkLocalRuntime(opts) {
   const url = localRuntimeHealthUrl(opts);
-  const response = await fetchJson(url, opts.timeoutMs);
+  const response = await fetchJson(url, opts.timeoutMs, serviceRoleHeaders());
 
   if (response.status !== "reachable") {
     return {
@@ -304,13 +304,19 @@ async function checkOrchestrator(url, opts) {
   };
 }
 
-async function fetchJson(url, timeoutMs) {
+// /api/v1/local-runtime/* sits behind RequireServiceRoleBearer.
+function serviceRoleHeaders() {
+  const key = (process.env.LAUNCHER_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  return key ? { authorization: `Bearer ${key}` } : {};
+}
+
+async function fetchJson(url, timeoutMs, headers = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...headers },
       signal: controller.signal,
     });
     const text = await response.text();
