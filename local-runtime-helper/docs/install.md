@@ -20,18 +20,19 @@ or run the installed binary by absolute path.
 
 ## Install From Release
 
-Once OpenMacaw publishes helper release binaries, `install.sh` downloads the
+No Go toolchain or repository clone needed. `install.sh` downloads the
 matching archive for macOS or Linux (arm64/amd64), verifies it against the
 release's `checksums.txt`, and writes the binary to
 `~/.local/bin/local-runtime-helper`:
 
 ```sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/kmgrassi/openmacaw/main/local-runtime-helper/install.sh | sh
 ```
 
-To pin a release, set `LOCAL_RUNTIME_HELPER_VERSION=v<version>`. Until
-releases are published from this repository, build from source as shown
-above.
+To pin a release, set `LOCAL_RUNTIME_HELPER_VERSION=v<version>` (or pass
+`--version v<version>` when running the script locally). Releases are
+published by the repository's `release-local-runtime-helper` workflow when a
+`v*` tag is pushed.
 
 ## Configure
 

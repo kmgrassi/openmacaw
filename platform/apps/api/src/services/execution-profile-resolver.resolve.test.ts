@@ -1,196 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { firstGatewayRunner, matchValue, resolveExecutionProfile } from "./execution-profile-resolver.js";
-
-let selectRowsForTable: (table: string, params: URLSearchParams) => unknown[] | Promise<unknown[]> = () => [];
-
-vi.mock("../supabase-client.js", () => {
-  function mockClient() {
-    return {
-      from(table: string) {
-        const params = new URLSearchParams();
-        const query = {
-          select(columns: string) {
-            params.set("select", columns);
-            return query;
-          },
-          eq(column: string, value: unknown) {
-            params.set(column, `eq.${String(value)}`);
-            return query;
-          },
-          in(column: string, values: unknown[]) {
-            params.set(column, `in.(${values.map(String).join(",")})`);
-            return query;
-          },
-          order(column: string, options?: { ascending?: boolean }) {
-            const direction = options?.ascending === true ? "asc" : "desc";
-            const existing = params.get("order");
-            params.set("order", existing ? `${existing},${column}.${direction}` : `${column}.${direction}`);
-            return query;
-          },
-          limit(count: number) {
-            params.set("limit", String(count));
-            return query;
-          },
-          then<TResult1 = { data: unknown; error: null }, TResult2 = never>(
-            onfulfilled?: ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
-            onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-          ) {
-            return Promise.resolve()
-              .then(() => selectRowsForTable(table, params))
-              .then((data) => ({ data, error: null }))
-              .then(onfulfilled, onrejected);
-          },
-        };
-        return query;
-      },
-    };
-  }
-
-  return {
-    getServiceRoleSupabase: mockClient,
-    getUserScopedSupabase: mockClient,
-    normalizeSupabaseError: (_context: string, error: unknown) => error,
-  };
-});
-
-const workspaceId = "22222222-2222-4222-8222-222222222222";
-const planningAgentId = "11111111-1111-4111-8111-111111111111";
-const codingAgentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const managerAgentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-const anthropicCredentialId = "33333333-3333-4333-8333-333333333333";
-const codexCredentialId = "44444444-4444-4444-8444-444444444444";
-
-function tableParams(params: URLSearchParams) {
-  return Object.fromEntries(params.entries());
-}
-
-function setupMockDatabase(overrides: Partial<Record<string, Array<Record<string, unknown>>>> = {}) {
-  const db: Record<string, Array<Record<string, unknown>>> = {
-    agent: [
-      {
-        id: planningAgentId,
-        workspace_id: workspaceId,
-        type: "planning",
-        model_settings: { primary: "openai/gpt-5.2" },
-        tool_policy: {},
-      },
-      {
-        id: codingAgentId,
-        workspace_id: workspaceId,
-        type: "coding",
-        model_settings: { primary: "openai/gpt-5.1-codex" },
-        tool_policy: {},
-      },
-    ],
-    routing_rule: [
-      {
-        id: "55555555-5555-4555-8555-555555555555",
-        workspace_id: workspaceId,
-        priority: 20,
-        enabled: true,
-        runner_kind: "llm_tool_runner",
-        provider: "anthropic",
-        model: "claude-sonnet-4-5",
-        model_tier_floor: "any",
-        credential_id: null,
-        credential_alias: "default-anthropic",
-      },
-      {
-        id: "66666666-6666-4666-8666-666666666666",
-        workspace_id: workspaceId,
-        priority: 10,
-        enabled: true,
-        runner_kind: "codex",
-        provider: "openai_codex",
-        model: "gpt-5.1-codex",
-        model_tier_floor: "any",
-        credential_id: codexCredentialId,
-        credential_alias: null,
-      },
-    ],
-    routing_rule_fallback: [],
-    routing_rule_match: [
-      {
-        rule_id: "55555555-5555-4555-8555-555555555555",
-        workspace_id: workspaceId,
-        kind: "agent_type",
-        key: null,
-        value: "planning",
-      },
-      {
-        rule_id: "66666666-6666-4666-8666-666666666666",
-        workspace_id: workspaceId,
-        kind: "agent_type",
-        key: null,
-        value: "coding",
-      },
-    ],
-    credential_alias: [
-      {
-        workspace_id: workspaceId,
-        alias: "default-anthropic",
-        credential_id: anthropicCredentialId,
-      },
-    ],
-    credential: [
-      {
-        id: codexCredentialId,
-        workspace_id: workspaceId,
-        key_value: { agent_id: codingAgentId },
-      },
-    ],
-    gateway_config: [
-      {
-        scope_type: "agent",
-        scope_id: codingAgentId,
-        version: 1,
-        config_json: {
-          runners: [
-            {
-              kind: "codex",
-              provider: "openai_codex",
-              model: "gpt-5.1-codex",
-            },
-          ],
-        },
-      },
-    ],
-    ...overrides,
-  };
-
-  selectRowsForTable = (table: string, params: URLSearchParams) => {
-    const query = tableParams(params);
-    let rows = [...(db[table] ?? [])];
-
-    rows = rows.filter((row) => {
-      for (const [key, value] of Object.entries(query)) {
-        if (key === "select" || key === "order" || key === "limit") continue;
-        if (value.startsWith("eq.") && String(row[key]) !== value.slice(3)) return false;
-        if (value.startsWith("in.")) {
-          const allowed = value
-            .slice(4, -1)
-            .split(",")
-            .map((item) => item.trim());
-          if (!allowed.includes(String(row[key]))) return false;
-        }
-      }
-      return true;
-    });
-
-    if (query.order === "priority.desc,created_at.asc") {
-      rows.sort((left, right) => Number(right.priority) - Number(left.priority));
-    }
-    if (query.order === "position.asc") {
-      rows.sort((left, right) => Number(left.position) - Number(right.position));
-    }
-
-    const limit = query.limit ? Number(query.limit) : null;
-    return (limit ? rows.slice(0, limit) : rows) as never;
-  };
-
-  return db;
-}
+import {
+  anthropicCredentialId,
+  codingAgentId,
+  codexCredentialId,
+  managerAgentId,
+  planningAgentId,
+  queryRows,
+  setSelectRowsForTable,
+  setupMockDatabase,
+  tableParams,
+  workspaceId,
+} from "../../test-support/execution-profile-resolver-shared.js";
+import { resolveExecutionProfile } from "./execution-profile-resolver.js";
 
 describe("resolveExecutionProfile", () => {
   beforeEach(() => {
@@ -350,7 +172,7 @@ describe("resolveExecutionProfile", () => {
       routing_rule_match: [],
       credential: [],
     });
-    selectRowsForTable = (table: string, params: URLSearchParams) => {
+    setSelectRowsForTable((table, params) => {
       const query = tableParams(params);
       if (table === "credential" && query.agent_id) {
         throw new Error(
@@ -358,7 +180,7 @@ describe("resolveExecutionProfile", () => {
         );
       }
 
-      const rowsByTable: Record<string, Array<Record<string, unknown>>> = {
+      const rowsByTable = {
         agent: [
           {
             id: codingAgentId,
@@ -376,23 +198,21 @@ describe("resolveExecutionProfile", () => {
             scope_id: codingAgentId,
             version: 1,
             config_json: {
-              runners: [{ kind: "codex", provider: "openai_codex", model: "gpt-5.1-codex" }],
+              runners: [
+                {
+                  kind: "codex",
+                  provider: "openai_codex",
+                  model: "gpt-5.1-codex",
+                },
+              ],
             },
           },
         ],
         credential: [],
       };
 
-      const rows = [...(rowsByTable[table] ?? [])].filter((row) => {
-        for (const [key, value] of Object.entries(query)) {
-          if (key === "select" || key === "order" || key === "limit") continue;
-          if (value.startsWith("eq.") && String(row[key]) !== value.slice(3)) return false;
-        }
-        return true;
-      });
-      const limit = query.limit ? Number(query.limit) : null;
-      return (limit ? rows.slice(0, limit) : rows) as never;
-    };
+      return queryRows(rowsByTable, table, params);
+    });
 
     const resolution = await resolveExecutionProfile({ agentId: codingAgentId });
 
@@ -407,13 +227,12 @@ describe("resolveExecutionProfile", () => {
 
   it("fails visibly when routing table reads are unavailable", async () => {
     setupMockDatabase();
-    selectRowsForTable = (table: string, params: URLSearchParams) => {
+    setSelectRowsForTable((table, params) => {
       if (table === "routing_rule" || table === "routing_rule_match") {
         throw new Error(`${table} is not readable`);
       }
 
-      const query = tableParams(params);
-      const rowsByTable: Record<string, Array<Record<string, unknown>>> = {
+      const rowsByTable = {
         agent: [
           {
             id: codingAgentId,
@@ -429,23 +248,27 @@ describe("resolveExecutionProfile", () => {
             scope_id: codingAgentId,
             version: 1,
             config_json: {
-              runners: [{ kind: "codex", provider: "openai_codex", model: "gpt-5.1-codex" }],
+              runners: [
+                {
+                  kind: "codex",
+                  provider: "openai_codex",
+                  model: "gpt-5.1-codex",
+                },
+              ],
             },
           },
         ],
-        credential: [{ id: codexCredentialId, workspace_id: workspaceId, key_value: { agent_id: codingAgentId } }],
+        credential: [
+          {
+            id: codexCredentialId,
+            workspace_id: workspaceId,
+            key_value: { agent_id: codingAgentId },
+          },
+        ],
       };
-      let rows = [...(rowsByTable[table] ?? [])];
-      rows = rows.filter((row) => {
-        for (const [key, value] of Object.entries(query)) {
-          if (key === "select" || key === "order" || key === "limit") continue;
-          if (value.startsWith("eq.") && String(row[key]) !== value.slice(3)) return false;
-        }
-        return true;
-      });
-      const limit = query.limit ? Number(query.limit) : null;
-      return (limit ? rows.slice(0, limit) : rows) as never;
-    };
+
+      return queryRows(rowsByTable, table, params);
+    });
 
     await expect(resolveExecutionProfile({ agentId: codingAgentId })).rejects.toThrow("routing_rule is not readable");
   });
@@ -497,7 +320,9 @@ describe("resolveExecutionProfile", () => {
       ],
     });
 
-    const resolution = await resolveExecutionProfile({ agentId: planningAgentId });
+    const resolution = await resolveExecutionProfile({
+      agentId: planningAgentId,
+    });
 
     expect(resolution.profile).toMatchObject({
       runnerKind: "llm_tool_runner",
@@ -745,7 +570,10 @@ describe("resolveExecutionProfile", () => {
       ],
     });
 
-    const resolution = await resolveExecutionProfile({ agentId: codingAgentId, intent: "draft_plan" });
+    const resolution = await resolveExecutionProfile({
+      agentId: codingAgentId,
+      intent: "draft_plan",
+    });
 
     expect(resolution.profile).toMatchObject({
       runnerKind: "llm_tool_runner",
@@ -843,7 +671,9 @@ describe("resolveExecutionProfile", () => {
       credential: [],
     });
 
-    const resolution = await resolveExecutionProfile({ agentId: managerAgentId });
+    const resolution = await resolveExecutionProfile({
+      agentId: managerAgentId,
+    });
 
     expect(resolution.profile).toMatchObject({
       agentId: managerAgentId,
@@ -900,7 +730,9 @@ describe("resolveExecutionProfile", () => {
       credential: [],
     });
 
-    const resolution = await resolveExecutionProfile({ agentId: managerAgentId });
+    const resolution = await resolveExecutionProfile({
+      agentId: managerAgentId,
+    });
 
     expect(resolution.profile).toMatchObject({
       agentId: managerAgentId,
@@ -942,7 +774,9 @@ describe("resolveExecutionProfile", () => {
       ],
     });
 
-    const resolution = await resolveExecutionProfile({ agentId: planningAgentId });
+    const resolution = await resolveExecutionProfile({
+      agentId: planningAgentId,
+    });
 
     expect(resolution.profile).toBeNull();
     expect(resolution.missing).toEqual(["runner", "provider", "model", "credential"]);
@@ -993,7 +827,10 @@ describe("resolveExecutionProfile", () => {
       ],
     });
 
-    const unkeyed = await resolveExecutionProfile({ agentId: planningAgentId, intent: "draft_plan" });
+    const unkeyed = await resolveExecutionProfile({
+      agentId: planningAgentId,
+      intent: "draft_plan",
+    });
     const keyed = await resolveExecutionProfile({
       agentId: planningAgentId,
       intent: "draft_plan",
@@ -1008,91 +845,5 @@ describe("resolveExecutionProfile", () => {
       runnerKind: "codex",
       provider: "openai_codex",
     });
-  });
-});
-
-describe("matchValue", () => {
-  const agent = {
-    id: planningAgentId,
-    workspace_id: workspaceId,
-    type: "planning",
-    model_settings: {},
-    tool_policy: {},
-  };
-  const input = { agent, role: "planning" as const, intent: null, intentKey: null };
-
-  it('accepts key: "agent_id" for kind: "agent_id" matches', () => {
-    const match = { rule_id: "r1", kind: "agent_id", key: "agent_id", value: planningAgentId };
-    expect(matchValue(input, match)).toBe(true);
-  });
-
-  it('accepts key: "id" for kind: "agent_id" matches', () => {
-    const match = { rule_id: "r1", kind: "agent_id", key: "id", value: planningAgentId };
-    expect(matchValue(input, match)).toBe(true);
-  });
-
-  it("accepts null key for kind: agent_id matches", () => {
-    const match = { rule_id: "r1", kind: "agent_id", key: null, value: planningAgentId };
-    expect(matchValue(input, match)).toBe(true);
-  });
-
-  it("rejects agent_id match when value does not match the agent id", () => {
-    const match = { rule_id: "r1", kind: "agent_id", key: "agent_id", value: "wrong-id" };
-    expect(matchValue(input, match)).toBe(false);
-  });
-
-  it('skips kind: "local_endpoint" (returns true, does not block)', () => {
-    const match = { rule_id: "r1", kind: "local_endpoint", key: "url", value: "http://localhost:8080" };
-    expect(matchValue(input, match)).toBe(true);
-  });
-});
-
-describe("firstGatewayRunner", () => {
-  it("returns the first array entry for default-agent configs", () => {
-    const config = {
-      runners: [
-        { kind: "codex", provider: "openai", model: "openai/gpt-5.2" },
-        { kind: "claude_code", provider: "anthropic", model: "anthropic/claude-sonnet-4-6" },
-      ],
-    };
-    expect(firstGatewayRunner(config)).toEqual({
-      kind: "codex",
-      provider: "openai",
-      model: "openai/gpt-5.2",
-    });
-  });
-
-  it("returns the manager entry for object-shaped manager configs", () => {
-    const config = {
-      runners: {
-        manager: { kind: "llm_tool_runner", provider: "openai", model: "openai/gpt-5.2" },
-      },
-    };
-    expect(firstGatewayRunner(config)).toEqual({
-      kind: "llm_tool_runner",
-      provider: "openai",
-      model: "openai/gpt-5.2",
-    });
-  });
-
-  it("falls back to the first record-valued entry when manager key is absent", () => {
-    const config = {
-      runners: {
-        coding: { kind: "codex", provider: "openai", model: "openai/gpt-5.2" },
-      },
-    };
-    expect(firstGatewayRunner(config)).toEqual({
-      kind: "codex",
-      provider: "openai",
-      model: "openai/gpt-5.2",
-    });
-  });
-
-  it("returns null for empty / missing / non-record runners", () => {
-    expect(firstGatewayRunner(null)).toBeNull();
-    expect(firstGatewayRunner({})).toBeNull();
-    expect(firstGatewayRunner({ runners: [] })).toBeNull();
-    expect(firstGatewayRunner({ runners: {} })).toBeNull();
-    expect(firstGatewayRunner({ runners: { manager: "not a record" } })).toBeNull();
   });
 });

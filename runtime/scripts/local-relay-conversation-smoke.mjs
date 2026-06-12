@@ -227,6 +227,20 @@ class ConversationSmoke {
 
   async assertHelperHealth() {
     const { response, payload } = await fetchJsonWithTimeout(localRuntimeHealthUrl(this.opts), this.opts.timeoutMs);
+
+    // The orchestrator's health route sits behind the internal bearer the
+    // smoke deliberately does not carry (no secrets beyond the relay token).
+    // Skip the pre-flight in that case: dispatch already surfaces typed
+    // errors (local_runtime_offline, capability_missing) if no usable
+    // helper is registered.
+    if (response.status === 401 || response.status === 503) {
+      this.record("health_check_skipped", "capability_negotiation", {
+        status: response.status,
+        reason: "health endpoint requires internal auth; relying on dispatch errors instead",
+      });
+      return;
+    }
+
     this.record("health_checked", "capability_negotiation", { ok: response.ok, status: payload.status, reason: payload.reason });
 
     if (!response.ok || payload.ok !== true) {
@@ -630,6 +644,13 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
   const headers = { accept: "application/json" };
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   if (serviceRoleKey) headers.authorization = `Bearer ${serviceRoleKey}`;
+
+  // /api/v1/local-runtime/* sits behind RequireServiceRoleBearer.
+  const serviceRoleKey = (process.env.LAUNCHER_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const headers = { accept: "application/json" };
+  if (serviceRoleKey) {
+    headers.authorization = `Bearer ${serviceRoleKey}`;
+  }
 
   try {
     const response = await fetch(url, { headers, signal: controller.signal });

@@ -289,11 +289,19 @@ async function runRuntimeDiagnostics(input: {
     url.searchParams.set("model", input.runner.model);
   }
 
+  // The orchestrator's /api/v1/local-runtime/* endpoints sit behind
+  // RequireServiceRoleBearer; without the bearer they return 401.
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (serviceRoleKey) {
+    headers.authorization = `Bearer ${serviceRoleKey}`;
+  }
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5_000);
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await fetch(url, { headers, signal: controller.signal });
       const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
       const ok = response.ok && body?.ok === true;
       return {

@@ -1,5 +1,6 @@
 import { ModelSettingsSchema } from "../../../../../contracts/agents.js";
 import { ApiRouteError } from "../../http.js";
+import { narrowSupabase } from "../../lib/narrow-supabase.js";
 import { getServiceRoleSupabase, getUserScopedSupabase, normalizeSupabaseError } from "../../supabase-client.js";
 import { hasCredentialForAgent } from "../credentials/agent-scope.js";
 import type {
@@ -13,45 +14,24 @@ import type {
   RoutingRuleRow,
 } from "./types.js";
 
-type CredentialQueryClient = {
-  from(table: "credential"): {
-    select(columns: string): {
-      eq(column: string, value: unknown): PromiseLike<{ data: unknown; error: never }>;
-    };
-  };
-};
-
-type RoutingRuleFallbackQueryClient = {
-  from(table: "routing_rule_fallback"): {
-    select(columns: string): {
-      eq(
-        column: string,
-        value: unknown,
-      ): {
-        in(
-          column: string,
-          values: unknown[],
-        ): {
-          order(column: string, options?: { ascending?: boolean }): PromiseLike<{ data: unknown; error: never }>;
-        };
-      };
-    };
-  };
-};
-
 function clientForAccessToken(accessToken?: string) {
-  return accessToken ? getUserScopedSupabase(accessToken) : getServiceRoleSupabase();
+  return narrowSupabase(accessToken ? getUserScopedSupabase(accessToken) : getServiceRoleSupabase());
+}
+
+function firstRow<Row>(data: Row[] | Row | null): Row | null {
+  if (Array.isArray(data)) return data[0] ?? null;
+  return data ?? null;
 }
 
 export async function getAgent(input: ResolveExecutionProfileInput): Promise<AgentProfileRow> {
   const { data, error } = await clientForAccessToken(input.accessToken)
-    .from("agent")
+    .from<AgentProfileRow>("agent")
     .select("id,workspace_id,type,model_settings,tool_policy")
     .eq("id", input.agentId)
     .limit(1);
   if (error) throw normalizeSupabaseError("agent query", error);
 
-  const agent = (data ?? [])[0] as AgentProfileRow | undefined;
+  const agent = firstRow<AgentProfileRow>(data);
   if (!agent) {
     throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
   }
@@ -62,7 +42,7 @@ export async function getAgentGatewayConfig(
   input: ResolveExecutionProfileInput,
 ): Promise<GatewayConfigProfileRow | null> {
   const { data, error } = await clientForAccessToken(input.accessToken)
-    .from("gateway_config")
+    .from<GatewayConfigProfileRow>("gateway_config")
     .select("config_json")
     .eq("scope_type", "agent")
     .eq("scope_id", input.agentId)
@@ -70,12 +50,12 @@ export async function getAgentGatewayConfig(
     .limit(1);
   if (error) throw normalizeSupabaseError("gateway_config query", error);
 
-  return ((data ?? [])[0] as GatewayConfigProfileRow | undefined) ?? null;
+  return firstRow<GatewayConfigProfileRow>(data);
 }
 
 export async function getRoutingRules(workspaceId: string, accessToken?: string): Promise<RoutingRuleRow[]> {
   const { data, error } = await clientForAccessToken(accessToken)
-    .from("routing_rule")
+    .from<RoutingRuleRow>("routing_rule")
     .select("id,workspace_id,priority,runner_kind,provider,model,credential_id,credential_alias,model_tier_floor")
     .eq("workspace_id", workspaceId)
     .eq("enabled", true)
@@ -93,7 +73,7 @@ export async function getRuleMatches(
 ): Promise<RoutingRuleMatchRow[]> {
   if (ruleIds.length === 0) return [];
   const { data, error } = await clientForAccessToken(accessToken)
-    .from("routing_rule_match")
+    .from<RoutingRuleMatchRow>("routing_rule_match")
     .select("rule_id,kind,key,value")
     .eq("workspace_id", workspaceId)
     .in("rule_id", ruleIds);
@@ -108,8 +88,8 @@ export async function getRoutingRuleFallbacks(
   accessToken?: string,
 ): Promise<RoutingRuleFallbackRow[]> {
   if (ruleIds.length === 0) return [];
-  const { data, error } = await (clientForAccessToken(accessToken) as unknown as RoutingRuleFallbackQueryClient)
-    .from("routing_rule_fallback")
+  const { data, error } = await clientForAccessToken(accessToken)
+    .from<RoutingRuleFallbackRow>("routing_rule_fallback")
     .select("routing_rule_id,position,provider,model,credential_id,credential_alias")
     .eq("workspace_id", workspaceId)
     .in("routing_rule_id", ruleIds)
@@ -125,14 +105,14 @@ export async function resolveCredentialAlias(
   accessToken?: string,
 ): Promise<string | null> {
   const { data, error } = await clientForAccessToken(accessToken)
-    .from("credential_alias")
+    .from<CredentialAliasRow>("credential_alias")
     .select("alias,credential_id")
     .eq("workspace_id", workspaceId)
     .eq("alias", alias)
     .limit(1);
   if (error) throw normalizeSupabaseError("credential_alias query", error);
 
-  const match = (data ?? [])[0] as CredentialAliasRow | undefined;
+  const match = firstRow<CredentialAliasRow>(data);
   return match?.credential_id ?? null;
 }
 
@@ -142,8 +122,8 @@ export async function getAgentCredentialId(
   accessToken?: string,
 ): Promise<string | null> {
   if (!workspaceId) return null;
-  const { data, error } = await (clientForAccessToken(accessToken) as unknown as CredentialQueryClient)
-    .from("credential")
+  const { data, error } = await clientForAccessToken(accessToken)
+    .from<CredentialProfileRow>("credential")
     .select("id,key_value")
     .eq("workspace_id", workspaceId);
   if (error) throw normalizeSupabaseError("credential query", error);

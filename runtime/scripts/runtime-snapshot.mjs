@@ -138,9 +138,11 @@ async function buildSnapshot(opts) {
       captureJson(`${opts.launcherUrl}/health`, opts.timeoutMs),
       captureJson(`${opts.launcherUrl}/orchestrators`, opts.timeoutMs),
       captureJson(`${opts.orchestratorUrl}/api/v1/health`, opts.timeoutMs),
-      captureJson(`${opts.orchestratorUrl}/api/v1/state`, opts.timeoutMs),
+      captureJson(`${opts.orchestratorUrl}/api/v1/state`, opts.timeoutMs, serviceRoleHeaders()),
       opts.workspaceId ? captureJson(managerStatusUrl(opts), opts.timeoutMs) : Promise.resolve(null),
-      opts.workspaceId ? captureJson(localRuntimeHealthUrl(opts), opts.timeoutMs) : Promise.resolve(null),
+      opts.workspaceId
+        ? captureJson(localRuntimeHealthUrl(opts), opts.timeoutMs, serviceRoleHeaders())
+        : Promise.resolve(null),
     ]);
 
   const services = {
@@ -197,13 +199,19 @@ async function buildSnapshot(opts) {
   };
 }
 
-async function captureJson(url, timeoutMs) {
+// /api/v1/state and /api/v1/local-runtime/* sit behind RequireServiceRoleBearer.
+function serviceRoleHeaders() {
+  const key = (process.env.LAUNCHER_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  return key ? { authorization: `Bearer ${key}` } : {};
+}
+
+async function captureJson(url, timeoutMs, headers = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...headers },
       signal: controller.signal,
     });
     const text = await response.text();

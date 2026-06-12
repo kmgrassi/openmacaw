@@ -79,16 +79,24 @@ defmodule SymphonyElixir.ExecutionProfile do
   # always wins; `provider = "local"` or unset falls back to LocalRelay's own
   # default (`"openai_compatible"`).
   defp maybe_put_target_runner_kind(config, %{"runner_kind" => "local_relay"} = profile) do
-    case Map.get(profile, "provider") do
-      provider when provider in ~w(openclaw codex computer_use) ->
-        Map.put_new(config, "target_runner_kind", provider)
-
-      _ ->
-        config
+    case local_relay_target_runner_kind(Map.get(profile, "provider")) do
+      nil -> config
+      target_runner_kind -> Map.put_new(config, "target_runner_kind", target_runner_kind)
     end
   end
 
   defp maybe_put_target_runner_kind(config, _profile), do: config
+
+  @doc """
+  The helper runner kind a `local_relay` profile's provider targets.
+
+  Providers that name a helper-advertisable runtime map to themselves;
+  `"local"`, `"openai_compatible"`, or unset return `nil` so callers fall
+  back to `Runner.LocalRelay`'s default (`"openai_compatible"`).
+  """
+  @spec local_relay_target_runner_kind(String.t() | nil) :: String.t() | nil
+  def local_relay_target_runner_kind(provider) when provider in ~w(openclaw codex computer_use), do: provider
+  def local_relay_target_runner_kind(_provider), do: nil
 
   defp supplied_profile(%WorkItem{} = work_item, runner_config, opts) do
     Keyword.get(opts, :execution_profile) ||
