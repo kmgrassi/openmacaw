@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { planningAgentId, workspaceId } from "./execution-profile-resolver-shared.test.js";
+import { planningAgentId, workspaceId } from "../../test-support/execution-profile-resolver-shared.js";
 import { firstGatewayRunner, matchValue } from "./execution-profile-resolver.js";
 
 describe("matchValue", () => {

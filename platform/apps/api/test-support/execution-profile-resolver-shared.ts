@@ -4,7 +4,7 @@ export type MockDb = Record<string, Array<Record<string, unknown>>>;
 
 let selectRowsForTable: (table: string, params: URLSearchParams) => unknown[] | Promise<unknown[]> = () => [];
 
-vi.mock("../supabase-client.js", () => {
+vi.mock("../src/supabase-client.js", () => {
   function mockClient() {
     return {
       from(table: string) {

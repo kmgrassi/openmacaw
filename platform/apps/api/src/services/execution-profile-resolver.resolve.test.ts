@@ -11,7 +11,7 @@ import {
   setupMockDatabase,
   tableParams,
   workspaceId,
-} from "./execution-profile-resolver-shared.test.js";
+} from "../../test-support/execution-profile-resolver-shared.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
 
 describe("resolveExecutionProfile", () => {
