@@ -12,6 +12,115 @@ import (
 	"github.com/kmgrassi/local-runtime-helper/internal/runner"
 )
 
+type fakeToolExecutor struct {
+	gotReq      runner.ToolCallRequest
+	gotDeadline bool
+	result      runner.ToolCallResult
+}
+
+func (f *fakeToolExecutor) Execute(ctx context.Context, req runner.ToolCallRequest) runner.ToolCallResult {
+	f.gotReq = req
+	_, f.gotDeadline = ctx.Deadline()
+	res := f.result
+	res.ToolCallID = req.ToolCallID
+	return res
+}
+
+func toolExecRequest(correlationID, toolCallID string) *protocol.ToolExecutionRequestFrame {
+	return &protocol.ToolExecutionRequestFrame{
+		CorrelatedFrame: correlated(protocol.TypeToolExecRequest, correlationID),
+		ToolCallID:      toolCallID,
+		Name:            "git.run",
+		Arguments:       map[string]any{"argv": []any{"gh", "pr", "list"}},
+		ExecutionKind:   "helper",
+	}
+}
+
+func TestHandleFrameExecutesDelegatedToolAndReturnsResult(t *testing.T) {
+	sender := &recordingSender{}
+	exec := &fakeToolExecutor{result: runner.ToolCallResult{Success: true, Output: map[string]any{"ok": true}, DurationMs: 7}}
+
+	registry, err := runner.NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	dispatcher, err := NewDispatcher(DispatcherOptions{Runners: registry, Sender: sender, ToolExecutor: exec})
+	if err != nil {
+		t.Fatalf("new dispatcher: %v", err)
+	}
+
+	if err := dispatcher.HandleFrame(context.Background(), toolExecRequest("c1", "call-1")); err != nil {
+		t.Fatalf("handle frame: %v", err)
+	}
+	dispatcher.Wait()
+
+	if exec.gotReq.Name != "git.run" || exec.gotReq.ToolCallID != "call-1" {
+		t.Fatalf("executor got %+v, want git.run / call-1", exec.gotReq)
+	}
+
+	frame, ok := sender.only(t).(*protocol.ToolCallResultFrame)
+	if !ok {
+		t.Fatalf("frame type = %T, want *ToolCallResultFrame", sender.frames[0])
+	}
+	if !frame.Success || frame.ToolCallID != "call-1" || frame.CorrelationID != "c1" || frame.DurationMs != 7 {
+		t.Fatalf("result frame = %#v", frame)
+	}
+}
+
+func TestHandleFrameToolExecutionBindsRequestTimeout(t *testing.T) {
+	sender := &recordingSender{}
+	exec := &fakeToolExecutor{result: runner.ToolCallResult{Success: true}}
+
+	registry, err := runner.NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	dispatcher, err := NewDispatcher(DispatcherOptions{Runners: registry, Sender: sender, ToolExecutor: exec})
+	if err != nil {
+		t.Fatalf("new dispatcher: %v", err)
+	}
+
+	req := toolExecRequest("c3", "call-3")
+	req.TimeoutMs = 30_000
+	if err := dispatcher.HandleFrame(context.Background(), req); err != nil {
+		t.Fatalf("handle frame: %v", err)
+	}
+	dispatcher.Wait()
+
+	if !exec.gotDeadline {
+		t.Fatal("executor context had no deadline; request timeout was not bound to local execution")
+	}
+}
+
+func TestHandleFrameToolExecutionWithoutExecutorReturnsError(t *testing.T) {
+	sender := &recordingSender{}
+	registry, err := runner.NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	dispatcher, err := NewDispatcher(DispatcherOptions{Runners: registry, Sender: sender}) // no ToolExecutor
+	if err != nil {
+		t.Fatalf("new dispatcher: %v", err)
+	}
+
+	if err := dispatcher.HandleFrame(context.Background(), toolExecRequest("c2", "call-2")); err != nil {
+		t.Fatalf("handle frame: %v", err)
+	}
+	dispatcher.Wait()
+
+	frame, ok := sender.only(t).(*protocol.ToolCallResultFrame)
+	if !ok {
+		t.Fatalf("frame type = %T, want *ToolCallResultFrame", sender.frames[0])
+	}
+	if frame.Success {
+		t.Fatal("result success = true, want false when no executor is configured")
+	}
+	output, _ := frame.Output.(map[string]any)
+	if output["error"] != "no_local_tool_executor" {
+		t.Fatalf("output error = %v, want no_local_tool_executor", output["error"])
+	}
+}
+
 func TestDispatcherRunsMultipleDispatches(t *testing.T) {
 	sender := &recordingSender{}
 	firstStarted := make(chan struct{})

@@ -136,6 +136,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
         "arguments" => inject_runtime_context(call.arguments, tool, session),
         "execution_kind" => ToolCallNormalization.map_value(tool, :execution_kind),
         "execution_config" => ToolCallNormalization.map_value(tool, :execution_config) || %{},
+        # Bound the helper command to the same window we will wait below, so a
+        # slow git/gh command cancels on the user's machine when we time out
+        # rather than mutating the repo / calling GitHub after we have moved on.
+        "timeout_ms" => config.timeout_per_tool_ms,
         "context" => runtime_context(session)
       }
       |> reject_nil_values()
@@ -342,7 +346,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
       |> Map.merge(%{
         "success" => success?,
         "duration_ms" => max(monotonic_ms() - started_at, 0),
-        "result_size_bytes" => byte_size(to_string(Map.get(result, "output") || ""))
+        # Helper-delegated tools (e.g. git.run) return structured map output, so
+        # encode rather than to_string/1, which raises Protocol.UndefinedError on
+        # a map. Matches how the model-facing tool result is serialized.
+        "result_size_bytes" => byte_size(encode_runtime_tool_output(Map.get(result, "output") || ""))
       })
 
     emit_event(session, %{event: event, payload: payload})

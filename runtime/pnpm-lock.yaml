@@ -10,7 +10,7 @@ importers:
     devDependencies:
       '@kmgrassi/supabase-schema':
         specifier: file:../platform/packages/supabase-schema
-        version: link:../platform/packages/supabase-schema
+        version: file:../platform/packages/supabase-schema
       supabase:
         specifier: ^2.95.5
         version: 2.95.5
@@ -20,6 +20,9 @@ packages:
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
+
+  '@kmgrassi/supabase-schema@file:../platform/packages/supabase-schema':
+    resolution: {directory: ../platform/packages/supabase-schema, type: directory}
 
   agent-base@9.0.0:
     resolution: {integrity: sha512-TQf59BsZnytt8GdJKLPfUZ54g/iaUL2OWDSFCCvMOhsHduDQxO8xC4PNeyIkVcA5KwL2phPSv0douC0fgWzmnA==}
@@ -124,6 +127,8 @@ snapshots:
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
+
+  '@kmgrassi/supabase-schema@file:../platform/packages/supabase-schema': {}
 
   agent-base@9.0.0: {}
 

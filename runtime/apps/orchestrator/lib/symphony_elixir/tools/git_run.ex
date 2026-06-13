@@ -53,7 +53,12 @@ defmodule SymphonyElixir.Tools.GitRun do
   @impl true
   def description do
     "Run a Git or GitHub CLI command in the registered workspace repository. " <>
-      "Full read/write access to git and gh; a narrow denylist blocks `gh repo delete`, " <>
+      "Choose the binary by what you need: use `git` for local repository " <>
+      "state and history (status, diff, add, commit, push, fetch, rebase, " <>
+      "checkout); use `gh` for GitHub platform actions (pr create/view/edit/" <>
+      "comment/review/merge, pr checks, issue, run, auth status). A typical " <>
+      "flow is `git add` then `git commit` then `git push` then `gh pr create`. " <>
+      "Full read/write access to both; a narrow denylist blocks `gh repo delete`, " <>
       "secret/variable writes, and auth identity changes."
   end
 
@@ -66,32 +71,31 @@ defmodule SymphonyElixir.Tools.GitRun do
       "properties" => %{
         "command" => %{
           "type" => "string",
-          "description" =>
-            """
-            Single command line, must start with `git` or `gh`. Quoting
-            follows POSIX shell rules (e.g. `--body "LGTM, merging"`).
-            Read examples:
-              gh pr list --repo owner/repo --state open --json number,title,reviewDecision
-              gh pr view 123 --repo owner/repo --comments
-              gh pr checks 123 --repo owner/repo
-              git log --oneline -n 20
-              git status --short
-            Write examples (allowed, full access):
-              gh pr comment 123 --repo owner/repo --body "@codex review"
-              gh pr review 123 --repo owner/repo --approve --body "LGTM"
-              gh pr merge 123 --repo owner/repo --squash --delete-branch
-              gh issue create --repo owner/repo --title "..." --body "..."
-              gh run rerun 9876543210 --repo owner/repo
-              git push origin feat/x
-              git checkout -b feat/y
-            Denied (will return blocked=true):
-              gh repo delete owner/repo                    (catastrophic)
-              gh secret list | set | remove                (secret writes)
-              gh variable set | remove                     (variable writes)
-              gh auth login | logout | refresh | switch    (identity change)
-              gh auth token                                (token disclosure)
-              gh api <anything>                            (raw API bypass)
-            """
+          "description" => """
+          Single command line, must start with `git` or `gh`. Quoting
+          follows POSIX shell rules (e.g. `--body "LGTM, merging"`).
+          Read examples:
+            gh pr list --repo owner/repo --state open --json number,title,reviewDecision
+            gh pr view 123 --repo owner/repo --comments
+            gh pr checks 123 --repo owner/repo
+            git log --oneline -n 20
+            git status --short
+          Write examples (allowed, full access):
+            gh pr comment 123 --repo owner/repo --body "@codex review"
+            gh pr review 123 --repo owner/repo --approve --body "LGTM"
+            gh pr merge 123 --repo owner/repo --squash --delete-branch
+            gh issue create --repo owner/repo --title "..." --body "..."
+            gh run rerun 9876543210 --repo owner/repo
+            git push origin feat/x
+            git checkout -b feat/y
+          Denied (will return blocked=true):
+            gh repo delete owner/repo                    (catastrophic)
+            gh secret list | set | remove                (secret writes)
+            gh variable set | remove                     (variable writes)
+            gh auth login | logout | refresh | switch    (identity change)
+            gh auth token                                (token disclosure)
+            gh api <anything>                            (raw API bypass)
+          """
         },
         "cwd" => %{
           "type" => ["string", "null"],
@@ -316,8 +320,7 @@ defmodule SymphonyElixir.Tools.GitRun do
       "blocked" => true,
       "reason" => "unsupported_executable",
       "argv" => argv,
-      "diagnosis" =>
-        "Only git and gh commands are allowed through git.run. Use shell.exec for other executables."
+      "diagnosis" => "Only git and gh commands are allowed through git.run. Use shell.exec for other executables."
     }
   end
 
