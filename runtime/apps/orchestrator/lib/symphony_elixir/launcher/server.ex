@@ -59,6 +59,7 @@ defmodule SymphonyElixir.Launcher.Server do
   alias SymphonyElixir.Orchestrator.Starter
   alias SymphonyElixir.Planning.PlanHandoff
   alias SymphonyElixir.RuntimeLog
+  alias SymphonyElixir.Time
 
   @dynamic_supervisor SymphonyElixir.Launcher.DynamicSupervisor
   @default_heartbeat_ms 30_000
@@ -624,8 +625,7 @@ defmodule SymphonyElixir.Launcher.Server do
     |> maybe_put(:restart_count, Map.get(entry, :restart_count))
   end
 
-  defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-  defp format_datetime(other), do: to_string(other)
+  defp format_datetime(value), do: Time.to_iso8601(value) || to_string(value)
 
   defp reconcile_engine_instance_async(state), do: EngineInstanceSync.reconcile_async(state.orchestrators)
 

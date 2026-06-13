@@ -10,6 +10,7 @@ defmodule SymphonyElixir.ScheduledTask.Scheduler do
 
   alias SymphonyElixir.RuntimeLog
   alias SymphonyElixir.ScheduledTask.{Delivery, NextRun, Repository}
+  alias SymphonyElixir.Time
 
   @default_poll_interval_ms 60_000
   @default_batch_limit 25
@@ -123,7 +124,7 @@ defmodule SymphonyElixir.ScheduledTask.Scheduler do
 
     state.repository.finish_run(run["id"], %{
       "status" => "delivered",
-      "finished_at" => DateTime.to_iso8601(finished_at),
+      "finished_at" => Time.to_iso8601(finished_at),
       "run_id" => run_id
     })
 
@@ -140,7 +141,7 @@ defmodule SymphonyElixir.ScheduledTask.Scheduler do
 
     state.repository.finish_run(run["id"], %{
       "status" => "failed",
-      "finished_at" => DateTime.to_iso8601(finished_at),
+      "finished_at" => Time.to_iso8601(finished_at),
       "error" => error
     })
 
@@ -153,9 +154,9 @@ defmodule SymphonyElixir.ScheduledTask.Scheduler do
   defp task_update_payload(status, error, scheduled_for, next_run_at) do
     %{
       "last_run_status" => status,
-      "last_run_at" => DateTime.to_iso8601(scheduled_for),
+      "last_run_at" => Time.to_iso8601(scheduled_for),
       "last_error" => error,
-      "next_run_at" => maybe_iso8601(next_run_at)
+      "next_run_at" => Time.to_iso8601(next_run_at)
     }
   end
 
@@ -167,9 +168,9 @@ defmodule SymphonyElixir.ScheduledTask.Scheduler do
   end
 
   defp parse_datetime(value) when is_binary(value) do
-    case DateTime.from_iso8601(value) do
-      {:ok, datetime, _offset} -> {:ok, datetime}
-      {:error, reason} -> {:error, {:invalid_next_run_at, reason}}
+    case Time.parse_iso8601(value) do
+      %DateTime{} = datetime -> {:ok, datetime}
+      nil -> {:error, {:invalid_next_run_at, :invalid_format}}
     end
   end
 
@@ -198,9 +199,6 @@ defmodule SymphonyElixir.ScheduledTask.Scheduler do
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
-
-  defp maybe_iso8601(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
-  defp maybe_iso8601(nil), do: nil
 
   defp error_string(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp error_string(reason), do: inspect(reason)
