@@ -55,6 +55,10 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
   def initial_request(session, due_tasks_payload, work_item) do
     correlation_id = Ecto.UUID.generate()
     allowed_tools = Map.get(session, :allowed_tools, ToolRegistry.bundle(:manager))
+
+    # tool_specs are already marked (git.run -> execution_kind helper) for
+    # local-relay managers in LlmToolRunner.start_session, so the helper sees
+    # which tools to delegate and LlmToolRunner.execute_tool agrees.
     tool_definitions = Map.get(session, :tool_specs, ToolRegistry.specs(allowed_tools))
 
     %{

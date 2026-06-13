@@ -57,6 +57,13 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
     assert session.model_client == ModelClient.LocalRelay
     assert session.api_key == "local-runtime"
 
+    # session.tool_specs is the source helper_executed_tool?/2 reads to decide
+    # delegation, so git.run must be marked here (not only on the dispatch
+    # frame) or the manager would silently run it in-orchestrator.
+    git_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "git.run"))
+    assert git_spec, "expected git.run in session.tool_specs"
+    assert git_spec["execution_kind"] == "helper"
+
     work_item = %WorkItem{id: "work-1", identifier: "MAN-1", title: "Manage work"}
 
     assert {:ok, %{"response_id" => correlation_id, "output_text" => "Snoozed from relay."}} =
@@ -75,10 +82,17 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
                          %{"role" => "user", "content" => ~s({"due_tasks":[]})}
                        ],
                        "capability_requirements" => %{"runtime_managed_tools" => true},
-                       "provider_tool_specs" => provider_tool_specs
+                       "provider_tool_specs" => provider_tool_specs,
+                       "tool_definitions" => tool_definitions
                      }}
 
     assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) == tool_names()
+
+    # git.run is marked for helper-side execution so the relay helper runs
+    # git/gh on the user's machine; other manager tools stay runtime-executed.
+    git_tool = Enum.find(tool_definitions, &(Map.get(&1, "name") == "git.run"))
+    assert git_tool, "expected git.run in manager tool_definitions"
+    assert git_tool["execution_kind"] == "helper"
 
     assert_received {:relay_snooze_patch, %{"id" => "eq.work-1", "workspace_id" => "eq.workspace-1"}, %{"next_poll_at" => next_poll_at}}
 
@@ -110,8 +124,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
 
     assert_received {:manager_event, %{event: :tool_call_completed}}
 
-    assert_received {:manager_event,
-                     %{event: :notification, payload: %{"params" => %{"textDelta" => "Snoozed from relay."}}}}
+    assert_received {:manager_event, %{event: :notification, payload: %{"params" => %{"textDelta" => "Snoozed from relay."}}}}
 
     assert_received {:manager_event, %{event: :turn_completed, payload: %{"id" => ^correlation_id}}}
 
