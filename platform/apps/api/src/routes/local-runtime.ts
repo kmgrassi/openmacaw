@@ -18,6 +18,7 @@ import {
   registerLocalRuntimeForWorkspace,
   rotateLocalRuntimeTokenForWorkspace,
   testLocalRuntimeDispatchForWorkspace,
+  type LauncherRequest,
 } from "../services/local-runtime-machines.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 
@@ -62,7 +63,7 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   }
 }
 
-export function registerLocalRuntimeRoutes(app: Express) {
+export function registerLocalRuntimeRoutes(app: Express, launcherRequest: LauncherRequest) {
   app.post(
     AgentRouteTemplates.assignLocalModel,
     apiRoute({
@@ -222,7 +223,13 @@ export function registerLocalRuntimeRoutes(app: Express) {
         await requireWorkspaceAccess(userId, workspaceId);
         return res
           .status(200)
-          .json(await testLocalRuntimeDispatchForWorkspace(workspaceId, requireRouteParam(req, "machineId")));
+          .json(
+            await testLocalRuntimeDispatchForWorkspace(
+              workspaceId,
+              requireRouteParam(req, "machineId"),
+              launcherRequest,
+            ),
+          );
       },
       onError: (res, error) =>
         handleApiRouteError(res, error, {

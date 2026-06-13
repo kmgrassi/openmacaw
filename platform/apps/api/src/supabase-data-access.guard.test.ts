@@ -16,10 +16,13 @@ function productionSourceFiles(dir: string): string[] {
   });
 }
 
-// Files whose `URLSearchParams` use is for outbound HTTP request bodies
-// (e.g. OAuth token endpoints), not for Supabase REST queries. New entries
-// here need to be justified in the PR description.
-const URLSEARCHPARAMS_ALLOWLIST = new Set(["services/oauth/openai-codex.ts"]);
+// Files whose `URLSearchParams` use is for outbound HTTP requests to services
+// we call (request bodies or query strings), not for Supabase REST queries.
+// New entries here need to be justified in the PR description.
+//   - services/oauth/openai-codex.ts: OAuth token endpoint request body.
+//   - services/local-runtime-machines.ts: query string for the orchestrator's
+//     /api/v1/local-runtime/health diagnostics probe.
+const URLSEARCHPARAMS_ALLOWLIST = new Set(["services/oauth/openai-codex.ts", "services/local-runtime-machines.ts"]);
 
 describe("Supabase data-access guardrails", () => {
   const files = productionSourceFiles(sourceRoot);

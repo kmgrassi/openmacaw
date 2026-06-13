@@ -102,7 +102,7 @@ export function createApp(config: ApiConfig) {
   registerDevToolInvocationRoutes(app);
   registerAgentToolRoutes(app);
   registerDevAgentTriggerMessageRoutes(app, launcherClient);
-  registerLocalRuntimeRoutes(app);
+  registerLocalRuntimeRoutes(app, launcherRequest);
   registerLearningRoutes(app);
   registerLearningCostRoutes(app);
   registerLearningMemoryRoutes(app);
