@@ -19,6 +19,11 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   @default_model "gpt-5.1"
   @default_max_tool_iterations 8
 
+  # CLI tools the relay helper executes on the user's machine (with local
+  # git/gh auth) instead of the orchestrator. Only relevant for local-relay
+  # managers, where a helper is present to delegate to.
+  @local_helper_cli_tools ["git.run"]
+
   @impl true
   def start_session(config, _workspace) when is_map(config) do
     if probe_only?(config) do
@@ -27,7 +32,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       end
     else
       model_client = model_client(config)
-      tool_specs = tool_specs(config)
+      tool_specs = config |> tool_specs() |> mark_helper_cli_tools(model_client)
       allowed_tools = ToolRegistry.definition_names(tool_specs)
       provider_tool_name_map = ToolNameMapping.runtime_to_provider(allowed_tools)
 
@@ -221,6 +226,22 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp tool_specs(config) do
     ToolRegistry.effective_definitions(config, ToolRegistry.bundle(tool_bundle(config)))
   end
+
+  # Mark CLI tools as helper-executed for local-relay managers so they run on
+  # the user's machine. This is the single source of truth: the dispatched tool
+  # definitions and helper_executed_tool?/2 both read these marked specs.
+  # Non-relay managers keep the registry execution_kind and execute in-process.
+  defp mark_helper_cli_tools(tool_specs, ModelClient.LocalRelay) when is_list(tool_specs) do
+    Enum.map(tool_specs, fn spec ->
+      if is_map(spec) and tool_spec_name(spec) in @local_helper_cli_tools do
+        Map.put(spec, "execution_kind", "helper")
+      else
+        spec
+      end
+    end)
+  end
+
+  defp mark_helper_cli_tools(tool_specs, _model_client), do: tool_specs
 
   # Tools whose execution_kind is "helper" run on the relay helper (the user's
   # machine, with local git/gh auth) rather than in the orchestrator. Requires

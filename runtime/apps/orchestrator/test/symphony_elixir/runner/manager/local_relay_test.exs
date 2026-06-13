@@ -57,6 +57,13 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
     assert session.model_client == ModelClient.LocalRelay
     assert session.api_key == "local-runtime"
 
+    # session.tool_specs is the source helper_executed_tool?/2 reads to decide
+    # delegation, so git.run must be marked here (not only on the dispatch
+    # frame) or the manager would silently run it in-orchestrator.
+    git_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "git.run"))
+    assert git_spec, "expected git.run in session.tool_specs"
+    assert git_spec["execution_kind"] == "helper"
+
     work_item = %WorkItem{id: "work-1", identifier: "MAN-1", title: "Manage work"}
 
     assert {:ok, %{"response_id" => correlation_id, "output_text" => "Snoozed from relay."}} =
