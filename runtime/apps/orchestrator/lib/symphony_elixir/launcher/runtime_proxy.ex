@@ -14,6 +14,7 @@ defmodule SymphonyElixir.Launcher.RuntimeProxy do
   alias SymphonyElixir.Launcher.{ConfigRegistry, Server}
   alias SymphonyElixir.LocalRuntime.Diagnostics, as: LocalRuntimeDiagnostics
   alias SymphonyElixir.MessageLog
+  alias SymphonyElixir.Time
   alias SymphonyElixirWeb.Presenter
 
   @snapshot_timeout_ms 15_000
@@ -40,7 +41,7 @@ defmodule SymphonyElixir.Launcher.RuntimeProxy do
 
       {:ok,
        %{
-         generated_at: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+         generated_at: Time.now_iso8601(truncate: :second),
          ok: blockers == [],
          status: if(blockers == [], do: "healthy", else: "degraded"),
          agent: agent_diagnostic(agent),
@@ -317,6 +318,5 @@ defmodule SymphonyElixir.Launcher.RuntimeProxy do
       Map.get(profile, "runner_kind")
   end
 
-  defp format_datetime(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
-  defp format_datetime(value), do: value
+  defp format_datetime(value), do: Time.to_iso8601(value) || value
 end

@@ -30,7 +30,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
   alias SymphonyElixir.AgentInventory
   alias SymphonyElixir.AgentInventory.{Agent, StoredCredential}
   alias SymphonyElixir.RuntimeLease
-  alias SymphonyElixir.{Config, PathSafety}
+  alias SymphonyElixir.{Config, PathSafety, Time}
 
   alias SymphonyElixir.WorkerBridge.{
     CredentialResolver,
@@ -389,11 +389,11 @@ defmodule SymphonyElixir.WorkerBridge.Server do
       command: entry.command,
       cwd: entry.cwd,
       status: entry.status,
-      heartbeat_at: maybe_iso8601(Map.get(entry, :heartbeat_at)),
-      idle_expires_at: maybe_iso8601(Map.get(entry, :idle_expires_at)),
-      max_expires_at: maybe_iso8601(Map.get(entry, :max_expires_at)),
-      started_at: DateTime.to_iso8601(entry.started_at),
-      stopped_at: maybe_iso8601(entry.stopped_at),
+      heartbeat_at: Time.to_iso8601(Map.get(entry, :heartbeat_at)),
+      idle_expires_at: Time.to_iso8601(Map.get(entry, :idle_expires_at)),
+      max_expires_at: Time.to_iso8601(Map.get(entry, :max_expires_at)),
+      started_at: Time.to_iso8601(entry.started_at),
+      stopped_at: Time.to_iso8601(entry.stopped_at),
       exit_status: entry.exit_status,
       env_keys: entry.env_keys,
       credential_keys: entry.credential_keys,
@@ -589,9 +589,6 @@ defmodule SymphonyElixir.WorkerBridge.Server do
     error in [ArgumentError] ->
       {:error, {:invalid_runtime_config, Exception.message(error)}}
   end
-
-  defp maybe_iso8601(nil), do: nil
-  defp maybe_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
 
   defp revalidate_and_heartbeat_entry(entry, lease_registry) do
     with {:ok, refreshed} <- revalidate_entry(entry, lease_registry),
