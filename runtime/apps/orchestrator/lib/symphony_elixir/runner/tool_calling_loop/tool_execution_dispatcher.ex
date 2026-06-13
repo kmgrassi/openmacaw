@@ -346,7 +346,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
       |> Map.merge(%{
         "success" => success?,
         "duration_ms" => max(monotonic_ms() - started_at, 0),
-        "result_size_bytes" => byte_size(to_string(Map.get(result, "output") || ""))
+        # Helper-delegated tools (e.g. git.run) return structured map output, so
+        # encode rather than to_string/1, which raises Protocol.UndefinedError on
+        # a map. Matches how the model-facing tool result is serialized.
+        "result_size_bytes" => byte_size(encode_runtime_tool_output(Map.get(result, "output") || ""))
       })
 
     emit_event(session, %{event: event, payload: payload})
