@@ -6,6 +6,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   @behaviour SymphonyElixir.Runner
 
   alias SymphonyElixir.{AgentInventory, Attention, Cutover, MessageHistory, ToolRegistry, WorkItem}
+  alias SymphonyElixir.LocalRelay.Registry, as: LocalRelayRegistry
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Manager.Prompt, as: ManagerPrompt
   alias SymphonyElixir.Manager.ModelClient
@@ -152,7 +153,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
           {:ok, response_result(session, response)}
 
         calls when iteration < session.max_tool_iterations ->
-          outputs = execute_tool_calls(session, calls, run_id)
+          outputs = execute_tool_calls(session, calls, run_id, relay_correlation_id(request))
           follow_up = model_client_follow_up_request(session, response, outputs)
           run_model_loop(session, follow_up, iteration + 1, run_id)
 
@@ -162,7 +163,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     end
   end
 
-  defp execute_tool_calls(session, calls, run_id) do
+  defp execute_tool_calls(session, calls, run_id, correlation_id) do
     Enum.map(calls, fn call ->
       started_at = System.monotonic_time(:millisecond)
       tool = Map.get(call, "name")
@@ -170,7 +171,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       arguments = decode_arguments(Map.get(call, "arguments"))
 
       result =
-        execute_tool(tool, arguments, session)
+        execute_tool(tool, arguments, session, tool_call_id, correlation_id)
         |> Observability.classify_tool_result(
           %{tool_name: tool, tool_call_id: tool_call_id, attempt: 1},
           duration_since(started_at)
@@ -198,6 +199,15 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     end)
   end
 
+  # The relay session correlation for the current turn. Local-relay requests
+  # carry it (RuntimeManaged sets the response id equal to it, so it is stable
+  # across the model turn and the follow-up). Other model clients have none.
+  defp relay_correlation_id(request) when is_map(request) do
+    Map.get(request, "correlation_id") || Map.get(request, :correlation_id)
+  end
+
+  defp relay_correlation_id(_request), do: nil
+
   defp decode_arguments(arguments) when is_binary(arguments) do
     case Jason.decode(arguments) do
       {:ok, decoded} -> decoded
@@ -212,7 +222,94 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     ToolRegistry.effective_definitions(config, ToolRegistry.bundle(tool_bundle(config)))
   end
 
-  defp execute_tool(tool, arguments, session) do
+  # Tools whose execution_kind is "helper" run on the relay helper (the user's
+  # machine, with local git/gh auth) rather than in the orchestrator. Requires
+  # an active relay correlation; without one (non-relay managers), fall through
+  # to in-orchestrator execution.
+  defp execute_tool(tool, arguments, session, tool_call_id, correlation_id)
+       when is_binary(correlation_id) and is_binary(tool_call_id) do
+    if helper_executed_tool?(tool, session) do
+      delegate_tool_to_helper(tool, arguments, tool_call_id, correlation_id, session)
+    else
+      execute_runtime_tool(tool, arguments, session)
+    end
+  end
+
+  defp execute_tool(tool, arguments, session, _tool_call_id, _correlation_id) do
+    execute_runtime_tool(tool, arguments, session)
+  end
+
+  defp helper_executed_tool?(tool, session) do
+    session
+    |> Map.get(:tool_specs, [])
+    |> Enum.any?(fn definition ->
+      is_map(definition) and tool_spec_name(definition) == tool and
+        (Map.get(definition, "execution_kind") || Map.get(definition, :execution_kind)) == "helper"
+    end)
+  end
+
+  defp tool_spec_name(definition) do
+    Map.get(definition, "name") || Map.get(definition, :name) ||
+      Map.get(definition, "slug") || Map.get(definition, :slug)
+  end
+
+  # Delegate a helper-kind tool to the relay helper over the still-open session
+  # the helper is awaiting follow-up on, mirroring ToolCallingLoop's
+  # request_helper_tool_execution. The result is routed back to this process by
+  # the relay registry.
+  defp delegate_tool_to_helper(tool, arguments, tool_call_id, correlation_id, session) do
+    timeout_ms = config_integer(session, "tool_execution_timeout_ms", 120_000)
+
+    frame = %{
+      "type" => "tool_execution_request",
+      "correlation_id" => correlation_id,
+      "tool_call_id" => tool_call_id,
+      "name" => tool,
+      "arguments" => arguments,
+      "execution_kind" => "helper",
+      "timeout_ms" => timeout_ms
+    }
+
+    case LocalRelayRegistry.send_tool_execution_request(correlation_id, frame) do
+      :ok -> await_helper_tool_result(tool, correlation_id, tool_call_id, timeout_ms)
+      {:error, reason} -> helper_tool_error(tool, reason)
+    end
+  end
+
+  defp await_helper_tool_result(tool, correlation_id, tool_call_id, timeout_ms) do
+    receive do
+      {:local_relay_tool_call_result, ^correlation_id, %{"tool_call_id" => ^tool_call_id} = frame} ->
+        normalize_helper_tool_result(frame)
+    after
+      timeout_ms -> helper_tool_error(tool, :tool_execution_timeout)
+    end
+  end
+
+  defp normalize_helper_tool_result(frame) do
+    success? = Map.get(frame, "success") != false
+    output = Map.get(frame, "output")
+
+    %{
+      "success" => success?,
+      "output" => encode_tool_output(output)
+    }
+    |> maybe_put_payload_field("error", unless(success?, do: "helper_tool_failed"))
+  end
+
+  defp helper_tool_error(tool, reason) do
+    %{
+      "success" => false,
+      "error" => error_code(reason),
+      "output" => Jason.encode!(%{"error" => "helper_tool_failed", "tool" => tool, "reason" => inspect(reason)})
+    }
+  end
+
+  defp encode_tool_output(output) when is_binary(output), do: output
+  defp encode_tool_output(output) when is_map(output) or is_list(output), do: Jason.encode!(output)
+  defp encode_tool_output(nil), do: ""
+  defp encode_tool_output(output), do: to_string(output)
+
+  defp execute_runtime_tool(tool, arguments, session) do
     case ToolRegistry.execute(tool, arguments, %{session: session}, Map.get(session, :allowed_tools, [])) do
       {:ok, %{output: output} = result} ->
         %{

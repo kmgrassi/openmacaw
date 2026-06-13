@@ -51,11 +51,20 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
     log_result(result, context, started_at)
   end
 
+  # CLI tools the helper executes locally on the user's machine (with local
+  # git/gh auth) instead of the orchestrator. The helper runs these inline when
+  # it has a local tool executor; everything else stays runtime-managed.
+  @local_helper_cli_tools ["git.run"]
+
   @impl true
   def initial_request(session, due_tasks_payload, work_item) do
     correlation_id = Ecto.UUID.generate()
     allowed_tools = Map.get(session, :allowed_tools, ToolRegistry.bundle(:manager))
-    tool_definitions = Map.get(session, :tool_specs, ToolRegistry.specs(allowed_tools))
+
+    tool_definitions =
+      session
+      |> Map.get(:tool_specs, ToolRegistry.specs(allowed_tools))
+      |> mark_local_helper_tools()
 
     %{
       "type" => "dispatch",
@@ -142,6 +151,26 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
     |> Map.put("type", "dispatch")
     |> Map.put("runner_kind", "local_relay")
     |> Map.drop(["correlation_id"])
+  end
+
+  # Mark CLI tools as helper-executed so the relay helper runs them on the
+  # user's machine; runtime-only manager tools keep their execution_kind and
+  # continue to be forwarded to and executed by the orchestrator.
+  defp mark_local_helper_tools(tool_definitions) when is_list(tool_definitions) do
+    Enum.map(tool_definitions, fn definition ->
+      cond do
+        not is_map(definition) -> definition
+        tool_definition_name(definition) in @local_helper_cli_tools -> Map.put(definition, "execution_kind", "helper")
+        true -> definition
+      end
+    end)
+  end
+
+  defp mark_local_helper_tools(tool_definitions), do: tool_definitions
+
+  defp tool_definition_name(definition) do
+    Map.get(definition, "name") || Map.get(definition, :name) ||
+      Map.get(definition, "slug") || Map.get(definition, :slug)
   end
 
   defp initial_messages(session, due_tasks_payload) do
