@@ -276,6 +276,12 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert frame["model"] == "qwen-chat"
     assert [%{"name" => _name} | _rest] = frame["tool_definitions"]
 
+    # git.run is offered to the local model and marked for helper-side
+    # execution so it runs on the user's machine with local CLI auth.
+    git_tool = Enum.find(frame["tool_definitions"], &(&1["name"] == "git.run"))
+    assert git_tool, "expected git.run in local_relay tool_definitions"
+    assert git_tool["execution_kind"] == "helper"
+
     assert_receive {:gateway_runner_event, "agent:relay-1:main", "run-relay", %{event: :turn_started}}
 
     assert_receive {:gateway_runner_complete, "agent:relay-1:main", "run-relay", {:ok, result}}

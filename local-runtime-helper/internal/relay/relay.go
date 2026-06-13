@@ -49,12 +49,21 @@ func (fn SenderFunc) SendFrame(ctx context.Context, frame protocol.Frame) error 
 	return fn(ctx, frame)
 }
 
+// ToolExecutor runs a single tool call locally on the user's machine. It is the
+// same contract the openai_compatible runner uses for helper-managed loops; a
+// nil executor means this helper was started without a workspace root and
+// cannot service cloud-delegated tool execution requests.
+type ToolExecutor interface {
+	Execute(context.Context, runner.ToolCallRequest) runner.ToolCallResult
+}
+
 // Dispatcher routes dispatch frames to configured runners and owns per-dispatch
 // cancellation, correlation IDs, structured lifecycle logs, and concurrency.
 type Dispatcher struct {
-	runners *runner.Registry
-	sender  Sender
-	logger  *slog.Logger
+	runners      *runner.Registry
+	sender       Sender
+	logger       *slog.Logger
+	toolExecutor ToolExecutor
 
 	sem                 chan struct{}
 	terminalSendTimeout time.Duration
@@ -71,6 +80,10 @@ type DispatcherOptions struct {
 	Logger              *slog.Logger
 	MaxConcurrent       int
 	TerminalSendTimeout time.Duration
+	// ToolExecutor services cloud-delegated tool_execution_request frames
+	// (e.g. git.run for a local model). Optional; nil when no workspace root
+	// is configured.
+	ToolExecutor ToolExecutor
 }
 
 // NewDispatcher creates a runner dispatcher.
@@ -95,6 +108,7 @@ func NewDispatcher(opts DispatcherOptions) (*Dispatcher, error) {
 		runners:             opts.Runners,
 		sender:              opts.Sender,
 		logger:              opts.Logger,
+		toolExecutor:        opts.ToolExecutor,
 		sem:                 make(chan struct{}, opts.MaxConcurrent),
 		terminalSendTimeout: opts.TerminalSendTimeout,
 		inflight:            make(map[string]context.CancelFunc),
@@ -157,9 +171,57 @@ func (d *Dispatcher) HandleFrame(ctx context.Context, frame protocol.Frame) erro
 			CorrelatedFrame: correlated(protocol.TypeCancelAck, f.CorrelationID),
 			Outcome:         outcome,
 		})
+	case *protocol.ToolExecutionRequestFrame:
+		d.startToolExecution(ctx, f)
+		return nil
 	default:
 		return nil
 	}
+}
+
+// startToolExecution runs a cloud-delegated tool call (e.g. git.run for a local
+// model) on this machine and replies with a tool_call_result frame. It runs in
+// its own goroutine so a slow command (a network `gh` call) never blocks the
+// read loop from processing heartbeats, cancels, or further frames.
+func (d *Dispatcher) startToolExecution(ctx context.Context, f *protocol.ToolExecutionRequestFrame) {
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+
+		result := protocol.ToolCallResultFrame{
+			CorrelatedFrame: correlated(protocol.TypeToolCallResult, f.CorrelationID),
+			ToolCallID:      f.ToolCallID,
+		}
+
+		if d.toolExecutor == nil {
+			d.logger.Warn("tool execution requested but no local tool executor configured",
+				"correlation_id", f.CorrelationID, "tool_call_id", f.ToolCallID, "name", f.Name)
+			result.Output = map[string]any{
+				"ok":     false,
+				"error":  "no_local_tool_executor",
+				"reason": "helper started without a workspace root; re-register with --workspace-root",
+				"name":   f.Name,
+			}
+		} else {
+			res := d.toolExecutor.Execute(ctx, runner.ToolCallRequest{
+				ToolCallID: f.ToolCallID,
+				Name:       f.Name,
+				Arguments:  f.Arguments,
+			})
+			result.Success = res.Success
+			result.Output = res.Output
+			result.DurationMs = res.DurationMs
+		}
+
+		// Detach from the read-loop context so the result still sends if the
+		// command finished just as the connection is tearing down.
+		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.terminalSendTimeout)
+		defer cancel()
+		if err := d.sender.SendFrame(sendCtx, &result); err != nil {
+			d.logger.Error("failed to send tool_call_result",
+				"error", err, "correlation_id", f.CorrelationID, "tool_call_id", f.ToolCallID)
+		}
+	}()
 }
 
 // Wait blocks until all accepted dispatches finish.

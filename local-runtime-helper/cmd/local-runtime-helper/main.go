@@ -203,7 +203,7 @@ func cmdStart(args []string) {
 	}
 	logger.Info("loaded config", "path", cfg.Path)
 
-	runners, activeRunnerKinds, err := buildRunners(cfg, logger)
+	runners, activeRunnerKinds, localToolExecutor, err := buildRunners(cfg, logger)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "start: %v\n", err)
 		os.Exit(1)
@@ -239,6 +239,7 @@ func cmdStart(args []string) {
 		Sender:        sender,
 		Logger:        logger,
 		MaxConcurrent: *maxConcurrent,
+		ToolExecutor:  localToolExecutor,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "start: initialize dispatcher: %v\n", err)
@@ -272,7 +273,7 @@ func cmdStart(args []string) {
 // them alongside the runner kinds to advertise in the relay RegisterFrame.
 // Only initialized runners are advertised so the helper never claims a
 // capability it cannot serve.
-func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []string, error) {
+func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []string, openai_compatible.ToolExecutor, error) {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -284,7 +285,7 @@ func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []s
 	if cfg.Machine.WorkspaceRoot != "" {
 		executor, err := tools.NewExecutor(cfg.Machine.WorkspaceRoot)
 		if err != nil {
-			return nil, nil, fmt.Errorf("initialize local tool executor: %w", err)
+			return nil, nil, nil, fmt.Errorf("initialize local tool executor: %w", err)
 		}
 		localToolExecutor = executor
 		logger.Info("registered local tool workspace", "workspace_root", cfg.Machine.WorkspaceRoot)
@@ -298,7 +299,7 @@ func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []s
 			ToolExecutor: localToolExecutor,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("initialize openai_compatible runner: %w", err)
+			return nil, nil, nil, fmt.Errorf("initialize openai_compatible runner: %w", err)
 		}
 		runners = append(runners, r)
 		activeRunnerKinds = append(activeRunnerKinds, "openai_compatible")
@@ -311,12 +312,12 @@ func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []s
 			APIKey:   rc.APIKey,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("initialize openclaw runner: %w", err)
+			return nil, nil, nil, fmt.Errorf("initialize openclaw runner: %w", err)
 		}
 		runners = append(runners, r)
 		activeRunnerKinds = append(activeRunnerKinds, "openclaw")
 		logger.Info("registered runner", "kind", "openclaw", "endpoint", rc.Endpoint)
 	}
 
-	return runners, activeRunnerKinds, nil
+	return runners, activeRunnerKinds, localToolExecutor, nil
 }

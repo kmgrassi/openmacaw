@@ -195,7 +195,7 @@ func TestBuildRunnersAdvertisesOnlyInitializedKinds(t *testing.T) {
 
 			cfg := &config.Config{Runners: tc.runners}
 
-			runners, kinds, err := buildRunners(cfg, nil)
+			runners, kinds, _, err := buildRunners(cfg, nil)
 			if err != nil {
 				t.Fatalf("buildRunners returned error: %v", err)
 			}
@@ -224,7 +224,7 @@ func TestBuildRunnersReturnsErrorOnInvalidConfig(t *testing.T) {
 		},
 	}
 
-	if _, _, err := buildRunners(cfg, nil); err == nil {
+	if _, _, _, err := buildRunners(cfg, nil); err == nil {
 		t.Fatal("buildRunners with empty openclaw endpoint returned nil error; want surfaced error")
 	}
 }

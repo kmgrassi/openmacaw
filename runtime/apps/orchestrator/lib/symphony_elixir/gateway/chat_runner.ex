@@ -406,14 +406,15 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       base_url: base_url,
       api_key: api_key,
       on_message: on_message,
-      metadata: %{
-        "trace_id" => Process.get(:symphony_trace_id),
-        "source" => "gateway_chat",
-        "agent_id" => Map.get(profile, :agent_id),
-        "workspace_id" => Map.get(profile, :workspace_id)
-      }
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
+      metadata:
+        %{
+          "trace_id" => Process.get(:symphony_trace_id),
+          "source" => "gateway_chat",
+          "agent_id" => Map.get(profile, :agent_id),
+          "workspace_id" => Map.get(profile, :workspace_id)
+        }
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Map.new()
     }
   end
 
@@ -452,10 +453,18 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     end
   end
 
+  # CLI tools whose execution + auth must follow the local model onto the
+  # user's machine: the helper shells out to git/gh with the laptop's own CLI
+  # session. The cloud loop delegates these by execution_kind (see
+  # ToolCallingLoop.ToolExecutionDispatcher); everything else stays runtime-side.
+  @local_helper_cli_tools ["git.run"]
+
   defp local_relay_config(profile, scope, on_message) do
-    # The helper owns the model turn; the runtime owns tool execution
-    # (tool_calling_mode "cloud_managed" -> Runner.ToolCallingLoop). The
-    # universal bundle is the default chat tool surface until
+    # The helper owns the model turn; the runtime owns the tool-calling loop
+    # (tool_calling_mode "cloud_managed" -> Runner.ToolCallingLoop). Most tools
+    # still execute runtime-side, but CLI tools are marked execution_kind
+    # "helper" so a local model runs git/gh on the user's machine with local
+    # auth. The universal bundle is the default chat tool surface until
     # agent-grant-driven tool filtering lands (same follow-up as
     # local_model_coding_config/2 above).
     %{
@@ -470,11 +479,24 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       # falls back to Runner.LocalRelay's "openai_compatible" default.
       "target_runner_kind" => ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
       "credential_ref" => Map.get(profile, :credential_ref),
-      "tool_definitions" => ToolRegistry.definitions(ToolRegistry.bundle(:universal)),
+      "tool_definitions" => local_relay_tool_definitions(),
       "tool_calling_mode" => "cloud_managed",
       "trace_id" => Process.get(:symphony_trace_id),
       "on_message" => on_message
     }
+  end
+
+  # The universal chat tools (runtime-executed) plus the CLI tools the local
+  # helper executes on the user's machine, marked execution_kind "helper".
+  defp local_relay_tool_definitions do
+    universal = ToolRegistry.definitions(ToolRegistry.bundle(:universal))
+
+    helper_cli =
+      @local_helper_cli_tools
+      |> ToolRegistry.definitions()
+      |> Enum.map(&Map.put(&1, "execution_kind", "helper"))
+
+    universal ++ helper_cli
   end
 
   defp local_chat_base_url do
