@@ -183,6 +183,11 @@ type ToolExecutionRequestFrame struct {
 	Arguments       map[string]any `json:"arguments"`
 	ExecutionKind   string         `json:"execution_kind"`
 	ExecutionConfig map[string]any `json:"execution_config,omitempty"`
+	// TimeoutMs bounds local execution to the cloud loop's per-tool wait, so a
+	// slow command cancels on the user's machine instead of running on after
+	// the orchestrator has already timed out. Zero means no cloud-imposed
+	// bound (the executor still applies its own per-command timeout).
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
 }
 
 // ToolCallResultFrame returns a tool execution result to the relay.

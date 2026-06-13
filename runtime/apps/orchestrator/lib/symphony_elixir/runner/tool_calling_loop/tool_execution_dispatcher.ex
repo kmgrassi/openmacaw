@@ -136,6 +136,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
         "arguments" => inject_runtime_context(call.arguments, tool, session),
         "execution_kind" => ToolCallNormalization.map_value(tool, :execution_kind),
         "execution_config" => ToolCallNormalization.map_value(tool, :execution_config) || %{},
+        # Bound the helper command to the same window we will wait below, so a
+        # slow git/gh command cancels on the user's machine when we time out
+        # rather than mutating the repo / calling GitHub after we have moved on.
+        "timeout_ms" => config.timeout_per_tool_ms,
         "context" => runtime_context(session)
       }
       |> reject_nil_values()

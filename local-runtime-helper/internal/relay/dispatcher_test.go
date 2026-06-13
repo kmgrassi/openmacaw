@@ -13,12 +13,14 @@ import (
 )
 
 type fakeToolExecutor struct {
-	gotReq runner.ToolCallRequest
-	result runner.ToolCallResult
+	gotReq      runner.ToolCallRequest
+	gotDeadline bool
+	result      runner.ToolCallResult
 }
 
-func (f *fakeToolExecutor) Execute(_ context.Context, req runner.ToolCallRequest) runner.ToolCallResult {
+func (f *fakeToolExecutor) Execute(ctx context.Context, req runner.ToolCallRequest) runner.ToolCallResult {
 	f.gotReq = req
+	_, f.gotDeadline = ctx.Deadline()
 	res := f.result
 	res.ToolCallID = req.ToolCallID
 	return res
@@ -62,6 +64,31 @@ func TestHandleFrameExecutesDelegatedToolAndReturnsResult(t *testing.T) {
 	}
 	if !frame.Success || frame.ToolCallID != "call-1" || frame.CorrelationID != "c1" || frame.DurationMs != 7 {
 		t.Fatalf("result frame = %#v", frame)
+	}
+}
+
+func TestHandleFrameToolExecutionBindsRequestTimeout(t *testing.T) {
+	sender := &recordingSender{}
+	exec := &fakeToolExecutor{result: runner.ToolCallResult{Success: true}}
+
+	registry, err := runner.NewRegistry()
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	dispatcher, err := NewDispatcher(DispatcherOptions{Runners: registry, Sender: sender, ToolExecutor: exec})
+	if err != nil {
+		t.Fatalf("new dispatcher: %v", err)
+	}
+
+	req := toolExecRequest("c3", "call-3")
+	req.TimeoutMs = 30_000
+	if err := dispatcher.HandleFrame(context.Background(), req); err != nil {
+		t.Fatalf("handle frame: %v", err)
+	}
+	dispatcher.Wait()
+
+	if !exec.gotDeadline {
+		t.Fatal("executor context had no deadline; request timeout was not bound to local execution")
 	}
 }
 

@@ -203,7 +203,16 @@ func (d *Dispatcher) startToolExecution(ctx context.Context, f *protocol.ToolExe
 				"name":   f.Name,
 			}
 		} else {
-			res := d.toolExecutor.Execute(ctx, runner.ToolCallRequest{
+			// Bound execution to the cloud loop's per-tool wait so the local
+			// command is canceled when the orchestrator gives up, instead of
+			// continuing to mutate the repo / call GitHub past that point.
+			execCtx := ctx
+			if f.TimeoutMs > 0 {
+				var cancelExec context.CancelFunc
+				execCtx, cancelExec = context.WithTimeout(ctx, time.Duration(f.TimeoutMs)*time.Millisecond)
+				defer cancelExec()
+			}
+			res := d.toolExecutor.Execute(execCtx, runner.ToolCallRequest{
 				ToolCallID: f.ToolCallID,
 				Name:       f.Name,
 				Arguments:  f.Arguments,
